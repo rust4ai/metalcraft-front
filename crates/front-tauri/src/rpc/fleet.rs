@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use front_core::{AgentInstance, AgentPresetSummary};
+use front_core::{AgentInstance, AgentPresetSummary, InstanceMemory, RosterPersona};
 
 use crate::state::AppState;
 
@@ -47,3 +47,45 @@ pub async fn delete_instance(id: String, state: State<'_>) -> Result<(), String>
         .await
         .map_err(|e| e.to_string())
 }
+
+/// Switch an instance's persona (PLAN §10.2 — the rail's persona switcher).
+#[tauri::command]
+pub async fn set_instance_persona(
+    id: String,
+    persona: String,
+    state: State<'_>,
+) -> Result<AgentInstance, String> {
+    state
+        .conn(None)?
+        .set_instance_persona(&id, &persona)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The roster an instance may be switched within — the preset's personas, with
+/// the ones this pod cannot resolve marked rather than omitted.
+#[tauri::command]
+pub async fn list_preset_personas(
+    preset: String,
+    state: State<'_>,
+) -> Result<Vec<RosterPersona>, String> {
+    state
+        .conn(None)?
+        .preset_personas(&preset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// What one agent knows.
+#[tauri::command]
+pub async fn instance_memory(id: String, state: State<'_>) -> Result<InstanceMemory, String> {
+    state
+        .conn(None)?
+        .instance_memory(&id, MEMORY_SAMPLE_LIMIT)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Enough to show what an agent has picked up without turning the rail into a
+/// memory browser; the pod clamps to 500 regardless.
+const MEMORY_SAMPLE_LIMIT: u32 = 50;

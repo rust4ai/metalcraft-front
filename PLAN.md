@@ -372,13 +372,15 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
 5. **Fleet status endpoint.** Today "is this instance busy?" means holding an SSE per chat.
    A `GET /api/v1/agents/instances?with_status=1` (busy/last_event) would make the dashboard
    cheap, especially on mobile. *(agent, small)*
-6. **Usage/credits.** Orca ships rate-limit tracking; our equivalent lives in
-   metalcraft-inference/id. Expose a per-account usage summary the client can poll.
-   **The client half is built and waiting** (UI_PLAN §2 S5): `GET /api/usage` returning
-   `{used, window, resets_at, credits}` — all optional — is consumed end to end by
-   `front_cloud::ControlPlane::usage()` and the status bar. A 404 is read as "this hub
-   does not report usage" and renders nothing, so shipping the endpoint is the only
-   remaining step. *(id/inference, small)*
+6. **Usage/credits.** ✅ *Not a gap — the endpoint already existed and this plan
+   was wrong about it.* `GET /credits/balance` on **metalcraft-id** takes our PAT and
+   returns `{credits, available_credits, micro_credits}` from the same ledger
+   `/credits/authorize` reserves against. The status bar consumes it (UI_PLAN §2 S5).
+   (`GET /account/usage` on metalcraft-inference is a different thing — cookie-authed
+   for the website, returns recent requests, no balance — and is not reachable from a
+   PAT-holding desktop client.) What is still missing is a *windowed allowance*
+   summary if we ever want Orca's "10% used this month" framing; a balance does not
+   have a denominator.
 7. **metalcraft-code run streaming.** `runs/{run_id}` is poll-only — no SSE anywhere in the
    backend. Add an event-stream for long `exec`/`build` so xterm output is live. *(code, small)*
 8. **Workspace ↔ instance binding.** Add an optional `workspace_id` to `AgentInstance` so

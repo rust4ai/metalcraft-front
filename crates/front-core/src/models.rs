@@ -279,3 +279,74 @@ mod tests {
         assert!(matches!(i.origin, InstanceOrigin::Unknown));
     }
 }
+
+/// One persona an instance may be switched to, as `GET /agent-presets/{slug}`
+/// resolves it.
+///
+/// `installed: false` is not an error to hide: a pack can name a persona that is
+/// not on this pod, and a row reading "morning-briefer — not installed" tells the
+/// user why the switch they expected is unavailable. The agent resolves this
+/// server-side precisely so a client can render it without N more round-trips.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RosterPersona {
+    pub slug: String,
+    #[serde(default)]
+    pub installed: bool,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// `GET /agent-presets/{slug}` — the preset plus its resolved persona roster.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PresetDetail {
+    #[serde(default)]
+    pub personas: Vec<RosterPersona>,
+}
+
+/// `GET /agents/instances/{id}/memory` — what one agent knows.
+///
+/// The shipped/learned split is the point: memories a pack gave the agent and
+/// memories it formed itself are different kinds of claim, and `forgotten`
+/// records shipped ones it has been told to drop.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct InstanceMemory {
+    #[serde(default)]
+    pub instance_id: String,
+    /// `<preset>@<version>` when this agent was shipped a knowledge base.
+    #[serde(default)]
+    pub base: Option<String>,
+    #[serde(default)]
+    pub shipped: usize,
+    #[serde(default)]
+    pub learned: usize,
+    #[serde(default)]
+    pub forgotten: usize,
+    #[serde(default)]
+    pub sample: Vec<MemorySample>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemorySample {
+    pub id: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub importance: f32,
+    /// `"shipped"` or `"learned"`.
+    #[serde(default)]
+    pub origin: String,
+    #[serde(default)]
+    pub entity: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}

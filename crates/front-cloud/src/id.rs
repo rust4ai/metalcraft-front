@@ -40,6 +40,23 @@ pub enum LoginStatus {
     Unknown,
 }
 
+/// What `GET /credits/balance` returns.
+///
+/// `available` is the number that matters and the one the bar shows: `credits`
+/// is the raw ledger balance, but a turn already in flight has *authorized*
+/// against it and not yet settled, so spending the difference is not actually
+/// possible. Showing the larger number would be optimistic in the one place a
+/// person is checking whether they can afford the next turn.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Credits {
+    #[serde(default)]
+    pub credits: i64,
+    #[serde(default, rename = "available_credits")]
+    pub available: i64,
+    #[serde(default)]
+    pub micro_credits: i64,
+}
+
 pub struct IdClient {
     base: String,
 }
@@ -95,6 +112,35 @@ impl IdClient {
                 .to_string(),
             premium: me.get("premium").and_then(|v| v.as_bool()).unwrap_or(false),
         })
+    }
+
+    /// The account's credit balance, for the status bar (UI_PLAN §2, S5).
+    ///
+    /// This lives on Metalcraft ID rather than the pods control plane because ID
+    /// is where the ledger is: `/credits/balance` reads the same table
+    /// `/credits/authorize` reserves against, so what the bar shows is what the
+    /// next turn will actually be allowed to spend.
+    ///
+    /// `Ok(None)` on 404 keeps an older ID deployment from painting a permanent
+    /// error into every user's status bar — "this hub does not report credits"
+    /// and "the call failed" want opposite UI.
+    pub async fn credits(&self, pat: &str) -> anyhow::Result<Option<Credits>> {
+        let resp = http()
+            .get(format!("{}/credits/balance", self.base))
+            .bearer_auth(pat)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("could not reach Metalcraft ID: {e}"))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            anyhow::bail!("session expired — sign in to Metalcraft again");
+        }
+        if !resp.status().is_success() {
+            anyhow::bail!("Metalcraft ID returned {}", resp.status());
+        }
+        Ok(Some(resp.json().await?))
     }
 
     pub async fn me(&self, pat: &str) -> anyhow::Result<serde_json::Value> {

@@ -103,44 +103,76 @@ Keys: `⌘W` close · `⌘1`–`⌘9` select · `⌘⇧[` / `⌘⇧]` cycle · `
 instance memory, persona switcher, model, linked workspace, diagnostics. Fleet
 tab → pod summary. Remembers which icon tab per view kind.
 
-**Built.** Two icon tabs — Details and Activity — toggled with `⌘J`, open by
-default as in the reference, width persisted.
+**Built.** Three icon tabs — Details, Memory and Activity — toggled with `⌘J`,
+open by default as in the reference, width persisted.
 
-PLAN §10.2 also asks this rail for **instance memory, a persona switcher and a
-model picker, and none of the three is here**: `rpc/index.ts` stops at fleet,
-keys and chats, so a persona dropdown could not change the persona and a model
-picker could not change the model. What went in instead is everything the client
-already knew and was throwing away — the instance's provenance, its chat id (the
-thing a log grep needs and the only thing the UI never showed), and the tool
-calls the transcript deliberately collapses into `Ran N tools`. The rail is where
-that detail goes without making every reader scroll past it.
+PLAN §10.2 asks this rail for instance memory, a persona switcher and a model
+picker, and the pod already serves what the first two need:
+
+| Want | Endpoint | Status |
+|---|---|---|
+| Persona roster | `GET /agent-presets/{slug}` → resolved `personas[]` | built |
+| Switch persona | `PATCH /agents/instances/{id}` `{persona}` | built |
+| Instance memory | `GET /agents/instances/{id}/memory?limit=N` | built |
+| Change model | — none — | **shown, not editable** |
+
+The model is reported rather than offered, and that is the pod's shape rather
+than a shortcut: a model is chosen when a conversation is *created*
+(`NewConversationRequest.model_name`) and nothing changes it afterwards. A picker
+here would have to silently start a new conversation, which is not what "change
+the model" looks like to anyone.
+
+Two details the rail refuses to smooth over. A persona the pack names but this
+pod cannot resolve stays in the dropdown, **disabled and labelled** — dropping it
+would turn a legible problem into a missing voice nobody can explain. And the
+pod's refusal on a bad switch names the roster it validated against, so it is
+shown verbatim instead of being replaced with "could not update".
+
+Alongside those: the instance's provenance, its chat id (what a log grep needs,
+and the only thing the UI never showed), and the tool calls the transcript
+collapses into `Ran N tools`.
 
 ### S5 — the status bar
 Pod slug + readiness dot, account, active-agent count, theme toggle.
 
-**Built, including the API surface the meter needs** — which did not exist:
-PLAN §12.6 lists a per-account usage summary as outstanding work in
-metalcraft-id/inference, and nothing serves it today. So the contract is
-proposed client-first, end to end, and the meter lights up the day the hub
-implements it:
+**Built against the real ledger.** The first pass here invented
+`GET /api/usage` on the pods control plane and shipped a percentage meter for it.
+That endpoint does not exist and never did. The ones that do:
 
-`front_cloud::Usage` → `ControlPlane::usage()` (`GET /api/usage`) →
-`account_usage` command → `rpc.account.usage()` → `stores/usage.ts` → the bar.
+| | Where | Auth | Returns |
+|---|---|---|---|
+| `GET /credits/balance` | **metalcraft-id** | our PAT | `{credits, available_credits, micro_credits}` |
+| `GET /account/usage` | metalcraft-inference | browser cookie | recent requests, no balance |
 
-Two decisions carry the whole design:
+The second is unreachable from this app — it is cookie-authed for the website,
+and we hold a PAT. The first is exactly right, and it is the same ledger
+`/credits/authorize` reserves against, so what the bar shows is what the next
+turn will actually be allowed to spend.
 
-- **404 is not an error.** `usage()` returns `Ok(None)` on a 404 and `Err` only
-  on a real failure. Collapsing them would put a permanent red error in every
-  user's status bar until §12.6 ships.
-- **Unknown is not zero.** The store keeps `supported: null | false | true`
-  distinct, and the bar renders *no meter at all* when usage is unreported. An
-  empty meter and an unknown meter look identical and mean opposite things — and
-  the one place a person checks what they have spent is the worst possible place
-  to guess.
+`front_cloud::Credits` → `IdClient::credits()` → `account_credits` →
+`rpc.account.credits()` → `stores/credits.ts` → the bar.
 
-A failed poll keeps the last good reading rather than blanking the bar: a stale
-balance beats none, and the status bar is not where a network blip should
+Three decisions carry it:
+
+- **Show `available`, not `credits`.** A turn in flight has already authorized
+  against the balance and not settled, so the raw number is optimistic in exactly
+  the place someone is checking whether they can afford to keep going. The
+  difference is surfaced as "N held" only when it is non-zero, because otherwise
+  it explains a discrepancy that isn't there.
+- **404 is not an error.** `credits()` returns `Ok(None)` for an older ID
+  deployment and `Err` only for real failure. Collapsing them would paint a
+  permanent red error into every user's status bar.
+- **Unknown is not zero.** The store keeps `null | false | true` distinct and the
+  bar renders no readout at all when credits are unreported. "0 credits" and "we
+  don't know" look identical and mean opposite things.
+
+A failed poll keeps the last good balance rather than blanking the bar: a stale
+number beats none, and the status bar is not where a network blip should
 announce itself.
+
+There is no percentage meter, because there is no allowance to be a fraction of
+— Orca's `10% used` is a plan quota, ours is a balance.
+
 
 ### S6 — nudge cards
 The bottom-left dismissible card stack, driven by unmet setup facts (no interface

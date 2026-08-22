@@ -3,7 +3,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use front_cloud::{Pod, SessionStore, Usage, spawn_token_refresher};
+use front_cloud::{Credits, IdClient, Pod, SessionStore, spawn_token_refresher};
 use front_core::{AgentInfo, PodConnection};
 
 use crate::state::{AppState, ConnectedPod};
@@ -90,16 +90,15 @@ pub async fn active_pod(state: State<'_>) -> Result<Option<crate::state::ActiveP
     Ok(state.active_pod())
 }
 
-/// What the status bar shows about the account's allowance.
+/// The account's credit balance, for the status bar.
 ///
-/// `Ok(None)` means this hub does not report usage (PLAN §12.6) — the bar then
-/// shows nothing rather than a zero, because "0% used" and "we don't know" look
-/// identical on a meter and mean opposite things.
+/// `Ok(None)` means this deployment does not report credits — the bar then shows
+/// nothing rather than a zero, because "0 credits" and "we don't know" look
+/// identical on a readout and mean opposite things.
 #[tauri::command]
-pub async fn account_usage(state: State<'_>) -> Result<Option<Usage>, String> {
-    state
-        .plane()
-        .usage(&pat()?)
+pub async fn account_credits() -> Result<Option<Credits>, String> {
+    IdClient::default()
+        .credits(&pat()?)
         .await
         .map_err(|e| e.to_string())
 }

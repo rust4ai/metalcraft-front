@@ -14,7 +14,7 @@ export const SIDEBAR = { default: 264, min: 200, max: 420 }
 export const RAIL = { default: 368, min: 280, max: 560 }
 
 /** Which icon tab the rail is showing. */
-export type RailTab = 'details' | 'activity'
+export type RailTab = 'details' | 'memory' | 'activity'
 
 interface LayoutState {
   sidebarOpen: boolean

@@ -1,5 +1,7 @@
-import { Info, Wrench } from 'lucide-react'
+import { useEffect } from 'react'
+import { Brain, Info, Wrench } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
+import { useMemory } from '@/stores/memory'
 import { useSessions } from '@/stores/sessions'
 import { useConnection } from '@/stores/connection'
 import { useLayout, type RailTab } from '@/stores/layout'
@@ -9,20 +11,27 @@ import { relative } from '@/features/fleet/FleetView'
 import { describeTool, truncateTarget } from '@/features/session/describeTool'
 import type { ToolCard } from '@/features/session/transcript'
 import { Resizer } from './Resizer'
+import { PersonaSwitcher } from '@/features/session/PersonaSwitcher'
 import { cn } from '@/lib/cn'
 
 /**
  * The third column (UI_PLAN §2, S4).
  *
  * PLAN §10.2 asks this rail for instance memory, a persona switcher and a model
- * picker. None of the three has an endpoint (`rpc/index.ts` stops at fleet, keys
- * and chats), so none of the three is here: a persona dropdown that cannot
- * change the persona is worse than an honest gap. What is here is everything the
- * client already knows and currently throws away — the instance's provenance and
- * the tool calls scrolling past in the transcript.
+ * picker, and the pod serves all the endpoints needed for the first two:
+ * `PATCH /agents/instances/{id}` switches persona (validated against the
+ * preset's roster), `GET /agent-presets/{slug}` resolves that roster, and
+ * `GET /agents/instances/{id}/memory` reads what the agent knows.
+ *
+ * The **model** is shown but not editable, and that is a property of the pod
+ * rather than a shortcut: a model is chosen when a conversation is created
+ * (`NewConversationRequest.model_name`) and there is no endpoint to change it
+ * afterwards. A picker here would have to silently start a new conversation,
+ * which is not what "change the model" looks like to anyone.
  */
 const TABS: { id: RailTab; icon: typeof Info; label: string }[] = [
   { id: 'details', icon: Info, label: 'Details' },
+  { id: 'memory', icon: Brain, label: 'Memory' },
   { id: 'activity', icon: Wrench, label: 'Activity' },
 ]
 
@@ -60,6 +69,8 @@ export function RightRail() {
         {view.kind === 'session' ? (
           railTab === 'activity' ? (
             <Activity instanceId={view.instanceId} />
+          ) : railTab === 'memory' ? (
+            <Memory instanceId={view.instanceId} />
           ) : (
             <InstanceDetails instanceId={view.instanceId} />
           )
@@ -104,7 +115,7 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
         <Row label="Name" value={instance.name} />
         <Row label="Preset" value={instance.agent_preset} mono />
         <Row label="Pack" value={instance.agent_pack} mono />
-        <Row label="Persona" value={instance.persona} mono />
+        <Row label="Persona" value={<PersonaSwitcher instance={instance} />} />
         <Row label="Origin" value={instance.origin.kind === 'gateway' ? instance.origin.channel : instance.origin.kind} />
         <Row label="Lifetime" value={instance.persistent ? 'persistent' : 'ephemeral'} />
       </Section>
@@ -119,6 +130,7 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
           and it is otherwise invisible to the user. */}
       <Section title="This conversation">
         <Row label="Chat" value={session?.chatId} mono />
+        <Row label="Model" value={session?.modelName} mono />
         <Row
           label="State"
           value={
@@ -166,6 +178,64 @@ function Activity({ instanceId }: { instanceId: string }) {
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * What this agent knows.
+ *
+ * The shipped/learned split leads because it is the distinction that matters:
+ * memories its pack gave it are the vendor's claims, memories it formed are its
+ * own, and conflating them would make an agent look like it worked something out
+ * when it was simply told. `forgotten` counts shipped memories it has been told
+ * to drop, which is why the numbers need not add up to the sample length.
+ */
+function Memory({ instanceId }: { instanceId: string }) {
+  const view = useMemory((s) => s.byInstance[instanceId])
+  const loading = useMemory((s) => s.loading[instanceId])
+  const error = useMemory((s) => s.error[instanceId])
+  const load = useMemory((s) => s.load)
+
+  // Lazily, and only while this tab is the one being looked at.
+  useEffect(() => {
+    if (!view) void load(instanceId)
+  }, [instanceId, load, view])
+
+  if (error) return <Empty text={error} />
+  if (!view) return <Empty text={loading ? 'Reading memory…' : ''} />
+
+  return (
+    <>
+      <Section title="Knows">
+        <Row label="Learned" value={view.learned} />
+        <Row label="Shipped" value={view.shipped} />
+        {view.forgotten > 0 && <Row label="Forgotten" value={view.forgotten} />}
+        <Row label="Base" value={view.base} mono />
+      </Section>
+
+      {view.sample.length === 0 ? (
+        <Empty text="This agent has not formed any memories yet." />
+      ) : (
+        <ul className="pt-3">
+          {view.sample.map((m) => (
+            <li key={m.id} className="border-b border-line py-2 last:border-0">
+              <p className="text-[12px] leading-relaxed text-ink-2">{m.text}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-3">
+                <span
+                  className={cn(
+                    'rounded-chip px-1 py-px',
+                    m.origin === 'learned' ? 'bg-accent-tint text-accent' : 'bg-inset',
+                  )}
+                >
+                  {m.origin}
+                </span>
+                {m.entity && <span className="truncate font-mono">{m.entity}</span>}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   )
 }
 

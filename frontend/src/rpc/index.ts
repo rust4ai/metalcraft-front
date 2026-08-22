@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Usage } from '@/types'
+import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, RosterPersona } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -20,8 +20,8 @@ export const pods = {
 }
 
 export const account = {
-  /** `null` when this hub does not report usage — not an error, and not zero. */
-  usage: () => call<Usage | null>('account_usage'),
+  /** `null` when this deployment does not report credits — not an error, and not zero. */
+  credits: () => call<Credits | null>('account_credits'),
 }
 
 export const fleet = {
@@ -29,6 +29,10 @@ export const fleet = {
   presets: () => call<AgentPreset[]>('list_presets'),
   create: (preset: string, name?: string) => call<AgentInstance>('create_instance', { preset, name }),
   remove: (id: string) => call<void>('delete_instance', { id }),
+  setPersona: (id: string, persona: string) =>
+    call<AgentInstance>('set_instance_persona', { id, persona }),
+  personas: (preset: string) => call<RosterPersona[]>('list_preset_personas', { preset }),
+  memory: (id: string) => call<InstanceMemory>('instance_memory', { id }),
 }
 
 export const keys = {

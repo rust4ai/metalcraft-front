@@ -191,16 +191,46 @@ export type ChatEvent =
   | { kind: 'unknown' }
 
 /**
- * The account's allowance, for the status bar (UI_PLAN §2, S5).
+ * The account's credit balance, from Metalcraft ID's ledger (UI_PLAN §2, S5).
  *
- * Mirrors `front_cloud::Usage`. Every field is optional and the whole object is
- * nullable, because PLAN §12.6's endpoint does not exist yet: a hub that does
- * not serve it yields `null`, and the bar renders no meter at all rather than a
- * zero that would read as "nothing used".
+ * `available` is the number the bar shows: `credits` is the raw balance, but a
+ * turn already in flight has authorized against it and not yet settled, so the
+ * difference is not actually spendable.
  */
-export interface Usage {
-  used?: number | null
-  window?: string | null
-  resets_at?: string | null
-  credits?: number | null
+export interface Credits {
+  credits: number
+  available: number
+  micro_credits: number
+}
+
+/** One persona an instance may be switched to. */
+export interface RosterPersona {
+  slug: string
+  installed: boolean
+  name: string
+  description: string
+  tools: string[]
+  skills: string[]
+  /** Why it could not be resolved; present only when `installed` is false. */
+  error?: string | null
+}
+
+/** What one agent knows. `shipped` came from its pack, `learned` it worked out. */
+export interface InstanceMemory {
+  instance_id: string
+  base?: string | null
+  shipped: number
+  learned: number
+  forgotten: number
+  sample: MemorySample[]
+}
+
+export interface MemorySample {
+  id: string
+  kind: string
+  text: string
+  importance: number
+  origin: string
+  entity?: string | null
+  tags: string[]
 }

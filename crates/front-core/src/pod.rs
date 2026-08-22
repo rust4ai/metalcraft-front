@@ -156,6 +156,22 @@ impl PodConnection {
         Self::decode(resp, path).await
     }
 
+    async fn patch<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .patch(self.url(path))
+            .bearer_auth(self.bearer())
+            .json(body)
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
+    }
+
     async fn delete_path(&self, path: &str) -> anyhow::Result<()> {
         let resp = self
             .client
@@ -217,6 +233,33 @@ impl PodConnection {
 
     pub async fn delete_instance(&self, id: &str) -> anyhow::Result<()> {
         self.delete_path(&format!("/agents/instances/{id}")).await
+    }
+
+    /// Switch which persona an instance speaks as.
+    ///
+    /// The pod validates against the preset's roster and returns 400 with the
+    /// roster in the message when it does not match, so the error is worth
+    /// showing verbatim rather than replacing with "could not update".
+    pub async fn set_instance_persona(
+        &self,
+        id: &str,
+        persona: &str,
+    ) -> anyhow::Result<AgentInstance> {
+        let body = serde_json::json!({ "persona": persona });
+        self.patch(&format!("/agents/instances/{id}"), &body).await
+    }
+
+    /// The personas an instance may be switched to, resolved by the pod.
+    pub async fn preset_personas(&self, slug: &str) -> anyhow::Result<Vec<RosterPersona>> {
+        let detail: PresetDetail = self.get(&format!("/agent-presets/{slug}")).await?;
+        Ok(detail.personas)
+    }
+
+    /// What one agent knows. Read-only by construction on the pod side — looking
+    /// at an agent's memory must not touch its access counts or decay curve.
+    pub async fn instance_memory(&self, id: &str, limit: u32) -> anyhow::Result<InstanceMemory> {
+        self.get(&format!("/agents/instances/{id}/memory?limit={limit}"))
+            .await
     }
 
     pub async fn list_presets(&self) -> anyhow::Result<Vec<AgentPresetSummary>> {

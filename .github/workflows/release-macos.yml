@@ -8,6 +8,10 @@
 # One universal binary rather than two downloads: `universal-apple-darwin` fans
 # out to arm64 + x86_64 and lipos them together, so the website needs a single
 # link and nobody has to know which Mac they own.
+#
+# `./build_dmg.sh` runs this same sequence locally. Keep the two in step — this
+# workflow is what ships, and a local script that drifts from it turns "works on
+# my machine" into a release-day surprise.
 name: Release (macOS)
 
 on:

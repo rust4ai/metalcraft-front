@@ -19,6 +19,10 @@ import { useFleet } from './fleet'
 export interface Session {
   instanceId: string
   chatId: string
+  /** Which model this conversation runs on. Chosen at creation and not
+   *  changeable afterwards (the pod has no endpoint for it), so it is reported
+   *  rather than offered as a control. */
+  modelName?: string | null
   transcript: TranscriptState
   sending: boolean
   error: string | null
@@ -67,6 +71,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
           [instanceId]: {
             instanceId,
             chatId: detail.id,
+            modelName: detail.model_name,
             transcript: fromMessages(detail.messages ?? []),
             sending: false,
             error: null,

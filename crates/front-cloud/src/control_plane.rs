@@ -27,31 +27,6 @@ pub struct Pod {
     pub version: Option<String>,
 }
 
-/// A per-account usage summary, for the status bar (UI_PLAN §2, S5).
-///
-/// **This is a proposed contract, not a deployed one.** PLAN §12.6 lists the
-/// endpoint as outstanding work in metalcraft-id/inference; nothing serves
-/// `GET /api/usage` today. It is written client-side first so the hub has a
-/// concrete shape to implement against and the bar lights up the day it does.
-///
-/// Every field is optional because a hub may bill by credit balance, by a
-/// windowed allowance, or by both, and the bar renders whichever it is given.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Usage {
-    /// Fraction of the current window's allowance consumed, 0.0–1.0.
-    #[serde(default)]
-    pub used: Option<f64>,
-    /// What the window is called, for the bar's label: "month", "day".
-    #[serde(default)]
-    pub window: Option<String>,
-    /// When the window rolls over, RFC 3339.
-    #[serde(default)]
-    pub resets_at: Option<String>,
-    /// Credits left, for hubs that bill by balance rather than allowance.
-    #[serde(default)]
-    pub credits: Option<f64>,
-}
-
 pub struct ControlPlane {
     base: String,
 }
@@ -130,32 +105,6 @@ impl ControlPlane {
             .and_then(|v| v.as_u64())
             .unwrap_or(3600);
         Ok((token, ttl))
-    }
-
-    /// The signed-in account's usage, or `None` when this hub does not report it.
-    ///
-    /// The `None`-on-404 split is the whole point of this method. "The hub has
-    /// not shipped the endpoint" and "the call failed" produce completely
-    /// different UI — the first must render nothing at all, the second is worth
-    /// saying out loud — and collapsing them into one `Err` would put a
-    /// permanent red error in the status bar of every user until §12.6 lands.
-    pub async fn usage(&self, pat: &str) -> anyhow::Result<Option<Usage>> {
-        let resp = http()
-            .get(format!("{}/api/usage", self.base))
-            .bearer_auth(pat)
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("could not reach the control plane: {e}"))?;
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            anyhow::bail!("session expired — sign in to Metalcraft again");
-        }
-        if !resp.status().is_success() {
-            anyhow::bail!("control plane returned {}", resp.status());
-        }
-        Ok(Some(resp.json().await?))
     }
 }
 
