@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { packs } from '@/rpc'
-import type { InstalledPack, Registries, RegistryConnection, SearchHit } from '@/types'
+import { keys, packs } from '@/rpc'
+import type { InstalledPack, KeyEntry, PackManifest, Registries, RegistryConnection, SearchHit } from '@/types'
 
 /**
  * Registry browsing state.
@@ -25,6 +25,15 @@ interface PacksState {
   search: (query: string) => Promise<void>
   connect: () => Promise<void>
   install: (hit: SearchHit, allowUnverified?: boolean) => Promise<boolean>
+
+  /** The pack the detail sheet is showing, if any. */
+  viewing: SearchHit | null
+  manifests: Record<string, PackManifest>
+  manifestError: Record<string, string>
+  /** The pod's key names, for the requirements checklist. Names only — a value
+   *  never crosses into the webview (PLAN §2). */
+  podKeys: string[]
+  view: (hit: SearchHit | null) => Promise<void>
 }
 
 export const usePacks = create<PacksState>((set, get) => ({
@@ -37,6 +46,37 @@ export const usePacks = create<PacksState>((set, get) => ({
   loading: false,
   installing: {},
   error: null,
+  viewing: null,
+  manifests: {},
+  manifestError: {},
+  podKeys: [],
+
+  /**
+   * Open the detail sheet, fetching the manifest and the pod's key names.
+   *
+   * Both are needed together: a requirements list is only useful next to what
+   * this pod already has, and PLAN §9.4's whole point is that an unmet
+   * requirement should be a checklist item *before* installing rather than a
+   * runtime failure afterwards.
+   */
+  view: async (hit) => {
+    set({ viewing: hit })
+    if (!hit) return
+    const registry = get().active
+    if (!registry || get().manifests[hit.reference]) return
+    try {
+      const [manifest, stored] = await Promise.all([
+        packs.manifest(registry, hit.id),
+        keys.list().catch((): KeyEntry[] => []),
+      ])
+      set({
+        manifests: { ...get().manifests, [hit.reference]: manifest },
+        podKeys: stored.map((k) => k.name),
+      })
+    } catch (e) {
+      set({ manifestError: { ...get().manifestError, [hit.reference]: String(e) } })
+    }
+  },
 
   load: async () => {
     set({ loading: true, error: null })

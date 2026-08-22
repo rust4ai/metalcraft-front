@@ -174,6 +174,23 @@ There is no percentage meter, because there is no allowance to be a fraction of
 — Orca's `10% used` is a plan quota, ours is a balance.
 
 
+### S5b — the pack detail sheet
+Not originally a stage here, but it is the same lesson as S4/S5: the registry
+protocol's `/manifest` was already wired through to `rpc.packs.manifest()` and
+typed `unknown`, called by nothing. A pack reference is enough to *install* and
+not enough to *decide*, so the card now opens a side sheet — presets, personas,
+skills, integrations, the hosts it will reach out to, the content hash — and
+installing blind stays possible rather than required.
+
+The part worth building is the **requirements checklist**: `requires_env` checked
+against the pod's own key store, so an unmet key is a pre-install fact instead of
+a runtime failure the first time somebody talks to the agent. Optional env is
+listed but never counted as missing — a pack that merely works *better* with a
+key should not look broken without one.
+
+A side sheet rather than a centred modal, so the list stays put behind it and
+comparing two packs is a click each way instead of a re-search.
+
 ### S6 — nudge cards
 The bottom-left dismissible card stack, driven by unmet setup facts (no interface
 source, no Octaweave, no packs installed).

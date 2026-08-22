@@ -234,3 +234,32 @@ export interface MemorySample {
   entity?: string | null
   tags: string[]
 }
+
+/**
+ * What a host says about one pack without downloading it — the registry
+ * protocol's `/manifest` (PLAN §9.4, axoniac-prime §11.1).
+ *
+ * Everything past `id`/`name`/`version` is optional because the protocol is a
+ * contract between independent hosts, not one server's serializer: a
+ * conforming registry may publish a pack with no skills, no env requirements
+ * and no declared domains, and the UI must render that rather than break on it.
+ */
+export interface PackManifest {
+  manifest_version?: number
+  id: string
+  name: string
+  description?: string
+  version: string
+  tags?: string[]
+  presets?: string[]
+  provides?: {
+    personas?: string[]
+    skills?: string[]
+    integrations?: { id: string; version: string; content_sha256: string }[]
+  }
+  /** What the pack needs in the pod's key store to actually work. */
+  requires_env?: { name: string; needed_by: string[]; required: boolean }[]
+  /** Hosts the pack will reach out to. */
+  domains?: string[]
+  content_sha256?: string
+}

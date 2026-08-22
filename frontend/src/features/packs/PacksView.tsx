@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/cn'
 import { blockedByTrust, canConnect, describeConnection, isInstalled, updateAvailable } from './registryState'
+import { PackDetail } from './PackDetail'
 import type { SearchHit } from '@/types'
 
 /**
@@ -16,7 +17,7 @@ import type { SearchHit } from '@/types'
  * social discovery host; packs.metalcraftai.com is a peer, not an upstream.
  */
 export function PacksView() {
-  const { registries, active, connection, results, installed, query, loading, installing, error, load, select, search, connect, install } =
+  const { registries, active, connection, results, installed, query, loading, installing, error, load, select, search, connect, install, view } =
     usePacks()
   const loadFleet = useFleet((s) => s.load)
 
@@ -107,6 +108,7 @@ export function PacksView() {
                 key={hit.reference}
                 hit={hit}
                 index={i}
+                onOpen={() => void view(hit)}
                 installed={isInstalled(hit, installed)}
                 previousVersion={updateAvailable(hit, installed)}
                 blocked={blockedByTrust(connection?.trust, hit.verified)}
@@ -121,6 +123,8 @@ export function PacksView() {
           </div>
         )}
       </div>
+
+      <PackDetail />
     </div>
   )
 }
@@ -132,6 +136,7 @@ function PackCard({
   previousVersion,
   blocked,
   busy,
+  onOpen,
   onInstall,
 }: {
   hit: SearchHit
@@ -140,10 +145,18 @@ function PackCard({
   previousVersion: string | null
   blocked: boolean
   busy: boolean
+  onOpen: () => void
   onInstall: (allowUnverified: boolean) => void
 }) {
   return (
-    <Card className="animate-fade-up flex flex-col" style={{ animationDelay: `${Math.min(index, 12) * 60}ms` }}>
+    // The card opens the manifest; only the button installs. A reference is
+    // enough to install but not enough to *decide*, so the detail sheet is the
+    // default action and installing blind stays possible rather than required.
+    <Card
+      className="animate-fade-up flex cursor-pointer flex-col"
+      style={{ animationDelay: `${Math.min(index, 12) * 60}ms` }}
+      onClick={onOpen}
+    >
       <div className="flex items-start gap-3">
         {hit.avatar_url ? (
           <img src={hit.avatar_url} alt="" className="h-9 w-9 shrink-0 rounded-chip object-cover" />
@@ -173,7 +186,11 @@ function PackCard({
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-between gap-2 pt-1">
+      <div
+        className="mt-3 flex items-center justify-between gap-2 pt-1"
+        onClick={(e) => e.stopPropagation()}
+        role="presentation"
+      >
         <span className="tnum text-[11px] text-ink-3">
           {hit.version ? `v${hit.version}` : ''}
           {hit.install_count ? ` · ${hit.install_count.toLocaleString()} installs` : ''}
