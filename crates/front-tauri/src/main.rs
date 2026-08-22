@@ -56,10 +56,10 @@ fn main() {
         .manage(Arc::new(AppState::default()))
         .setup(|app| {
             use tauri::Manager;
-            if let Some(window) = app.get_webview_window("main") {
-                if let Err(e) = window.eval(BOOT_PROBE) {
-                    log::warn!("could not install the boot probe: {e}");
-                }
+            if let Some(window) = app.get_webview_window("main")
+                && let Err(e) = window.eval(BOOT_PROBE)
+            {
+                log::warn!("could not install the boot probe: {e}");
             }
             Ok(())
         })
@@ -73,6 +73,7 @@ fn main() {
             rpc::pods::connect_pod,
             rpc::pods::agent_info,
             rpc::pods::active_pod,
+            rpc::pods::account_usage,
             rpc::fleet::list_instances,
             rpc::fleet::list_presets,
             rpc::fleet::create_instance,

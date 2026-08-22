@@ -189,3 +189,18 @@ export type ChatEvent =
   | { kind: 'error'; code: string; message: string; retryable: boolean }
   | { kind: 'done'; status: 'completed' | 'interrupted' | 'failed'; reason?: string | null }
   | { kind: 'unknown' }
+
+/**
+ * The account's allowance, for the status bar (UI_PLAN §2, S5).
+ *
+ * Mirrors `front_cloud::Usage`. Every field is optional and the whole object is
+ * nullable, because PLAN §12.6's endpoint does not exist yet: a hub that does
+ * not serve it yields `null`, and the bar renders no meter at all rather than a
+ * zero that would read as "nothing used".
+ */
+export interface Usage {
+  used?: number | null
+  window?: string | null
+  resets_at?: string | null
+  credits?: number | null
+}

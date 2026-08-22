@@ -19,6 +19,11 @@ export const pods = {
   active: () => call<ActivePod | null>('active_pod'),
 }
 
+export const account = {
+  /** `null` when this hub does not report usage — not an error, and not zero. */
+  usage: () => call<Usage | null>('account_usage'),
+}
+
 export const fleet = {
   instances: () => call<AgentInstance[]>('list_instances'),
   presets: () => call<AgentPreset[]>('list_presets'),

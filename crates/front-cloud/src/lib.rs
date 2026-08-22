@@ -14,7 +14,7 @@ pub mod control_plane;
 pub mod id;
 pub mod session;
 
-pub use control_plane::{ControlPlane, Pod, spawn_token_refresher};
+pub use control_plane::{ControlPlane, Pod, Usage, spawn_token_refresher};
 pub use id::{DeviceLogin, IdClient, LoginStatus};
 pub use session::{Session, SessionStore};
 

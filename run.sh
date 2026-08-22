@@ -19,7 +19,9 @@ if [[ "${1:-}" == "--release" ]]; then
   # tauri-build embeds frontendDist at compile time but does not treat it as a
   # rebuild input, so without this you ship the previous UI.
   touch crates/front-tauri/src/main.rs
-  exec cargo run --release --features custom-protocol -p front-tauri
+  # Same default as the dev path: without it env_logger prints errors only, and
+  # the boot probe's "loaded / mounted" lines — the whole point of it — vanish.
+  RUST_LOG="${RUST_LOG:-info}" exec cargo run --release --features custom-protocol -p front-tauri
 fi
 
 vite_pid=""
