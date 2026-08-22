@@ -40,6 +40,45 @@ const BOOT_PROBE: &str = r#"
 })();
 "#;
 
+/// Listen for `metalcraft-front://…` callbacks.
+///
+/// Only the *token* is extracted here and forwarded to the renderer as an
+/// event — the renderer then calls `octaweave_connect`, which is where the key
+/// is verified and stored. Emitting the token rather than connecting outright
+/// keeps one path through the connect flow: a key pasted by hand and a key
+/// returned by the browser go through exactly the same verification.
+///
+/// Whether Octaweave actually redirects here is its half of the contract and is
+/// not knowable from outside (its site answers 200 on every path). Ours is
+/// implemented and inert until it does.
+fn watch_deep_links(app: &tauri::App) {
+    use tauri::{Emitter, Manager};
+    use tauri_plugin_deep_link::DeepLinkExt;
+
+    let handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        for url in event.urls() {
+            let raw = url.to_string();
+            match front_cloud::octaweave::token_from_callback(&raw) {
+                Some(token) => {
+                    log::info!("deep link: octaweave callback carrying a key");
+                    if let Err(e) = handle.emit("octaweave://token", token) {
+                        log::warn!("could not forward the octaweave token: {e}");
+                    }
+                    if let Some(w) = handle.get_webview_window("main") {
+                        // The user's attention is in the browser; bring them back
+                        // to where the confirmation is about to appear.
+                        let _ = w.set_focus();
+                    }
+                }
+                // Never log the URL itself: an unrecognised callback may still
+                // carry someone's credential in a query string.
+                None => log::info!("deep link: ignored a callback this app does not handle"),
+            }
+        }
+    });
+}
+
 fn main() {
     env_logger::init();
 
@@ -61,6 +100,7 @@ fn main() {
             {
                 log::warn!("could not install the boot probe: {e}");
             }
+            watch_deep_links(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -74,6 +114,11 @@ fn main() {
             rpc::pods::agent_info,
             rpc::pods::active_pod,
             rpc::pods::account_credits,
+            rpc::octaweave::octaweave_status,
+            rpc::octaweave::octaweave_connect,
+            rpc::octaweave::octaweave_install_pack,
+            rpc::octaweave::octaweave_disconnect,
+            rpc::octaweave::octaweave_open_keys,
             rpc::fleet::set_instance_persona,
             rpc::fleet::list_preset_personas,
             rpc::fleet::instance_memory,

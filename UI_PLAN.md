@@ -1,6 +1,6 @@
 # UI_PLAN — the Orca shell
 
-**Status:** S1–S7 done (2026-08-22) — the Orca shell is complete. Companion to `PLAN.md`; this document
+**Status:** S1–S8 done (2026-08-22) — the Orca shell is complete, plus settings/keys/Octaweave. Companion to `PLAN.md`; this document
 owns the *shape of the window*, PLAN.md owns the product. Where they overlap
 (PLAN §10 surfaces, §11 P2 "tabs/panes/splits", §14.2 "layout is local") PLAN.md
 is the authority on *what* and this is the authority on *where it sits*.
@@ -252,6 +252,39 @@ the same frame — then S5b, then S6–S7 together as the last of the furniture.
 | `⌘1`–`⌘9` | Select tab (`⌘9` is the last, matching browsers) |
 | `⌘⇧[` / `⌘⇧]` | Cycle tabs |
 
+### S8 — settings, keys, and the Octaweave connection
+Not in the original stage list; it is where PLAN §9.3/§10.6 land in this shell.
+
+The gear now opens a **Settings** tab rather than jumping to the interface-source
+step. It holds three things and stubs nothing: a link out to the source step, the
+**key store**, and the **Octaweave connection**.
+
+The key store is the load-bearing addition. Until now the app could write exactly
+two keys — `OPENAI_API_KEY` and `OPENAI_BASE_URL`, hardcoded into the wizard —
+while the pod happily holds any number, which made every credential-needing pack
+unreachable from the desktop. Names are upper-cased on entry, because packs match
+`requires_env` by name and a lower-case entry silently never matches.
+
+**Octaweave is one action, and the key never enters the webview.** The core takes
+it, proves it against `GET /api/v1/whoami` (real, deployed, 401 for anonymous),
+*then* writes it to the pod and installs the integration pack. Verify-before-store
+is the whole ordering: a mistyped or revoked key fails in the card rather than
+sitting in a pod waiting to fail mid-conversation.
+
+Three states the card refuses to collapse:
+- **Key only** — stored, but the pack did not install. Reachable today, because
+  the pack is unpublished. Reporting success would leave an agent holding a
+  credential and no tools.
+- **Installed but disabled** — from inside a conversation this is identical to
+  not installed, so it is called out in orange rather than counted as connected.
+- **Rejected** — surfaced from Octaweave's own answer, and nothing is written.
+
+The deep-link handler is implemented (`metalcraft-front://octaweave/callback`) and
+routes a returned key through the *same* `connect` path as a pasted one, so there
+is one place verification happens. Whether Octaweave will redirect there is its
+half of the contract and is not knowable from outside — its site answers 200 on
+every path — so ours is built and inert rather than assumed.
+
 ## 5. What the shell still doesn't have
 
 Honest gaps, so nobody rediscovers them as bugs:
@@ -263,6 +296,9 @@ Honest gaps, so nobody rediscovers them as bugs:
   columns are built, splitting the centre is not.
 - **No transcript virtualization.** `@tanstack/react-virtual` is a dependency and
   unused; long sessions will get slow before they get unusable.
+- **No published `octaweave` pack.** The connection card works; the install step
+  fails with *no version of 'octaweave' matches* until the pack is pushed to
+  packs.metalcraftai.com. The card names that state rather than hiding it.
 - **No windowed-allowance meter.** The status bar shows a credit balance because
   that is what the ledger has (§S5). Orca's "10% used this month" needs a
   denominator nothing serves.

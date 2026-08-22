@@ -12,10 +12,12 @@
 
 pub mod control_plane;
 pub mod id;
+pub mod octaweave;
 pub mod session;
 
 pub use control_plane::{ControlPlane, Pod, spawn_token_refresher};
 pub use id::{Credits, DeviceLogin, IdClient, LoginStatus};
+pub use octaweave::{WhoAmI, octaweave_base};
 pub use session::{Session, SessionStore};
 
 /// Metalcraft ID origin. `METALCRAFT_ID_URL` overrides for local testing.

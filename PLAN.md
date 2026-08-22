@@ -253,8 +253,17 @@ One click, four things:
 2. Return via `metalcraft-front://octaweave/callback` with the `owk_live_…` token, which is
    shown exactly once at creation.
 3. Store it as `OCTAWEAVE_API_KEY` in the pod's key store (global scope).
-4. Install the `octaweave` agent pack, then verify with `GET /api/v1/whoami` and show
-   `actor.workspace_id` + granted scopes as confirmation.
+4. Install the `octaweave` **integration** pack, then verify with `GET /api/v1/whoami` and
+   show `actor.workspace_id` + granted scopes as confirmation.
+
+   ⚠️ **Corrected 2026-08-22:** this step said *agent pack*, and it is not one. Integration
+   packs and agent packs are separate systems — different registry
+   (packs.metalcraftai.com vs axoniac), different pod route
+   (`POST /api/v1/integrations/install` vs `/agent-packs/install`), different manifest.
+   The registry browser (§9.4) speaks only the agent-pack contract, so it does not and
+   cannot cover this step; `front-core` grew `list_integrations`/`install_integration`
+   for it. The order is also now **verify → store → install**: the key is proven against
+   `whoami` before being written anywhere.
 
 Scope defaults to the **narrowest set that works** — `notes:write board:write calendar:write
 drive:write` — with `studio:write` off by default and flagged in the UI as "spends money".
@@ -330,7 +339,7 @@ step is also a standalone settings surface.
 | **P4** 🟡 | **Session view** — transcript reducer over all `ChatEvent` variants, tool cards, composer, drafts, error/402 rendering, diagnostics deep-link | transcript + tool cards + composer + error rendering done and tested against stubbed frames; **live-pod round trip outstanding**; markdown, drafts, virtualization, deep-link outstanding |
 | **P5** 🟡 | **Onboarding wizard** (§9) + **interface source** binding: the four providers, key/base-URL write via Keys API, verify-turn, model picker, resumable state | source picker + atomic key/base-URL write + honest restart/`/responses` warnings done, and a keyless pod routes here instead of to a dead fleet; **verify-turn and model picker outstanding** |
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
-| **P7** | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | agent reads and writes a real Octaweave workspace in the next turn |
+| **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect, and a general **key store UI** all done. **Two things block the end-to-end proof:** the `octaweave` integration pack is not published on packs.metalcraftai.com (`/packs/octaweave/resolve` → *no version matches*), and whether octaweave.com will redirect to `metalcraft-front://octaweave/callback` is unknown — its site answers 200 on every path, so our half is implemented and inert until theirs exists. Scope narrowing is Octaweave's to offer at key creation; the app cannot request scopes it has no endpoint to ask for |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
 | **P9** | Flows port (xyflow) + schedules + flow-run inspector; keys/gateway/channels settings | parity with workshop's editors |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |

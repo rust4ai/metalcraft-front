@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, PackManifest, RosterPersona } from '@/types'
+import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -17,6 +17,20 @@ export const pods = {
   connect: (podId: string) => call<AgentInfo>('connect_pod', { podId }),
   info: () => call<AgentInfo>('agent_info'),
   active: () => call<ActivePod | null>('active_pod'),
+}
+
+export const octaweave = {
+  status: () => call<OctaweaveStatus>('octaweave_status'),
+  /** Verify → store → install → confirm, in the core. The key is passed in and
+   *  never comes back. */
+  connect: (token: string) => call<OctaweaveConnection>('octaweave_connect', { token }),
+  installPack: () => call<OctaweaveStatus>('octaweave_install_pack'),
+  disconnect: () => call<OctaweaveStatus>('octaweave_disconnect'),
+  /** Opens the browser; returns the URL so the UI can show it as copyable text
+   *  when the hand-off fails silently. */
+  openKeys: () => call<string>('octaweave_open_keys'),
+  /** The core forwards a key returned by the browser callback. */
+  onToken: (cb: (token: string) => void) => listen<string>('octaweave://token', cb),
 }
 
 export const account = {

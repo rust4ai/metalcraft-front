@@ -263,3 +263,41 @@ export interface PackManifest {
   domains?: string[]
   content_sha256?: string
 }
+
+/**
+ * An **integration pack** on the pod — HTTP-tool packs from
+ * packs.metalcraftai.com, a separate system from the agent packs in the registry
+ * browser. `octaweave` is this kind.
+ */
+export interface Integration {
+  id: string
+  name: string
+  description: string
+  version: string
+  enabled: boolean
+  personas: number
+  skills: number
+  api_tools: number
+  flow_templates: number
+  requires_env: string[]
+}
+
+/** Where the Octaweave connection stands, as the settings card renders it. */
+export interface OctaweaveStatus {
+  key_present: boolean
+  pack_installed: boolean
+  pack_enabled: boolean
+  pack_version?: string | null
+  api_tools: number
+}
+
+/** The result of connecting. Carries no key — that never leaves the core. */
+export interface OctaweaveConnection {
+  workspace_id: string
+  label: string
+  scopes: string[]
+  is_admin: boolean
+  status: OctaweaveStatus
+  /** The key stored but the pack did not install — a real halfway state. */
+  pack_error?: string | null
+}

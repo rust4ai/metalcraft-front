@@ -350,3 +350,34 @@ pub struct MemorySample {
     #[serde(default)]
     pub tags: Vec<String>,
 }
+
+/// An **integration pack** installed on the pod (`GET /integrations`).
+///
+/// Not to be confused with an *agent pack* (`AgentPresetSummary`, PLAN §9.4).
+/// They are separate systems with separate registries and separate pod routes:
+/// agent packs bring presets and personas from axoniac, integration packs bring
+/// HTTP tools from packs.metalcraftai.com. The `octaweave` pack is the second
+/// kind, which PLAN §9.3 got wrong by calling it an agent pack.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Integration {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub personas: usize,
+    #[serde(default)]
+    pub skills: usize,
+    #[serde(default)]
+    pub api_tools: usize,
+    #[serde(default)]
+    pub flow_templates: usize,
+    /// Keys this pack needs in the pod's key store to actually work.
+    #[serde(default)]
+    pub requires_env: Vec<String>,
+}

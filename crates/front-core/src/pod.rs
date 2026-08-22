@@ -322,6 +322,21 @@ impl PodConnection {
         Ok(wrapped.agent_packs)
     }
 
+    /// Integration packs installed on this pod — the HTTP-tool packs, a
+    /// different system from the agent packs in `list_agent_packs`.
+    pub async fn list_integrations(&self) -> anyhow::Result<Vec<Integration>> {
+        self.get("/integrations").await
+    }
+
+    /// Install an integration pack by registry slug.
+    ///
+    /// The pod fetches it from packs.metalcraftai.com itself; the desktop never
+    /// downloads a pack. Enabling is part of installing on the pod side.
+    pub async fn install_integration(&self, slug: &str) -> anyhow::Result<Integration> {
+        let body = serde_json::json!({ "slug": slug });
+        self.post_long("/integrations/install", &body).await
+    }
+
     /// The hosts this pod will fetch packs from — Axoniac Prime and any peer.
     pub async fn registries(&self) -> anyhow::Result<Registries> {
         self.get("/agent-packs/registries").await
@@ -408,6 +423,24 @@ impl PodConnection {
             .post(self.url(path))
             .bearer_auth(self.bearer())
             .query(params)
+            .timeout(INSTALL_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
+    }
+
+    /// A POST with a JSON body and the install-length timeout: the pod reaches a
+    /// third host to fetch the pack, so this gets longer than a local read.
+    async fn post_long<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .post(self.url(path))
+            .bearer_auth(self.bearer())
+            .json(body)
             .timeout(INSTALL_TIMEOUT)
             .send()
             .await?;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { PacksView } from '@/features/packs/PacksView'
+import { SettingsView } from '@/features/settings/SettingsView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
 import { NewAgentDialog } from '@/features/fleet/NewAgentDialog'
 import { useFleet } from '@/stores/fleet'
@@ -60,6 +61,8 @@ export function Shell() {
             <SessionView key={view.instanceId} instanceId={view.instanceId} />
           ) : view.kind === 'packs' ? (
             <PacksView />
+          ) : view.kind === 'settings' ? (
+            <SettingsView />
           ) : view.kind === 'source' ? (
             <SourceTab />
           ) : (

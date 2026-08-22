@@ -1,4 +1,4 @@
-import { Bot, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, Store, X } from 'lucide-react'
+import { Bot, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, Settings, Store, X } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -16,6 +16,8 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
     // pane it opens already carries the full title.
     case 'source':
       return 'Source'
+    case 'settings':
+      return 'Settings'
     case 'session':
       return nameOf(view.instanceId) ?? 'Agent'
   }
@@ -30,6 +32,8 @@ function TabIcon({ view }: { view: View }) {
       return <Store className={cls} />
     case 'source':
       return <KeyRound className={cls} />
+    case 'settings':
+      return <Settings className={cls} />
     case 'session':
       return <Bot className={cls} />
   }

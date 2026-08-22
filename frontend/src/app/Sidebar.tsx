@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { KeyRound, LayoutGrid, PanelLeft, Plus, Search, Store } from 'lucide-react'
+import { LayoutGrid, PanelLeft, Plus, Search, Settings, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -115,15 +115,15 @@ export function Sidebar() {
       <footer className="flex h-9 shrink-0 items-center gap-1 border-t border-line px-2">
         <button
           type="button"
-          aria-label="Interface source"
-          title="Interface source"
-          onClick={() => go({ kind: 'source' })}
+          aria-label="Settings"
+          title="Settings"
+          onClick={() => go({ kind: 'settings' })}
           className={cn(
             'rounded-chip p-1.5 hover:bg-hover hover:text-ink',
-            activeKey === 'source' ? 'text-ink' : 'text-ink-3',
+            activeKey === 'settings' ? 'text-ink' : 'text-ink-3',
           )}
         >
-          <KeyRound className="h-4 w-4" />
+          <Settings className="h-4 w-4" />
         </button>
       </footer>
 

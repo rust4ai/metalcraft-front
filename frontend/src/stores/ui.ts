@@ -11,6 +11,7 @@ export type View =
   | { kind: 'session'; instanceId: string }
   | { kind: 'source' }
   | { kind: 'packs' }
+  | { kind: 'settings' }
 
 export interface Tab {
   /** Derived from the view, never generated — see `keyFor`. */
