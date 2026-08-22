@@ -1,4 +1,4 @@
-import { Bot, KeyRound, LayoutGrid, PanelLeft, Plus, Store, X } from 'lucide-react'
+import { Bot, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, Store, X } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -45,7 +45,7 @@ function TabIcon({ view }: { view: View }) {
 export function TabStrip() {
   const { tabs, activeKey, select, close, setNewAgentOpen } = useUi()
   const instances = useFleet((s) => s.instances)
-  const { sidebarOpen, toggleSidebar } = useLayout()
+  const { sidebarOpen, toggleSidebar, railOpen, toggleRail } = useLayout()
   const nameOf = (id: string) => instances.find((i) => i.id === id)?.name
 
   return (
@@ -124,6 +124,19 @@ export function TabStrip() {
 
       {/* The rest of the row is window chrome. */}
       <div data-tauri-drag-region className="h-full flex-1" />
+
+      <button
+        type="button"
+        aria-label={railOpen ? 'Hide details' : 'Show details'}
+        title="Details  ⌘J"
+        onClick={toggleRail}
+        className={cn(
+          'shrink-0 rounded-chip p-1 hover:bg-hover hover:text-ink',
+          railOpen ? 'text-ink' : 'text-ink-3',
+        )}
+      >
+        <PanelRight className="h-4 w-4" />
+      </button>
     </div>
   )
 }

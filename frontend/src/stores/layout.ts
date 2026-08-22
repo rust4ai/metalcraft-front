@@ -13,18 +13,21 @@ import { create } from 'zustand'
 export const SIDEBAR = { default: 264, min: 200, max: 420 }
 export const RAIL = { default: 368, min: 280, max: 560 }
 
+/** Which icon tab the rail is showing. */
+export type RailTab = 'details' | 'activity'
+
 interface LayoutState {
   sidebarOpen: boolean
   sidebarWidth: number
-  /** The rail arrives with S4; the geometry is here so the grid does not need
-   *  rewriting when it does. */
   railOpen: boolean
   railWidth: number
+  railTab: RailTab
 
   toggleSidebar: () => void
   setSidebarWidth: (px: number) => void
   toggleRail: () => void
   setRailWidth: (px: number) => void
+  setRailTab: (tab: RailTab) => void
 }
 
 const KEY = 'mc.layout'
@@ -47,9 +50,9 @@ export const useLayout = create<LayoutState>((set, get) => {
   const saved = load()
 
   const persist = () => {
-    const { sidebarOpen, sidebarWidth, railOpen, railWidth } = get()
+    const { sidebarOpen, sidebarWidth, railOpen, railWidth, railTab } = get()
     try {
-      localStorage.setItem(KEY, JSON.stringify({ sidebarOpen, sidebarWidth, railOpen, railWidth }))
+      localStorage.setItem(KEY, JSON.stringify({ sidebarOpen, sidebarWidth, railOpen, railWidth, railTab }))
     } catch {
       // A webview with storage disabled loses the layout on quit, which is a
       // cosmetic loss and not worth failing a render over.
@@ -63,12 +66,14 @@ export const useLayout = create<LayoutState>((set, get) => {
   return {
     sidebarOpen: saved.sidebarOpen ?? true,
     sidebarWidth: clamp(saved.sidebarWidth ?? SIDEBAR.default, SIDEBAR),
-    railOpen: saved.railOpen ?? false,
+    railOpen: saved.railOpen ?? true,
     railWidth: clamp(saved.railWidth ?? RAIL.default, RAIL),
+    railTab: saved.railTab ?? 'details',
 
     toggleSidebar: () => commit({ sidebarOpen: !get().sidebarOpen }),
     setSidebarWidth: (px) => commit({ sidebarWidth: clamp(px, SIDEBAR) }),
     toggleRail: () => commit({ railOpen: !get().railOpen }),
     setRailWidth: (px) => commit({ railWidth: clamp(px, RAIL) }),
+    setRailTab: (railTab) => commit({ railTab }),
   }
 })

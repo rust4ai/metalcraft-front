@@ -374,6 +374,11 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
    cheap, especially on mobile. *(agent, small)*
 6. **Usage/credits.** Orca ships rate-limit tracking; our equivalent lives in
    metalcraft-inference/id. Expose a per-account usage summary the client can poll.
+   **The client half is built and waiting** (UI_PLAN §2 S5): `GET /api/usage` returning
+   `{used, window, resets_at, credits}` — all optional — is consumed end to end by
+   `front_cloud::ControlPlane::usage()` and the status bar. A 404 is read as "this hub
+   does not report usage" and renders nothing, so shipping the endpoint is the only
+   remaining step. *(id/inference, small)*
 7. **metalcraft-code run streaming.** `runs/{run_id}` is poll-only — no SSE anywhere in the
    backend. Add an event-stream for long `exec`/`build` so xterm output is live. *(code, small)*
 8. **Workspace ↔ instance binding.** Add an optional `workspace_id` to `AgentInstance` so

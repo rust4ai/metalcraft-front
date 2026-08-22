@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session } from '@/types'
+import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Usage } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),

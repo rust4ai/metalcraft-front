@@ -10,6 +10,7 @@ import { activeView, useUi } from '@/stores/ui'
 import { Sidebar } from './Sidebar'
 import { TabStrip } from './TabStrip'
 import { StatusBar } from './StatusBar'
+import { RightRail } from './RightRail'
 
 /**
  * The persistent frame (UI_PLAN §2, S1).
@@ -18,10 +19,12 @@ import { StatusBar } from './StatusBar'
  * the body of the centre column swaps, so the fleet stays visible in the sidebar
  * while you are inside a session and navigation stops being a scene change.
  *
- * The right rail is S4; the grid is already shaped for its column.
+ * Both side columns are `auto`-sized rather than fractional: their widths come
+ * from the layout store, and the centre takes whatever is left.
  */
 export function Shell() {
   const sidebarOpen = useLayout((s) => s.sidebarOpen)
+  const railOpen = useLayout((s) => s.railOpen)
   const view = useUi(activeView)
   const instances = useFleet((s) => s.instances)
   const prune = useUi((s) => s.prune)
@@ -37,7 +40,10 @@ export function Shell() {
   return (
     <div
       className="grid h-full min-h-0"
-      style={{ gridTemplateColumns: sidebarOpen ? 'auto 1fr' : '1fr', gridTemplateRows: '1fr auto' }}
+      style={{
+        gridTemplateColumns: `${sidebarOpen ? 'auto ' : ''}1fr${railOpen ? ' auto' : ''}`,
+        gridTemplateRows: '1fr auto',
+      }}
     >
       {sidebarOpen && <Sidebar />}
       <main className="flex min-h-0 min-w-0 flex-col bg-page">
@@ -56,6 +62,7 @@ export function Shell() {
           )}
         </div>
       </main>
+      {railOpen && <RightRail />}
       <StatusBar />
       {/* One dialog for the whole shell: the sidebar, the tab strip and the
           fleet's own button all open the same thing. */}
@@ -72,6 +79,7 @@ function SourceTab() {
 function useShortcuts() {
   const { close, select, step, activeKey, tabs } = useUi()
   const toggleSidebar = useLayout((s) => s.toggleSidebar)
+  const toggleRail = useLayout((s) => s.toggleRail)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,6 +99,9 @@ function useShortcuts() {
       } else if (e.key.toLowerCase() === 'b') {
         e.preventDefault()
         toggleSidebar()
+      } else if (e.key.toLowerCase() === 'j') {
+        e.preventDefault()
+        toggleRail()
       } else if (e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault()
         step(-1)

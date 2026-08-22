@@ -1,0 +1,88 @@
+# Builds the downloadable macOS app.
+#
+# The artefact is a **.dmg**, which is a macOS disk image. It is deliberately not
+# an iOS build: an iOS app ships as a .ipa and cannot be installed from a web
+# download at all — that path is the App Store or TestFlight — so a "download for
+# Mac" button on metalcraftai.com can only ever be served by this.
+#
+# One universal binary rather than two downloads: `universal-apple-darwin` fans
+# out to arm64 + x86_64 and lipos them together, so the website needs a single
+# link and nobody has to know which Mac they own.
+name: Release (macOS)
+
+on:
+  push:
+    tags: ["v*"]
+  # So a .dmg can be produced for testing without minting a version tag.
+  workflow_dispatch:
+
+jobs:
+  dmg:
+    # arm64 runner: it can cross-build the x86_64 half, and the reverse is slower.
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      # tauri-build embeds frontendDist at compile time, so the renderer has to
+      # exist on disk before the shell is built — same ordering as ci.yml.
+      - name: Build the renderer
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build and bundle
+        working-directory: crates/front-tauri
+        env:
+          # Signing and notarisation switch on only when the secrets are present.
+          # An unsigned .dmg still builds and is fine for testing, but Gatekeeper
+          # will refuse to open it on anyone else's Mac — see the note below.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx --yes @tauri-apps/cli@^2 build --target universal-apple-darwin --bundles dmg
+
+      - name: Report what came out
+        id: dmg
+        run: |
+          path="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | head -1)"
+          if [ -z "$path" ]; then
+            echo "no .dmg was produced — the bundle step failed silently" >&2
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          if codesign -dv --verbose=2 "$path" 2>&1 | grep -q "Authority"; then
+            echo "signed: yes"
+          else
+            echo "::warning::This .dmg is UNSIGNED. Gatekeeper will refuse to open it on any Mac but this runner. Set the APPLE_* secrets before linking it from metalcraftai.com."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metalcraft-front-macos-universal
+          path: ${{ steps.dmg.outputs.path }}
+
+      # Only tags become downloads; a workflow_dispatch build stays an artifact.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.dmg.outputs.path }}
+          generate_release_notes: true

@@ -1,6 +1,6 @@
 # UI_PLAN — the Orca shell
 
-**Status:** S1–S3 in progress (2026-08-22). Companion to `PLAN.md`; this document
+**Status:** S1–S5 done (2026-08-22); S6–S7 outstanding. Companion to `PLAN.md`; this document
 owns the *shape of the window*, PLAN.md owns the product. Where they overlap
 (PLAN §10 surfaces, §11 P2 "tabs/panes/splits", §14.2 "layout is local") PLAN.md
 is the authority on *what* and this is the authority on *where it sits*.
@@ -103,17 +103,44 @@ Keys: `⌘W` close · `⌘1`–`⌘9` select · `⌘⇧[` / `⌘⇧]` cycle · `
 instance memory, persona switcher, model, linked workspace, diagnostics. Fleet
 tab → pod summary. Remembers which icon tab per view kind.
 
-**Not built in S1–S3.** The grid supports the third column and `stores/layout.ts`
-already carries its fields, but an empty panel behind a toggle is worse than no
-toggle, so the rail column and its control arrive together in S4.
+**Built.** Two icon tabs — Details and Activity — toggled with `⌘J`, open by
+default as in the reference, width persisted.
+
+PLAN §10.2 also asks this rail for **instance memory, a persona switcher and a
+model picker, and none of the three is here**: `rpc/index.ts` stops at fleet,
+keys and chats, so a persona dropdown could not change the persona and a model
+picker could not change the model. What went in instead is everything the client
+already knew and was throwing away — the instance's provenance, its chat id (the
+thing a log grep needs and the only thing the UI never showed), and the tool
+calls the transcript deliberately collapses into `Ran N tools`. The rail is where
+that detail goes without making every reader scroll past it.
 
 ### S5 — the status bar
 Pod slug + readiness dot, account, active-agent count, theme toggle.
 
-⚠️ **Orca's usage meters have no data source here.** `rpc/index.ts` exposes
-auth · pods · fleet · keys · chats and nothing that reports hub credits. The bar
-ships without the meter and gains it when a credits command lands; a mocked
-percentage in the one place a user checks their balance is the wrong trade.
+**Built, including the API surface the meter needs** — which did not exist:
+PLAN §12.6 lists a per-account usage summary as outstanding work in
+metalcraft-id/inference, and nothing serves it today. So the contract is
+proposed client-first, end to end, and the meter lights up the day the hub
+implements it:
+
+`front_cloud::Usage` → `ControlPlane::usage()` (`GET /api/usage`) →
+`account_usage` command → `rpc.account.usage()` → `stores/usage.ts` → the bar.
+
+Two decisions carry the whole design:
+
+- **404 is not an error.** `usage()` returns `Ok(None)` on a 404 and `Err` only
+  on a real failure. Collapsing them would put a permanent red error in every
+  user's status bar until §12.6 ships.
+- **Unknown is not zero.** The store keeps `supported: null | false | true`
+  distinct, and the bar renders *no meter at all* when usage is unreported. An
+  empty meter and an unknown meter look identical and mean opposite things — and
+  the one place a person checks what they have spent is the worst possible place
+  to guess.
+
+A failed poll keeps the last good reading rather than blanking the bar: a stale
+balance beats none, and the status bar is not where a network blip should
+announce itself.
 
 ### S6 — nudge cards
 The bottom-left dismissible card stack, driven by unmet setup facts (no interface
@@ -132,6 +159,8 @@ the right of the tab strip plus `⌘K`: instances, presets, open tabs, actions.
 
 ## 3. Order
 
-S1–S3 ship as one commit. The frame without tabs is a decoration, and moving to
-tabs rewrites `App.tsx`'s view switch either way — splitting them would mean
-writing that switch twice. S4–S7 are independent and can land in any order.
+S1–S3 shipped as one commit: the frame without tabs is a decoration, and moving
+to tabs rewrites `App.tsx`'s view switch either way, so splitting them would have
+meant writing that switch twice. S4–S5 followed together — both are chrome around
+the same frame, and S5's honest-gap decision only becomes visible once the rail
+proves the pattern. S6–S7 remain independent and can land in any order.
