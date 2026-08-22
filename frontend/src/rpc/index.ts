@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session } from '@/types'
+import type { ActivePod, AgentInfo, KeyEntry, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -24,6 +24,16 @@ export const fleet = {
   presets: () => call<AgentPreset[]>('list_presets'),
   create: (preset: string, name?: string) => call<AgentInstance>('create_instance', { preset, name }),
   remove: (id: string) => call<void>('delete_instance', { id }),
+}
+
+export const keys = {
+  list: () => call<KeyEntry[]>('list_keys'),
+  save: (name: string, value: string) => call<void>('save_key', { name, value }),
+  remove: (name: string) => call<void>('delete_key', { name }),
+  /** Write the pair atomically so the pod is never left on one provider's URL
+   *  with another's key. */
+  bindInterfaceSource: (apiKey: string, baseUrl: string | null) =>
+    call<void>('bind_interface_source', { apiKey, baseUrl }),
 }
 
 export const chats = {

@@ -4,9 +4,13 @@
 
 ```bash
 npm --prefix frontend install
-npm --prefix frontend run build     # tauri-build needs frontend/dist to exist
-cargo run -p front-tauri
+./run.sh                            # builds the renderer, then runs the shell
 ```
+
+`run.sh` touches `crates/front-tauri/src/main.rs` before building, and that matters:
+`tauri-build` embeds `frontendDist` at compile time but does **not** treat it as a rebuild
+input. Rebuilding only the frontend leaves you running the previous UI — the app starts
+fine and your change is simply absent, which is a confusing hour if you do not know it.
 
 For UI work, run the renderer with HMR and point the shell at it:
 

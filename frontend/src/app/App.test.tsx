@@ -43,10 +43,26 @@ describe('App', () => {
       active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
       list_instances: [],
       list_presets: [],
+      list_keys: [{ name: 'OPENAI_API_KEY', masked: 'sk-…1234' }],
     })
     await waitFor(() => expect(screen.getByText('a@b.com')).toBeTruthy())
     // Auto-connects when the account has exactly one pod, and lands on the fleet.
     await waitFor(() => expect(screen.getByText('Fleet')).toBeTruthy())
+  })
+
+  it('sends a pod with no provider key to the interface source step', async () => {
+    // The agent cannot think without one, so a fleet view would be a dead end.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.30.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [],
+    })
+    await waitFor(() => expect(screen.getByText('Interface source')).toBeTruthy())
+    expect(screen.getByText('Metalcraft Inference')).toBeTruthy()
   })
 
   it('explains itself when the account has no pod', async () => {

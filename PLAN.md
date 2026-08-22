@@ -1,7 +1,8 @@
 # metalcraft-front — an Orca-style ADE for the Metalcraft cloud agent
 
-**Status:** P0 built and green (2026-08-22) — workspace, pod client, cloud auth, Tauri shell,
-sign-in → connect → fleet. Not committed, not deployed. See §11 for what is next.
+**Status:** P0 done; P1–P5 partially built and green (2026-08-22) — sign-in → connect →
+interface source → fleet → session with live SSE transcript. Committed locally, no remote.
+Nothing verified against a live pod yet. See §11.
 **Repo:** `~/ai/metalcraft-front` → `git@github.com:rust4ai/metalcraft-front.git`
 **Stack:** Tauri 2 (Rust core) + React 19 / Vite / Tailwind 4 / shadcn-Radix (Orca's renderer aesthetic)
 
@@ -318,9 +319,9 @@ step is also a standalone settings surface.
 | **P0** ✅ | Repo skeleton: Tauri 2 + Vite/React 19/Tailwind 4, oxlint/vitest, CI | done — lint + 10 vitest + 14 cargo tests + clippy clean; window opens |
 | **P1** 🟡 | `front-core` (pod client, remote-only) + `front-cloud` (device flow, pods, mint+refresh, keychain) | written and unit-tested; **unverified against a live pod** |
 | **P2** 🟡 | Shell: titlebar, tabs/panes/splits, `cmdk` palette, theme, session restore | titlebar + transport boundary done; tabs/palette/restore outstanding |
-| **P3** 🟡 | **Fleet view** — list instances, live status via multiplexed SSE, create/rename/delete from presets | grid + cards + origin/orphan notices done; live status and spawn dialog outstanding |
-| **P4** | **Session view** — transcript reducer over all `ChatEvent` variants, tool cards, composer, drafts, error/402 rendering, diagnostics deep-link | full turn round-trip against a live pod, incl. an induced error |
-| **P5** | **Onboarding wizard** (§9) + **interface source** binding: the four providers, key/base-URL write via Keys API, verify-turn, model picker, resumable state | fresh account → signed in → source bound → first successful turn, without touching a terminal |
+| **P3** 🟡 | **Fleet view** — list instances, live status via multiplexed SSE, create/rename/delete from presets | grid, cards, origin/orphan notices, spawn dialog, and per-instance live status from the session subscription done; fleet-wide status without an open session needs §12.5 |
+| **P4** 🟡 | **Session view** — transcript reducer over all `ChatEvent` variants, tool cards, composer, drafts, error/402 rendering, diagnostics deep-link | transcript + tool cards + composer + error rendering done and tested against stubbed frames; **live-pod round trip outstanding**; markdown, drafts, virtualization, deep-link outstanding |
+| **P5** 🟡 | **Onboarding wizard** (§9) + **interface source** binding: the four providers, key/base-URL write via Keys API, verify-turn, model picker, resumable state | source picker + atomic key/base-URL write + honest restart/`/responses` warnings done, and a keyless pod routes here instead of to a dead fleet; **verify-turn and model picker outstanding** |
 | **P6** | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | install `@amy_kitchen` from Axoniac → preset appears → spawn an instance from it |
 | **P7** | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | agent reads and writes a real Octaweave workspace in the next turn |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |

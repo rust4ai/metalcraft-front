@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Bot, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
+import { useUi } from '@/stores/ui'
+import { NewAgentDialog } from './NewAgentDialog'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatusDot } from '@/components/ui/StatusDot'
@@ -9,6 +11,7 @@ import type { AgentInstance, InstanceOrigin } from '@/types'
 /** PLAN §10.1 — the home screen: every agent on the pod, at a glance. */
 export function FleetView() {
   const { instances, presets, status, loading, error, load } = useFleet()
+  const { go, setNewAgentOpen } = useUi()
 
   useEffect(() => {
     void load()
@@ -28,7 +31,7 @@ export function FleetView() {
             <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Refresh
           </Button>
-          <Button size="sm" disabled={presets.length === 0}>
+          <Button size="sm" disabled={presets.length === 0} onClick={() => setNewAgentOpen(true)}>
             <Plus className="h-4 w-4" />
             New agent
           </Button>
@@ -42,10 +45,16 @@ export function FleetView() {
       ) : (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
           {instances.map((i) => (
-            <InstanceCard key={i.id} instance={i} status={status[i.id] ?? 'idle'} />
+            <InstanceCard
+              key={i.id}
+              instance={i}
+              status={status[i.id] ?? 'idle'}
+              onOpen={() => go({ kind: 'session', instanceId: i.id })}
+            />
           ))}
         </div>
       )}
+      <NewAgentDialog />
     </div>
   )
 }
@@ -53,12 +62,14 @@ export function FleetView() {
 function InstanceCard({
   instance,
   status,
+  onOpen,
 }: {
   instance: AgentInstance
   status: Parameters<typeof StatusDot>[0]['status']
+  onOpen: () => void
 }) {
   return (
-    <Card className="cursor-pointer">
+    <Card className="cursor-pointer" onClick={onOpen}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

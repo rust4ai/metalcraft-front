@@ -1,4 +1,6 @@
+import { KeyRound } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
+import { useUi } from '@/stores/ui'
 import { StatusDot } from '@/components/ui/StatusDot'
 
 /**
@@ -9,6 +11,7 @@ import { StatusDot } from '@/components/ui/StatusDot'
  */
 export function TitleBar() {
   const { session, info, pod } = useConnection()
+  const go = useUi((s) => s.go)
   return (
     <header
       data-tauri-drag-region
@@ -20,7 +23,19 @@ export function TitleBar() {
         {info?.version && <span className="text-ink-faint">v{info.version}</span>}
         {pod && <span className="text-ink-faint">· {pod.slug}</span>}
       </div>
-      {session && <span className="text-ink-faint">{session.email}</span>}
+      <div className="flex items-center gap-3">
+        {session && <span className="text-ink-faint">{session.email}</span>}
+        {info && (
+          <button
+            type="button"
+            aria-label="Interface source"
+            onClick={() => go({ kind: 'source' })}
+            className="text-ink-faint hover:text-ink"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </header>
   )
 }

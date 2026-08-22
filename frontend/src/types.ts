@@ -76,6 +76,13 @@ export interface AgentPreset {
   default_persona?: string | null
 }
 
+export interface KeyEntry {
+  name: string
+  masked?: string | null
+  source?: string | null
+  channel_id?: string | null
+}
+
 export interface ChatSummary {
   id: string
   name?: string | null
