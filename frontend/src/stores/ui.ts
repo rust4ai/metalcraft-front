@@ -6,7 +6,11 @@ import { keys } from '@/rpc'
  * this pod has an interface source bound. A tab model comes at P2; this stays in
  * its own store so the fleet and session stores never import each other.
  */
-export type View = { kind: 'fleet' } | { kind: 'session'; instanceId: string } | { kind: 'source' }
+export type View =
+  | { kind: 'fleet' }
+  | { kind: 'session'; instanceId: string }
+  | { kind: 'source' }
+  | { kind: 'packs' }
 
 interface UiState {
   view: View

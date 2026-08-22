@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, KeyEntry, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session } from '@/types'
+import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -34,6 +34,18 @@ export const keys = {
    *  with another's key. */
   bindInterfaceSource: (apiKey: string, baseUrl: string | null) =>
     call<void>('bind_interface_source', { apiKey, baseUrl }),
+}
+
+export const packs = {
+  registries: () => call<Registries>('list_registries'),
+  status: (name: string) => call<RegistryConnection>('registry_status', { name }),
+  connect: (name: string) => call<RegistryConnection>('registry_connect', { name }),
+  disconnect: (name: string) => call<RegistryConnection>('registry_disconnect', { name }),
+  search: (name: string, query?: string) => call<SearchHit[]>('registry_search', { name, query }),
+  manifest: (name: string, id: string) => call<unknown>('registry_manifest', { name, id }),
+  installed: () => call<InstalledPack[]>('list_installed_packs'),
+  install: (reference: string, allowUnverified = false) =>
+    call<unknown>('install_pack', { reference, allowUnverified }),
 }
 
 export const chats = {

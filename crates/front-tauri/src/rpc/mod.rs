@@ -12,4 +12,5 @@ pub mod auth;
 pub mod chat;
 pub mod fleet;
 pub mod keys;
+pub mod packs;
 pub mod pods;

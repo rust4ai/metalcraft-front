@@ -25,6 +25,7 @@ use tokio::sync::mpsc;
 
 use crate::events::ChatEvent;
 use crate::models::*;
+use crate::registry::{RegistryConnection, SearchHit, SearchResults};
 
 /// A Bearer token that can be replaced underneath a live connection.
 ///
@@ -36,6 +37,24 @@ pub type SharedToken = Arc<RwLock<String>>;
 /// Bound for ordinary CRUD calls. Long enough for a cold pod to answer, short
 /// enough that a dead one fails visibly instead of hanging a panel forever.
 const CRUD_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Installs and registry round-trips reach a third host from the pod, so they get
+/// longer than a local read before we call them dead.
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Percent-encode a query value. Tiny by design: the only untrusted thing that
+/// reaches a URL here is a search box.
+fn urlencode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            b' ' => "+".to_string(),
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
 
 #[derive(Clone)]
 pub struct PodConnection {
@@ -265,11 +284,91 @@ impl PodConnection {
         self.get("/agent-packs/registries").await
     }
 
+    // ---- registries -------------------------------------------------------
+
+    /// Where this pod stands with a host: connected, unlinked (with somewhere to
+    /// go and fix it), anonymous, refused, or a host with no identity endpoint at
+    /// all. Public packs install in every one of those states.
+    pub async fn registry_status(&self, name: &str) -> anyhow::Result<RegistryConnection> {
+        self.get(&format!("/agent-packs/registries/{name}/status"))
+            .await
+    }
+
+    /// Point a registry at the credential this pod already holds. Mints nothing.
+    pub async fn registry_connect(&self, name: &str) -> anyhow::Result<RegistryConnection> {
+        self.post_query(&format!("/agent-packs/registries/{name}/connect"), &[])
+            .await
+    }
+
+    pub async fn registry_disconnect(&self, name: &str) -> anyhow::Result<RegistryConnection> {
+        self.post_query(&format!("/agent-packs/registries/{name}/disconnect"), &[])
+            .await
+    }
+
+    /// Browse a host. An empty query is the catalogue rather than an error, which
+    /// is what makes this usable as the landing view.
+    pub async fn registry_search(
+        &self,
+        name: &str,
+        query: Option<&str>,
+        limit: u32,
+    ) -> anyhow::Result<Vec<SearchHit>> {
+        let mut path = format!("/agent-packs/registries/{name}/search?limit={limit}");
+        if let Some(q) = query.map(str::trim).filter(|q| !q.is_empty()) {
+            path.push_str(&format!("&q={}", urlencode(q)));
+        }
+        let results: SearchResults = self.get(&path).await?;
+        Ok(results.results)
+    }
+
+    /// The raw `agent_pack.json` — what the pack says it provides and needs.
+    pub async fn registry_manifest(
+        &self,
+        name: &str,
+        id: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!(
+            "/agent-packs/registries/{name}/packs/{id}/manifest"
+        ))
+        .await
+    }
+
+    /// Install by qualified reference (`axoniac:@amy_kitchen`).
+    ///
+    /// `allow_unverified` exists because a pod may be configured to take only
+    /// packs its host vouches for; overriding that is a decision a person makes
+    /// deliberately, so it is a parameter rather than a default.
     pub async fn install_agent_pack(
         &self,
-        source: &serde_json::Value,
+        reference: &str,
+        allow_unverified: bool,
     ) -> anyhow::Result<serde_json::Value> {
-        self.post("/agent-packs/install", source).await
+        self.post_query(
+            "/agent-packs/install",
+            &[
+                ("reference", reference.to_string()),
+                ("allow_unverified", allow_unverified.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// POST with query parameters and no body — the shape the pod uses for
+    /// installs and registry connections.
+    async fn post_query<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .post(self.url(path))
+            .bearer_auth(self.bearer())
+            .query(params)
+            .timeout(INSTALL_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
     }
 
     // ---- streaming -------------------------------------------------------

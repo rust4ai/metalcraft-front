@@ -94,6 +94,64 @@ export interface KeyEntry {
   managed: boolean
 }
 
+/** Where a pod stands with a registry. Public packs install in every state —
+ *  connecting buys private packs and an identity, not access. */
+export type ConnectionState =
+  | 'connected'
+  | 'unlinked'
+  | 'no_token'
+  | 'rejected'
+  | 'unsupported'
+  | 'unknown'
+
+export interface RegistryConnection {
+  registry: string
+  url: string
+  trust?: string | null
+  token_key?: string | null
+  state: ConnectionState
+  /** Where a human goes to finish linking — the host's own URL, not a guess. */
+  link_url?: string | null
+  account?: string | null
+  /** The host's own words when something failed; show verbatim. */
+  detail?: string | null
+}
+
+export interface SearchHit {
+  /** Qualified, always: `axoniac:@amy_kitchen`. */
+  reference: string
+  id: string
+  name: string
+  version?: string | null
+  tagline?: string | null
+  category?: string | null
+  tags: string[]
+  avatar_url?: string | null
+  verified: boolean
+  install_count?: number | null
+}
+
+export interface Registry {
+  name: string
+  url: string
+  trust?: string | null
+  is_default: boolean
+}
+
+export interface Registries {
+  origins: string[]
+  default: string
+  registries: Registry[]
+}
+
+export interface InstalledPack {
+  id: string
+  name?: string | null
+  version?: string | null
+  description?: string | null
+  presets: string[]
+}
+
 export interface ChatSummary {
   id: string
   name?: string | null

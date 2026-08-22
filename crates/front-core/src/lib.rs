@@ -13,7 +13,9 @@
 pub mod events;
 pub mod models;
 pub mod pod;
+pub mod registry;
 
 pub use events::{ChatEvent, ChatMessage};
 pub use models::*;
 pub use pod::{PodConnection, SharedToken};
+pub use registry::{ConnectionState, RegistryConnection, SearchHit, blocked_by_trust};

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Bot, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Bot, Plus, RefreshCw, AlertTriangle, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { NewAgentDialog } from './NewAgentDialog'
@@ -30,6 +30,10 @@ export function FleetView() {
           <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Refresh
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => go({ kind: 'packs' })}>
+            <Store className="h-4 w-4" />
+            Browse agents
           </Button>
           <Button size="sm" disabled={presets.length === 0} onClick={() => setNewAgentOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -141,7 +145,7 @@ function EmptyFleet({ presetCount }: { presetCount: number }) {
       <p className="font-medium">No agents yet</p>
       <p className="mt-1 max-w-sm text-sm text-ink-2">
         {presetCount === 0
-          ? 'Install an agent pack to get a preset to spawn from.'
+          ? 'Install an agent from a registry to get a preset to spawn from.'
           : 'Spawn one from a preset to start a conversation.'}
       </p>
     </div>

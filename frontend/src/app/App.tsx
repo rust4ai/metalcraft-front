@@ -5,6 +5,7 @@ import { ConnectView } from '@/features/onboarding/ConnectView'
 import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
+import { PacksView } from '@/features/packs/PacksView'
 import { useUi } from '@/stores/ui'
 import { Gallery } from '@/dev/Gallery'
 import { TitleBar } from './TitleBar'
@@ -38,6 +39,8 @@ export function App() {
           <ConnectView />
         ) : view.kind === 'source' ? (
           <InterfaceSourceView onDone={markSourceBound} />
+        ) : view.kind === 'packs' ? (
+          <PacksView />
         ) : view.kind === 'session' ? (
           <SessionView instanceId={view.instanceId} />
         ) : (
