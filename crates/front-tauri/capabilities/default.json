@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the main window. Nothing that touches the network or the filesystem is exposed to the webview — every such call goes through a typed RPC command in the Rust core (PLAN §8).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "deep-link:default",
+    "store:default"
+  ]
+}

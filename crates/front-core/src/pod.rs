@@ -1,0 +1,425 @@
+//! The pod client.
+//!
+//! Two reqwest clients, deliberately. The pooled `client` serves CRUD with a
+//! per-request timeout. The `stream_client` serves the two long-lived SSE
+//! endpoints and differs in two ways that were both learned the hard way in
+//! metalcraft-workshop:
+//!
+//! - **No client-wide timeout.** A turn streams for as long as the agent runs,
+//!   which can be minutes when a tool makes its own slow HTTP call. A total
+//!   timeout aborts the stream mid-flight — surfacing as reqwest's opaque "error
+//!   decoding response body" — even though the turn completes fine server-side.
+//! - **No idle-connection pooling.** A new chat's first turn is usually the first
+//!   activity after an idle spell, so a pooled socket is often one the pod's
+//!   ingress already closed; the read fails instantly and the UI reports a lost
+//!   connection that never existed. These requests are rare and long, so paying
+//!   for a fresh handshake each time is free in practice.
+
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use futures_util::StreamExt;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use tokio::sync::mpsc;
+
+use crate::events::ChatEvent;
+use crate::models::*;
+
+/// A Bearer token that can be replaced underneath a live connection.
+///
+/// Metalcraft ID connection tokens are audience-scoped to `pod:{slug}` and live
+/// about an hour; front-cloud's refresher re-mints into this cell so a chat open
+/// all afternoon never drops.
+pub type SharedToken = Arc<RwLock<String>>;
+
+/// Bound for ordinary CRUD calls. Long enough for a cold pod to answer, short
+/// enough that a dead one fails visibly instead of hanging a panel forever.
+const CRUD_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Clone)]
+pub struct PodConnection {
+    base_url: String,
+    token: SharedToken,
+    client: reqwest::Client,
+    stream_client: reqwest::Client,
+}
+
+/// Redacted by hand: a derived `Debug` would print the Bearer into any log line
+/// or panic message that happens to include a connection.
+impl std::fmt::Debug for PodConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PodConnection")
+            .field("base_url", &self.base_url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+impl PodConnection {
+    /// Connect with a fixed Bearer that never changes — a self-hosted agent in
+    /// `--api <KEY>` mode, or a manually entered key.
+    pub fn new(base_url: impl Into<String>, token: impl Into<String>) -> anyhow::Result<Self> {
+        Self::build(base_url, Arc::new(RwLock::new(token.into())))
+    }
+
+    /// Connect with a refreshable Bearer. The caller keeps a clone and re-mints
+    /// into it; every request reads the current value.
+    pub fn with_shared_token(
+        base_url: impl Into<String>,
+        token: SharedToken,
+    ) -> anyhow::Result<Self> {
+        Self::build(base_url, token)
+    }
+
+    fn build(base_url: impl Into<String>, token: SharedToken) -> anyhow::Result<Self> {
+        let raw = base_url.into();
+        let trimmed = raw.trim().trim_end_matches('/');
+        if trimmed.is_empty() {
+            anyhow::bail!("base URL is empty");
+        }
+        // Require an explicit scheme so reqwest gives a clean error rather than a
+        // confusing relative-URL failure when someone types `localhost:3002`.
+        if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+            anyhow::bail!("base URL must start with http:// or https://");
+        }
+        Ok(Self {
+            base_url: trimmed.to_string(),
+            token,
+            client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(15))
+                .build()?,
+            stream_client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(15))
+                .pool_max_idle_per_host(0)
+                .build()?,
+        })
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    fn bearer(&self) -> String {
+        self.token.read().map(|t| t.clone()).unwrap_or_default()
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}/api/v1{}", self.base_url, path)
+    }
+
+    // ---- generic helpers -------------------------------------------------
+
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .get(self.url(path))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
+    }
+
+    async fn post<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .post(self.url(path))
+            .bearer_auth(self.bearer())
+            .json(body)
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
+    }
+
+    async fn delete_path(&self, path: &str) -> anyhow::Result<()> {
+        let resp = self
+            .client
+            .delete(self.url(path))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!(
+                "{} {}: {}",
+                resp.status(),
+                path,
+                resp.text().await.unwrap_or_default()
+            );
+        }
+        Ok(())
+    }
+
+    /// Decode a response, turning a non-2xx into an error that carries the pod's
+    /// own message — the agent returns `{"error": "..."}` and that text is far
+    /// more useful to a user than "500".
+    async fn decode<T: DeserializeOwned>(resp: reqwest::Response, path: &str) -> anyhow::Result<T> {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            let detail = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
+                .unwrap_or(body);
+            anyhow::bail!("{status} {path}: {detail}");
+        }
+        Ok(serde_json::from_str(&body)?)
+    }
+
+    // ---- surfaces --------------------------------------------------------
+
+    pub async fn info(&self) -> anyhow::Result<AgentInfo> {
+        self.get("/info").await
+    }
+
+    pub async fn list_instances(&self) -> anyhow::Result<Vec<AgentInstance>> {
+        self.get("/agents/instances").await
+    }
+
+    pub async fn create_instance(
+        &self,
+        preset: &str,
+        name: Option<&str>,
+    ) -> anyhow::Result<AgentInstance> {
+        let body = serde_json::json!({ "agent_preset": preset, "name": name });
+        self.post("/agents/instances", &body).await
+    }
+
+    pub async fn delete_instance(&self, id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/agents/instances/{id}")).await
+    }
+
+    pub async fn list_presets(&self) -> anyhow::Result<Vec<AgentPresetSummary>> {
+        self.get("/agent-presets").await
+    }
+
+    pub async fn list_chats(&self) -> anyhow::Result<Vec<ChatSummary>> {
+        self.get("/chats").await
+    }
+
+    pub async fn create_chat(&self, new: &NewChat) -> anyhow::Result<ChatDetail> {
+        self.post("/chats", new).await
+    }
+
+    pub async fn get_chat(&self, id: &str) -> anyhow::Result<ChatDetail> {
+        self.get(&format!("/chats/{id}")).await
+    }
+
+    pub async fn delete_chat(&self, id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/chats/{id}")).await
+    }
+
+    pub async fn list_keys(&self) -> anyhow::Result<Vec<KeyEntry>> {
+        self.get("/keys").await
+    }
+
+    /// Upsert a secret. This is the mechanism behind binding an interface source:
+    /// `OPENAI_API_KEY` + `OPENAI_BASE_URL` written here are what point the agent
+    /// at Metalcraft Inference, OpenAI, OpenRouter, or a custom gateway.
+    pub async fn save_key(&self, name: &str, value: &str) -> anyhow::Result<()> {
+        let body = serde_json::json!({ "name": name, "value": value });
+        let _: serde_json::Value = self.post("/keys", &body).await?;
+        Ok(())
+    }
+
+    pub async fn delete_key(&self, name: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/keys/{name}")).await
+    }
+
+    pub async fn list_agent_packs(&self) -> anyhow::Result<Vec<InstalledAgentPack>> {
+        self.get("/agent-packs").await
+    }
+
+    /// The hosts this pod will fetch packs from — Axoniac Prime and any peer.
+    pub async fn registries(&self) -> anyhow::Result<Registries> {
+        self.get("/agent-packs/registries").await
+    }
+
+    pub async fn install_agent_pack(
+        &self,
+        source: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.post("/agent-packs/install", source).await
+    }
+
+    // ---- streaming -------------------------------------------------------
+
+    /// Run one turn, streaming frames as they happen.
+    ///
+    /// Returns a receiver rather than a `Stream` so callers (the Tauri event
+    /// bridge, a test) can move it straight into a task without pinning generics.
+    /// The task ends when the pod closes the stream.
+    pub fn turn(&self, chat_id: &str, message: &str) -> mpsc::Receiver<ChatEvent> {
+        let req = self
+            .stream_client
+            .post(self.url(&format!("/chats/{chat_id}/turn")))
+            .bearer_auth(self.bearer())
+            .json(&serde_json::json!({ "message": message }));
+        self.spawn_sse(req)
+    }
+
+    /// Subscribe to a chat's broadcast event channel without driving a turn.
+    ///
+    /// This is what makes a live fleet view possible at all: the pod fans the same
+    /// frames out to every subscriber, so N open sessions (and a phone) can watch
+    /// one turn without any of them owning it.
+    pub fn subscribe(&self, chat_id: &str) -> mpsc::Receiver<ChatEvent> {
+        let req = self
+            .stream_client
+            .get(self.url(&format!("/chats/{chat_id}/events")))
+            .bearer_auth(self.bearer());
+        self.spawn_sse(req)
+    }
+
+    fn spawn_sse(&self, req: reqwest::RequestBuilder) -> mpsc::Receiver<ChatEvent> {
+        let (tx, rx) = mpsc::channel(256);
+        tokio::spawn(async move {
+            let resp = match req.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx
+                        .send(ChatEvent::Error {
+                            code: "transport".into(),
+                            message: e.to_string(),
+                            retryable: true,
+                        })
+                        .await;
+                    let _ = tx
+                        .send(ChatEvent::Done {
+                            status: "failed".into(),
+                            reason: None,
+                        })
+                        .await;
+                    return;
+                }
+            };
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                let _ = tx
+                    .send(ChatEvent::Error {
+                        code: format!("http_{}", status.as_u16()),
+                        message: if body.is_empty() {
+                            status.to_string()
+                        } else {
+                            body
+                        },
+                        // A 409 means the chat is already mid-turn — retrying at
+                        // once just collides again, so it is not "retryable".
+                        retryable: status.is_server_error(),
+                    })
+                    .await;
+                let _ = tx
+                    .send(ChatEvent::Done {
+                        status: "failed".into(),
+                        reason: None,
+                    })
+                    .await;
+                return;
+            }
+
+            let mut stream = resp.bytes_stream();
+            let mut buf = String::new();
+            while let Some(chunk) = stream.next().await {
+                let Ok(bytes) = chunk else { break };
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(idx) = find_frame_end(&buf) {
+                    let (frame, rest) = buf.split_at(idx);
+                    let frame = frame.to_string();
+                    buf = rest.trim_start_matches(['\r', '\n']).to_string();
+                    if let Some(ev) = parse_sse_frame(&frame) {
+                        let terminal = ev.is_terminal();
+                        if tx.send(ev).await.is_err() || terminal {
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        rx
+    }
+}
+
+/// Index just past the blank line that terminates an SSE frame.
+fn find_frame_end(buf: &str) -> Option<usize> {
+    buf.find("\n\n")
+        .map(|i| i + 2)
+        .or_else(|| buf.find("\r\n\r\n").map(|i| i + 4))
+}
+
+/// Pull the `data:` payload out of one frame and decode it. Comment lines
+/// (`:keep-alive`) and any other field are ignored, and a frame we cannot decode
+/// is dropped rather than killing the stream.
+fn parse_sse_frame(frame: &str) -> Option<ChatEvent> {
+    let mut data = String::new();
+    for line in frame.lines() {
+        if let Some(rest) = line.strip_prefix("data:") {
+            if !data.is_empty() {
+                data.push('\n');
+            }
+            data.push_str(rest.trim_start());
+        }
+    }
+    if data.is_empty() {
+        return None;
+    }
+    match serde_json::from_str(&data) {
+        Ok(ev) => Some(ev),
+        Err(e) => {
+            log::warn!("dropping undecodable SSE frame: {e}");
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_a_url_without_a_scheme() {
+        let err = PodConnection::new("localhost:3002", "k")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("http://"), "{err}");
+    }
+
+    #[test]
+    fn trims_a_trailing_slash_so_paths_do_not_double_up() {
+        let c = PodConnection::new("https://pod.example.com/", "k").unwrap();
+        assert_eq!(c.url("/info"), "https://pod.example.com/api/v1/info");
+    }
+
+    #[test]
+    fn parses_a_data_frame_and_ignores_keepalive_comments() {
+        assert!(parse_sse_frame(":keep-alive\n").is_none());
+        let ev = parse_sse_frame("data: {\"kind\":\"llm_started\"}\n\n").unwrap();
+        assert!(matches!(ev, ChatEvent::LlmStarted));
+    }
+
+    #[test]
+    fn splits_frames_on_the_blank_line() {
+        let buf = "data: {\"kind\":\"llm_started\"}\n\ndata: {\"kind\":\"done\",\"status\":\"completed\"}\n\n";
+        let end = find_frame_end(buf).unwrap();
+        assert!(matches!(
+            parse_sse_frame(&buf[..end]),
+            Some(ChatEvent::LlmStarted)
+        ));
+    }
+
+    #[test]
+    fn a_refreshed_token_is_seen_by_the_next_request() {
+        let cell: SharedToken = Arc::new(RwLock::new("first".into()));
+        let conn =
+            PodConnection::with_shared_token("https://pod.example.com", cell.clone()).unwrap();
+        assert_eq!(conn.bearer(), "first");
+        *cell.write().unwrap() = "second".into();
+        assert_eq!(conn.bearer(), "second");
+    }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    "no-console": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/rpc/transport/tauri.ts"],
+      "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@tauri-apps/api", "@tauri-apps/api/*"],
+                "message": "Go through @/rpc/transport instead — the renderer also ships as a browser build (PLAN §8), and a direct invoke()/listen() call is what makes that impossible."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

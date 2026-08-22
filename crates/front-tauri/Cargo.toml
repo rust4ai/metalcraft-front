@@ -1,0 +1,29 @@
+[package]
+name = "front-tauri"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "metalcraft-front desktop shell"
+
+[[bin]]
+name = "metalcraft-front"
+path = "src/main.rs"
+
+[dependencies]
+front-core = { path = "../front-core" }
+front-cloud = { path = "../front-cloud" }
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-store = "2"
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+log.workspace = true
+env_logger.workspace = true
+parking_lot = "0.12"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

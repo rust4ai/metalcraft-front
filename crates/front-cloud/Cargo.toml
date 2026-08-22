@@ -1,0 +1,19 @@
+[package]
+name = "front-cloud"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Metalcraft ID device login, the pod control plane, and connection-token minting"
+
+[dependencies]
+front-core = { path = "../front-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+log.workspace = true
+dirs = "6"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

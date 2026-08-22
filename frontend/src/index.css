@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Design tokens.
+ *
+ * Dark-first, like Orca: an ADE is a tool you stare at for hours next to a
+ * terminal, and the fleet's status colours have to read against a dark ground.
+ * Light is defined in full rather than derived, so neither theme is an
+ * afterthought. Every colour has a definition on bare `:root`. */
+@theme {
+  --color-ground: #ffffff;
+  --color-surface: #f7f7f8;
+  --color-raised: #ffffff;
+  --color-line: #e4e4e7;
+  --color-ink: #18181b;
+  --color-ink-dim: #52525b;
+  --color-ink-faint: #a1a1aa;
+  --color-accent: #6366f1;
+  --color-accent-ink: #ffffff;
+  --color-live: #22c55e;
+  --color-thinking: #f59e0b;
+  --color-danger: #ef4444;
+
+  --font-sans: ui-sans-serif, -apple-system, "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    --color-ground: #0b0b0e;
+    --color-surface: #131318;
+    --color-raised: #1a1a21;
+    --color-line: #26262e;
+    --color-ink: #f4f4f5;
+    --color-ink-dim: #a1a1aa;
+    --color-ink-faint: #6b6b76;
+    --color-accent: #818cf8;
+    --color-accent-ink: #0b0b0e;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* The window is the app; only panes scroll. */
+  body {
+    overflow: hidden;
+  }
+}

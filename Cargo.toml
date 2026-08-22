@@ -1,0 +1,22 @@
+[workspace]
+resolver = "3"
+members = ["crates/front-core", "crates/front-cloud", "crates/front-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+repository = "https://github.com/rust4ai/metalcraft-front"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream"], default-features = false }
+futures-util = "0.3"
+log = "0.4"
+env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"

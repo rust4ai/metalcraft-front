@@ -1,0 +1,10 @@
+/target
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+frontend/dist/
+crates/front-tauri/gen/
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
