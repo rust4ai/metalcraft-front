@@ -52,12 +52,12 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
   return (
     <div className="mx-auto max-w-lg px-8 py-10">
       <div className="mb-6 flex items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-raised">
+        <div className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-surface">
           <KeyRound className="h-5 w-5 text-accent" />
         </div>
         <div>
           <h1 className="text-lg font-semibold">Interface source</h1>
-          <p className="text-sm text-ink-dim">Where this agent&rsquo;s thinking comes from.</p>
+          <p className="text-sm text-ink-2">Where this agent&rsquo;s thinking comes from.</p>
         </div>
       </div>
 
@@ -68,19 +68,19 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
             type="button"
             onClick={() => setSelected(s)}
             className={cn(
-              'w-full rounded-lg border px-3 py-2.5 text-left transition-colors',
-              selected.id === s.id ? 'border-accent bg-accent/5' : 'border-line hover:border-ink-faint/40',
+              'w-full rounded-control px-3 py-2.5 text-left transition-all duration-150',
+              selected.id === s.id ? 'bg-accent-tint shadow-btn' : 'hover:bg-hover',
             )}
           >
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{s.name}</span>
               {s.responsesApi === 'verify' && (
-                <span className="rounded border border-thinking/40 px-1 py-px text-[10px] uppercase tracking-wide text-thinking">
+                <span className="rounded border border-orange/40 px-1 py-px text-[10px] uppercase tracking-wide text-orange">
                   verify
                 </span>
               )}
             </div>
-            <p className="mt-0.5 text-xs text-ink-dim">{s.blurb}</p>
+            <p className="mt-0.5 text-xs text-ink-2">{s.blurb}</p>
           </button>
         ))}
       </div>
@@ -90,7 +90,7 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
           value={customUrl}
           onChange={(e) => setCustomUrl(e.target.value)}
           placeholder="https://your-gateway.example.com/v1"
-          className="mt-3 w-full rounded-lg border border-line bg-ground px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
+          className="mt-3 w-full rounded-control bg-field px-3 py-2 text-[13px] caret-accent outline-none placeholder:text-ink-3 shadow-btn"
         />
       )}
 
@@ -99,7 +99,7 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
         placeholder={selected.keyHint}
-        className="mt-3 w-full rounded-lg border border-line bg-ground px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
+        className="mt-3 w-full rounded-control bg-field px-3 py-2 text-[13px] caret-accent outline-none placeholder:text-ink-3 shadow-btn"
       />
 
       {selected.responsesApi === 'verify' && (
@@ -117,11 +117,11 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
       </Note>
 
       {bound.includes('OPENAI_API_KEY') && !saved && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-faint">
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-3">
           <Check className="h-3.5 w-3.5 text-live" /> a key is already stored on this pod
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+      {error && <p className="mt-3 text-sm text-red">{error}</p>}
 
       <div className="mt-5 flex items-center justify-between">
         {onDone && (
@@ -145,8 +145,8 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-3 flex gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-dim">
-      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-faint" />
+    <div className="mt-3 flex gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-2">
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-3" />
       <p>{children}</p>
     </div>
   )

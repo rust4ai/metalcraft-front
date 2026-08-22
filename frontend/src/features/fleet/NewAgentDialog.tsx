@@ -47,18 +47,18 @@ export function NewAgentDialog() {
             type="button"
             onClick={() => setPreset(p.slug)}
             className={cn(
-              'w-full rounded-lg border px-3 py-2.5 text-left transition-colors',
-              chosen === p.slug ? 'border-accent bg-accent/5' : 'border-line hover:border-ink-faint/40',
+              'w-full rounded-control px-3 py-2.5 text-left transition-all duration-150',
+              chosen === p.slug ? 'bg-accent-tint shadow-btn' : 'hover:bg-hover',
             )}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-medium">{p.name || p.slug}</span>
               {p.pack_id && (
-                <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-faint">{p.pack_id}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">{p.pack_id}</span>
               )}
             </div>
                 {(p.tagline || p.description) && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-ink-dim">{p.tagline || p.description}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs text-ink-2">{p.tagline || p.description}</p>
             )}
           </button>
         ))}
@@ -68,7 +68,7 @@ export function NewAgentDialog() {
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Name it (optional — naming makes it persistent)"
-        className="mt-3 w-full rounded-lg border border-line bg-ground px-3 py-2 text-sm outline-none placeholder:text-ink-faint focus:border-accent"
+        className="mt-3 w-full rounded-control bg-field px-3 py-2 text-[13px] caret-accent outline-none placeholder:text-ink-3 shadow-btn"
       />
 
       <div className="mt-4 flex justify-end gap-2">

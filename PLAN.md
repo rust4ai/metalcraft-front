@@ -37,6 +37,13 @@ information architecture**: fleet-first instead of file-editor-first.
 **Take (frontend architecture + aesthetic):**
 - Renderer stack: React 19, Tailwind 4, shadcn/ui on Radix, `lucide-react`, `sonner`,
   `cmdk` command palette, `@tanstack/react-virtual`, `zustand` for state.
+- **Beautiful UI** (beautifului.dev, MIT — mirrored in `~/ai/beautifului-dev`) for the parts
+  Orca's aesthetic does not name: the 20 primitives for *where a model is doing the work*.
+  Its token layer is adopted wholesale — OKLCH surfaces, a three-level ink ramp, the
+  ring-plus-multi-stop shadow ladder, the two decelerating motion curves. Its four principles
+  are load-bearing here: **latency is content** (elapsed counters, not spinners), **reasoning
+  is disclosed, not hidden or forced** (traces collapse to one past-tense line), **proposed ≠
+  applied**, and **provenance travels with the claim**.
 - **Process split discipline.** Orca's `src/main` (privileged, owns PTYs/creds) vs
   `src/renderer` (pure view) maps 1:1 onto Tauri's Rust core vs webview. Same rule:
   *no secret and no network credential ever crosses into the webview.*
@@ -296,8 +303,8 @@ step is also a standalone settings surface.
    activity, live status (idle / thinking / running `tool` / needs-attention / error),
    turn-count, origin badge (workshop | gateway | flow | cli). Click → open session tab.
    `⌘K` quick-open across instances, chats, flows, skills, workspaces.
-2. **Session.** Split: transcript (virtualized, tool cards collapsible, markdown+mermaid+
-   katex) | right rail (instance memory, persona switch within the preset roster, model,
+2. **Session.** Split: transcript (virtualized, tool calls collapsed into one
+   `Ran N tools` trace, markdown+mermaid+katex) | right rail (instance memory, persona switch within the preset roster, model,
    linked workspace, diagnostics deep-link). Composer with attachments and slash commands
    mapped to agent skills.
 3. **New agent** dialog = Orca's agent combobox: pick **agent preset** (from installed

@@ -21,7 +21,7 @@ export function ConnectView() {
   return (
     <div className="grid h-full place-items-center p-8">
       <div className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl border border-line bg-raised">
+        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-card bg-surface shadow-card">
           {connecting ? (
             <Loader2 className="h-6 w-6 animate-spin text-accent" />
           ) : (
@@ -32,7 +32,7 @@ export function ConnectView() {
         {connecting ? (
           <>
             <h2 className="text-lg font-semibold">Connecting to your pod</h2>
-            <p className="mt-2 text-sm text-ink-dim">
+            <p className="mt-2 text-sm text-ink-2">
               {waking
                 ? 'If it was asleep this takes a moment — it has to be scheduled and start up.'
                 : 'Minting a connection token…'}
@@ -41,7 +41,7 @@ export function ConnectView() {
         ) : pods.length === 0 ? (
           <>
             <h2 className="text-lg font-semibold">No pod on this account</h2>
-            <p className="mt-2 text-sm text-ink-dim">
+            <p className="mt-2 text-sm text-ink-2">
               An agent pod comes with Metalcraft premium. Once you have one it shows up here.
             </p>
             <Button variant="outline" className="mt-6" onClick={() => void refreshPods()}>
@@ -55,10 +55,10 @@ export function ConnectView() {
                 key={p.id}
                 type="button"
                 onClick={() => void connect(p.id)}
-                className="flex w-full items-center justify-between rounded-card border border-line bg-raised px-4 py-3 hover:border-accent"
+                className="flex w-full items-center justify-between rounded-card bg-surface px-4 py-3 shadow-card transition-shadow duration-150 hover:shadow-raised"
               >
                 <span className="font-medium">{p.slug || p.id}</span>
-                <span className="text-xs text-ink-faint">{p.status ?? 'ready'}</span>
+                <span className="text-xs text-ink-3">{p.status ?? 'ready'}</span>
               </button>
             ))}
           </div>
@@ -66,7 +66,7 @@ export function ConnectView() {
 
         {error && (
           <div className="mt-6">
-            <p className="text-sm text-danger">{error}</p>
+            <p className="text-sm text-red">{error}</p>
             <Button variant="outline" size="sm" className="mt-3" onClick={() => void connect()}>
               Try again
             </Button>

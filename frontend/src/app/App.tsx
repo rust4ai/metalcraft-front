@@ -6,7 +6,11 @@ import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
 import { useUi } from '@/stores/ui'
+import { Gallery } from '@/dev/Gallery'
 import { TitleBar } from './TitleBar'
+
+/** Dev-only: `?gallery` renders the primitive harness instead of the app. */
+const showGallery = import.meta.env.DEV && new URLSearchParams(location.search).has('gallery')
 
 export function App() {
   const { ready, session, info, boot } = useConnection()
@@ -21,6 +25,8 @@ export function App() {
   useEffect(() => {
     void boot()
   }, [boot])
+
+  if (showGallery) return <Gallery />
 
   return (
     <div className="flex h-full flex-col">

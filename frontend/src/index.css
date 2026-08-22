@@ -1,43 +1,151 @@
 @import "tailwindcss";
 
-/* Design tokens.
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Tokens — the Beautiful UI foundation layer (beautifului.dev, MIT), adopted
+ * wholesale rather than approximated. The primitives in this app are only
+ * consistent because they all draw from one palette; a hand-tuned near-copy
+ * gets you something adjacent but not the same.
  *
- * Dark-first, like Orca: an ADE is a tool you stare at for hours next to a
- * terminal, and the fleet's status colours have to read against a dark ground.
- * Light is defined in full rather than derived, so neither theme is an
- * afterthought. Every colour has a definition on bare `:root`. */
+ * Every colour is a `light-dark()` pair, so **no component branches on theme**.
+ * The theme is chosen once, by `color-scheme` on :root.
+ *
+ * Rebranding means replacing --color-accent* and leaving the gray ramp, the
+ * shadow ladder and the motion curves alone.
+ * ───────────────────────────────────────────────────────────────────────────*/
+
 @theme {
-  --color-ground: #ffffff;
-  --color-surface: #f7f7f8;
-  --color-raised: #ffffff;
-  --color-line: #e4e4e7;
-  --color-ink: #18181b;
-  --color-ink-dim: #52525b;
-  --color-ink-faint: #a1a1aa;
-  --color-accent: #6366f1;
-  --color-accent-ink: #ffffff;
-  --color-live: #22c55e;
-  --color-thinking: #f59e0b;
-  --color-danger: #ef4444;
+  /* Surfaces, back to front */
+  --color-page: light-dark(oklch(98.5% 0.001 286), oklch(20.9% 0.004 264));
+  --color-canvas: light-dark(oklch(96.1% 0.002 248), oklch(23.1% 0.004 264));
+  --color-surface: light-dark(oklch(100% 0 0), oklch(26% 0.006 271));
+  --color-inset: light-dark(oklch(97.9% 0.002 248), oklch(24.3% 0.004 264));
+  --color-field: light-dark(oklch(96.1% 0.001 286), oklch(29.3% 0.006 271));
+  --color-hover: light-dark(oklch(97% 0.002 248), oklch(28.9% 0.006 271));
+  --color-hover-2: light-dark(oklch(93.3% 0.003 248), oklch(31.8% 0.007 275));
 
-  --font-sans: ui-sans-serif, -apple-system, "Inter", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+  /* Ink ramp — three levels, and the discipline is not adding a fourth:
+   * `ink` for the claim, `ink-2` for the label, `ink-3` for metadata. */
+  --color-ink: light-dark(oklch(24.7% 0.006 258), oklch(96.4% 0.002 248));
+  --color-ink-2: light-dark(oklch(50.6% 0.01 264), oklch(73.1% 0.008 261));
+  --color-ink-3: light-dark(oklch(69.5% 0.009 265), oklch(54.1% 0.01 264));
 
-  --radius-card: 0.75rem;
+  /* Lines — `line` is also the ring inside every card shadow. */
+  --color-line: light-dark(oklch(92.2% 0.003 264), oklch(100% 0 0 / 0.11));
+  --color-line-strong: light-dark(oklch(87% 0.004 264), oklch(100% 0 0 / 0.18));
+
+  /* Semantic accents. Agent-initiated things are blue; everything else is an
+   * outcome colour. There is deliberately no "info" hue. */
+  --color-accent: light-dark(oklch(54.6% 0.215 262.9), oklch(62.3% 0.19 259.8));
+  --color-accent-ink: light-dark(oklch(100% 0 0), oklch(20.9% 0.004 264));
+  --color-accent-tint: light-dark(oklch(93.2% 0.032 255.6), oklch(62.3% 0.19 259.8 / 0.16));
+  --color-green: light-dark(oklch(58% 0.14 152.5), oklch(70.5% 0.15 152.5));
+  --color-green-tint: light-dark(oklch(94.5% 0.045 152.5), oklch(70.5% 0.15 152.5 / 0.16));
+  --color-orange: light-dark(oklch(63.5% 0.166 58.3), oklch(75.4% 0.15 65.5));
+  --color-orange-tint: light-dark(oklch(95% 0.05 75), oklch(75.4% 0.15 65.5 / 0.16));
+  --color-red: light-dark(oklch(58.2% 0.216 27.3), oklch(68.5% 0.19 24.5));
+  --color-red-tint: light-dark(oklch(94.5% 0.035 27.3), oklch(68.5% 0.19 24.5 / 0.16));
+
+  /* Radius — three steps. Anything rounder than the card radius is a full pill,
+   * never an intermediate value. */
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 10px;
+
+  /* Shadow ladder: a 1px ring in --line plus a soft multi-stop drop. The ring is
+   * what makes cards read crisply at small sizes; the six stacked stops are what
+   * make the drop look expensive instead of muddy. */
+  --shadow-hairline: 0 0 0 1px var(--color-line);
+  --shadow-btn: 0 0 0 1px var(--color-line-strong), 0 1px 2px oklch(0% 0 0 / 0.05);
+  --shadow-card: 0 0 0 1px var(--color-line), 0 0.5px 1.3px oklch(0% 0 0 / 0.03),
+    0 1.3px 3.2px oklch(0% 0 0 / 0.04), 0 2.7px 6.5px oklch(0% 0 0 / 0.05),
+    0 5.4px 13px oklch(0% 0 0 / 0.06), 0 11px 26px oklch(0% 0 0 / 0.07),
+    0 18px 47px oklch(0% 0 0 / 0.08);
+  --shadow-raised: 0 0 0 1px var(--color-line), 0 2px 5px oklch(0% 0 0 / 0.05),
+    0 6px 14px oklch(0% 0 0 / 0.06), 0 14px 30px oklch(0% 0 0 / 0.07),
+    0 26px 56px oklch(0% 0 0 / 0.08), 0 40px 84px oklch(0% 0 0 / 0.09);
+  --shadow-overlay: 0 0 0 1px var(--color-line), 0 4px 10px oklch(0% 0 0 / 0.06),
+    0 12px 28px oklch(0% 0 0 / 0.08), 0 24px 56px oklch(0% 0 0 / 0.1),
+    0 48px 96px oklch(0% 0 0 / 0.12);
+
+  /* Type. Mono is load-bearing, not decorative: it marks machine-owned values —
+   * elapsed timers, tool arguments, paths, ids. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* Motion. Both custom curves decelerate hard — fast start, long settle — which
+   * is what makes appended content feel like it arrived rather than animated. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-link: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-fade-up: fade-up 600ms var(--ease-out-strong) both;
+  --animate-stream-in: stream-in 300ms var(--ease-out-strong) both;
+  --animate-pop-in: pop-in 200ms var(--ease-link) both;
+  --animate-shimmer-text: shimmer-text 1.4s linear infinite;
+  --animate-pixel-on: pixel-on 650ms ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes stream-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer-text {
+  from {
+    background-position: 200% center;
+  }
+  to {
+    background-position: -200% center;
+  }
+}
+
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 
 @layer base {
-  :root[data-theme="dark"],
-  :root:not([data-theme="light"]) {
-    --color-ground: #0b0b0e;
-    --color-surface: #131318;
-    --color-raised: #1a1a21;
-    --color-line: #26262e;
-    --color-ink: #f4f4f5;
-    --color-ink-dim: #a1a1aa;
-    --color-ink-faint: #6b6b76;
-    --color-accent: #818cf8;
-    --color-accent-ink: #0b0b0e;
+  :root {
+    /* One switch drives every light-dark() pair above. */
+    color-scheme: light dark;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
   }
 
   html,
@@ -47,15 +155,23 @@
   }
 
   body {
-    background: var(--color-ground);
+    background: var(--color-page);
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     overscroll-behavior: none;
+    /* The window is the app; only panes scroll. */
+    overflow: hidden;
   }
 
-  /* The window is the app; only panes scroll. */
-  body {
-    overflow: hidden;
+  /* Focus rides on the accent, never the browser default. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Anything that ticks gets tabular figures so the layout cannot jitter. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }

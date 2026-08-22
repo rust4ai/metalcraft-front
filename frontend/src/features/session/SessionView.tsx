@@ -1,13 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { ArrowLeft, AlertCircle, Loader2 } from 'lucide-react'
+import type { ToolCard, TranscriptItem } from './transcript'
 import { useSessions } from '@/stores/sessions'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 import { StatusDot } from '@/components/ui/StatusDot'
-import { ToolCard } from './ToolCard'
+import { Trace } from './Trace'
 import { Composer } from './Composer'
-import type { TranscriptItem } from './transcript'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { groupIntoBlocks } from './blocks'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
@@ -38,7 +40,7 @@ export function SessionView({ instanceId }: { instanceId: string }) {
         <StatusDot status={busy ? (session?.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
         <div className="min-w-0">
           <div className="truncate text-sm font-medium">{instance?.name ?? 'Agent'}</div>
-          <div className="truncate text-xs text-ink-dim">
+          <div className="truncate text-xs text-ink-2">
             {instance ? `${instance.agent_preset} · ${instance.persona}` : ''}
           </div>
         </div>
@@ -46,21 +48,22 @@ export function SessionView({ instanceId }: { instanceId: string }) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
         {opening[instanceId] && !session ? (
-          <div className="flex items-center gap-2 text-sm text-ink-dim">
+          <div className="flex items-center gap-2 text-sm text-ink-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Opening the conversation…
           </div>
         ) : session?.error ? (
           <Problem message={session.error} />
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
-            {session?.transcript.items.map((item) => (
-              <Item key={item.id} item={item} />
-            ))}
-            {session?.transcript.thinking && (
-              <div className="flex items-center gap-2 text-sm text-ink-faint">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> thinking…
-              </div>
+            {groupIntoBlocks(session?.transcript.items ?? []).map((block) =>
+              block.kind === 'tools' ? (
+                <Trace key={block.id} cards={block.cards} />
+              ) : (
+                <Item key={block.item.id} item={block.item} />
+              ),
             )}
+            {/* Only ever one waiting indicator, and never alongside output. */}
+            {session?.transcript.thinking && <LoadingState label="Thinking" />}
             <div ref={bottom} />
           </div>
         )}
@@ -71,10 +74,10 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   )
 }
 
-function Item({ item }: { item: TranscriptItem }) {
+function Item({ item }: { item: Exclude<TranscriptItem, ToolCard> }) {
   if (item.kind === 'user') {
     return (
-      <div className="self-end rounded-card rounded-br-sm bg-accent px-3.5 py-2 text-sm text-accent-ink max-w-[85%] whitespace-pre-wrap">
+      <div className="animate-fade-up max-w-[85%] self-end whitespace-pre-wrap rounded-card rounded-br-sm bg-accent px-3.5 py-2 text-[13.5px] text-accent-ink">
         {item.content}
       </div>
     )
@@ -82,10 +85,11 @@ function Item({ item }: { item: TranscriptItem }) {
   if (item.kind === 'reply') {
     // Markdown rendering lands with the rest of the P4 polish; the text is the
     // agent's actual reply either way, so it ships readable rather than pending.
-    return <div className="whitespace-pre-wrap text-sm leading-relaxed">{item.content}</div>
+    return (
+      <div className="animate-stream-in whitespace-pre-wrap text-[13.5px] leading-relaxed">{item.content}</div>
+    )
   }
-  if (item.kind === 'error') return <Problem message={item.message} code={item.code} retryable={item.retryable} />
-  return <ToolCard card={item} />
+  return <Problem message={item.message} code={item.code} retryable={item.retryable} />
 }
 
 /**
@@ -95,12 +99,12 @@ function Item({ item }: { item: TranscriptItem }) {
  */
 function Problem({ message, code, retryable }: { message: string; code?: string; retryable?: boolean }) {
   return (
-    <div className="flex gap-2.5 rounded-card border border-danger/30 bg-danger/5 px-3.5 py-3 text-sm">
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+    <div className="flex gap-2.5 rounded-card border border-red/30 bg-red/5 px-3.5 py-3 text-sm">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" />
       <div className="min-w-0">
         <p className="text-ink">{message}</p>
         {code && (
-          <p className="mt-1 text-xs text-ink-faint">
+          <p className="mt-1 text-xs text-ink-3">
             {code}
             {retryable ? ' · worth trying again' : ''}
           </p>

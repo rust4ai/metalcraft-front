@@ -15,22 +15,22 @@ export function TitleBar() {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-11 shrink-0 items-center justify-between border-b border-line bg-surface px-4 pl-20 text-xs"
+      className="flex h-11 shrink-0 items-center justify-between border-b border-line bg-page px-4 pl-20 text-[11.5px]"
     >
-      <div className="flex items-center gap-2 text-ink-dim" data-tauri-drag-region>
+      <div className="flex items-center gap-2 text-ink-2" data-tauri-drag-region>
         {info && <StatusDot status="idle" />}
         <span className="font-medium text-ink">{info?.name ?? 'Metalcraft'}</span>
-        {info?.version && <span className="text-ink-faint">v{info.version}</span>}
-        {pod && <span className="text-ink-faint">· {pod.slug}</span>}
+        {info?.version && <span className="font-mono text-ink-3">v{info.version}</span>}
+        {pod && <span className="font-mono text-ink-3">· {pod.slug}</span>}
       </div>
       <div className="flex items-center gap-3">
-        {session && <span className="text-ink-faint">{session.email}</span>}
+        {session && <span className="text-ink-3">{session.email}</span>}
         {info && (
           <button
             type="button"
             aria-label="Interface source"
             onClick={() => go({ kind: 'source' })}
-            className="text-ink-faint hover:text-ink"
+            className="text-ink-3 hover:text-ink"
           >
             <KeyRound className="h-3.5 w-3.5" />
           </button>

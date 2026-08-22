@@ -5,12 +5,17 @@ import { cn } from '@/lib/cn'
  *  world doing something that may take a while. */
 export type Status = 'idle' | 'thinking' | 'running' | 'error' | 'offline'
 
+/**
+ * Agent-initiated activity is the accent; the outcome colours are reserved for
+ * outcomes. That is why "thinking" is blue rather than orange — orange in this
+ * system means *needs review*, and a model doing its job does not.
+ */
 const color: Record<Status, string> = {
-  idle: 'bg-ink-faint',
-  thinking: 'bg-thinking',
-  running: 'bg-live',
-  error: 'bg-danger',
-  offline: 'bg-ink-faint/40',
+  idle: 'bg-ink-3',
+  thinking: 'bg-accent',
+  running: 'bg-accent',
+  error: 'bg-red',
+  offline: 'bg-ink-3/40',
 }
 
 export function StatusDot({ status, className }: { status: Status; className?: string }) {

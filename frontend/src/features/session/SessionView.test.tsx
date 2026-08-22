@@ -46,17 +46,30 @@ describe('SessionView', () => {
     await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
   })
 
-  it('renders live frames: tool card then reply', async () => {
+  it('renders live frames: tool trace then reply', async () => {
     const { emit } = await mountSession()
     await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
 
     emit({ kind: 'turn_started', turn_index: 1, user_message: 'run it' })
     emit({ kind: 'tool_started', tool_call_id: 'c', name: 'bash', args: { cmd: 'ls' } })
-    await waitFor(() => expect(screen.getByText('bash')).toBeTruthy())
+    // Chips read as verb + target, not as a raw tool name.
+    await waitFor(() => expect(screen.getByText('Run')).toBeTruthy())
+    expect(screen.getByText('ls')).toBeTruthy()
+    expect(screen.getByText('Running tools')).toBeTruthy()
 
+    emit({
+      kind: 'tool_completed',
+      tool_call_id: 'c',
+      name: 'bash',
+      duration_ms: 4,
+      result: { role: 'tool_result', id: 'c', name: 'bash', result: 'a.rs' },
+    })
     emit({ kind: 'reply', content: 'all done' })
     emit({ kind: 'done', status: 'completed' })
     await waitFor(() => expect(screen.getByText('all done')).toBeTruthy())
+    // Settled traces speak in the past tense — a finished trace still saying
+    // "Running tools" is the classic way agent UI looks broken.
+    expect(screen.getByText('Ran 1 tool')).toBeTruthy()
   })
 
   it('shows a classified failure in the user own words', async () => {

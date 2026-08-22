@@ -40,6 +40,26 @@ cargo run -p front-tauri            # devUrl in tauri.conf.json picks it up
 - **Unknown wire variants are ignored, not fatal.** Pods roll independently of the
   desktop app: an unrecognised `ChatEvent` must not kill a live turn.
 
+## Design
+
+The token layer in `src/index.css` is **Beautiful UI**'s (beautifului.dev, MIT), adopted rather
+than approximated — the primitives only cohere because they share one palette. Two rules follow
+from it and are worth keeping:
+
+- **No component branches on theme.** Every colour is a `light-dark()` pair and the theme is
+  chosen once, by `color-scheme` on `:root`. If you find yourself writing `dark:` variants for
+  colour, add a token instead.
+- **Three ink levels, no fourth.** `ink` for the claim, `ink-2` for the label, `ink-3` for
+  metadata. Mono is load-bearing: it marks machine-owned values (paths, args, timers, ids), and
+  anything that ticks gets `.tnum`.
+
+Rebranding means replacing `--color-accent*`. The gray ramp, shadow ladder and motion curves
+carry almost all of the perceived quality and should be left alone.
+
+`npm run dev` then **`localhost:5173/?gallery`** renders a dev-only harness of the primitives in
+the states that are hard to produce on demand — a trace mid-run, a failed tool call, a turn that
+ran out of credits. It is `import.meta.env.DEV`-gated and never ships.
+
 ## Tests
 
 ```bash

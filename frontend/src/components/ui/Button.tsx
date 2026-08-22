@@ -3,14 +3,14 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
 const button = cva(
-  'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+  'inline-flex items-center justify-center gap-2 rounded-control font-medium transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none',
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-accent-ink hover:opacity-90',
-        ghost: 'text-ink-dim hover:bg-surface hover:text-ink',
-        outline: 'border border-line text-ink hover:bg-surface',
-        danger: 'text-danger hover:bg-danger/10',
+        primary: 'bg-accent text-accent-ink shadow-btn hover:opacity-90',
+        ghost: 'text-ink-2 hover:bg-hover hover:text-ink',
+        outline: 'text-ink shadow-btn hover:bg-hover',
+        danger: 'text-red hover:bg-red/10',
       },
       size: {
         sm: 'h-8 px-3 text-sm',

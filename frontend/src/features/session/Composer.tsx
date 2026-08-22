@@ -33,15 +33,15 @@ export function Composer({
   }
 
   return (
-    <div className="border-t border-line bg-surface/60 p-3">
-      <div className="flex items-end gap-2 rounded-card border border-line bg-raised p-2 focus-within:border-accent">
+    <div className="border-t border-line bg-page/80 p-3 backdrop-blur">
+      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-card bg-field p-2 shadow-card transition-shadow duration-150 focus-within:shadow-raised">
         <textarea
           rows={1}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={busy ? 'The agent is working…' : placeholder}
-          className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent px-2 py-1 text-sm outline-none placeholder:text-ink-faint"
+          className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent px-2 py-1 text-[13.5px] caret-accent outline-none placeholder:text-ink-3"
         />
         <button
           type="button"
@@ -49,8 +49,8 @@ export function Composer({
           disabled={!canSend}
           aria-label="Send"
           className={cn(
-            'grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors',
-            canSend ? 'bg-accent text-accent-ink' : 'bg-surface text-ink-faint',
+            'grid h-8 w-8 shrink-0 place-items-center rounded-control transition-colors duration-150',
+            canSend ? 'bg-accent text-accent-ink shadow-btn' : 'bg-hover-2 text-ink-3',
           )}
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}

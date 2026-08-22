@@ -62,11 +62,11 @@ export function LoginView() {
   return (
     <div className="grid h-full place-items-center p-8">
       <div className="w-full max-w-sm text-center">
-        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl border border-line bg-raised">
+        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-card bg-surface shadow-card">
           <LogIn className="h-6 w-6 text-accent" />
         </div>
         <h1 className="text-xl font-semibold">Metalcraft</h1>
-        <p className="mt-2 text-sm text-ink-dim">
+        <p className="mt-2 text-sm text-ink-2">
           Work a fleet of agents running on your pod.
         </p>
 
@@ -76,7 +76,7 @@ export function LoginView() {
           </Button>
         ) : (
           <div className="mt-8 space-y-4 text-left">
-            <p className="text-sm text-ink-dim">
+            <p className="text-sm text-ink-2">
               Approve this sign-in in your browser. Waiting…
             </p>
             {login.user_code && (
@@ -86,7 +86,7 @@ export function LoginView() {
             )}
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-left font-mono text-xs text-ink-dim hover:text-ink"
+              className="flex w-full items-center gap-2 rounded-control bg-inset px-3 py-2 text-left font-mono text-[11.5px] text-ink-2 hover:text-ink"
               onClick={() => {
                 void navigator.clipboard.writeText(login.verify_url)
                 setCopied(true)
@@ -99,7 +99,7 @@ export function LoginView() {
           </div>
         )}
 
-        {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+        {error && <p className="mt-4 text-sm text-red">{error}</p>}
       </div>
     </div>
   )
