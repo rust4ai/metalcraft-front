@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { emptyTranscript, reduce, reduceAll } from './transcript'
-import type { ChatEvent } from '@/types'
+import { emptyTranscript, fromMessages, reduce, reduceAll } from './transcript'
+import type { ChatEvent, ChatMessage } from '@/types'
 
 const turn: ChatEvent[] = [
   { kind: 'turn_started', turn_index: 0, user_message: 'read the file' },
@@ -89,5 +89,94 @@ describe('transcript reducer', () => {
     const before = reduceAll(emptyTranscript(), turn.slice(0, 2))
     const after = reduce(before, { kind: 'llm_delta', text: 'x' } as unknown as ChatEvent)
     expect(after).toEqual(before)
+  })
+})
+
+describe('fromMessages (a chat reopened after a restart)', () => {
+  const stored: ChatMessage[] = [
+    { role: 'user', content: 'read the file' },
+    { role: 'assistant', content: 'internal chatter' },
+    { role: 'tool_call', id: 'c1', call_id: 'c1', name: 'read_file', args: { path: 'a.rs' } },
+    { role: 'tool_result', id: 'r1', call_id: 'c1', name: 'read_file', result: 'fn main() {}' },
+    { role: 'tool_call', id: 'c2', call_id: 'c2', name: 'say_to_user', args: { message: 'It is a main function.' } },
+    { role: 'tool_result', id: 'r2', call_id: 'c2', name: 'say_to_user', result: 'ok' },
+  ]
+
+  it('rebuilds the transcript the live reducer would have built', () => {
+    // The whole point: leaving a chat and coming back must not change its shape.
+    const seeded = fromMessages(stored)
+    const live = reduceAll(emptyTranscript(), turn)
+    expect(seeded.items.map((i) => i.kind)).toEqual(live.items.map((i) => i.kind))
+  })
+
+  it('renders a say_to_user call as the reply, not as a tool card', () => {
+    // Left as a card it groups into the trace and the answer reads "Ran 1 tool".
+    const s = fromMessages(stored)
+    const replies = s.items.filter((i) => i.kind === 'reply')
+    expect(replies).toHaveLength(1)
+    expect(replies[0]).toMatchObject({ content: 'It is a main function.' })
+    expect(s.items.filter((i) => i.kind === 'tool')).toHaveLength(1)
+  })
+
+  it('drops free-text assistant content in tool-only mode', () => {
+    const s = fromMessages(stored)
+    expect(s.items.some((i) => i.kind === 'reply' && i.content === 'internal chatter')).toBe(false)
+  })
+
+  it('still treats assistant content as the reply when the chat has no say_to_user', () => {
+    const s = fromMessages([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ])
+    expect(s.items.map((i) => i.kind)).toEqual(['user', 'reply'])
+    expect(s.items[1]).toMatchObject({ content: 'hello' })
+  })
+
+  it('folds tool_result into its call so a failed call still looks failed', () => {
+    const s = fromMessages(stored)
+    const tool = s.items.find((i) => i.kind === 'tool')
+    expect(tool).toMatchObject({ name: 'read_file', status: 'done', result: 'fn main() {}' })
+  })
+
+  it('pairs a result to its call by call_id, not by its own id', () => {
+    const s = fromMessages([
+      { role: 'tool_call', id: 'call-1', call_id: 'abc', name: 'bash', args: { command: 'ls' } },
+      { role: 'tool_result', id: 'res-1', call_id: 'abc', name: 'bash', result: 'ok' },
+    ])
+    expect(s.items).toHaveLength(1)
+    expect(s.items[0]).toMatchObject({ kind: 'tool', result: 'ok' })
+  })
+
+  it('falls back to id when a pod omits call_id', () => {
+    const s = fromMessages([
+      { role: 'tool_call', id: 'c9', name: 'bash', args: { command: 'ls' } },
+      { role: 'tool_result', id: 'c9', name: 'bash', result: 'ok' },
+    ])
+    expect(s.items).toHaveLength(1)
+    expect(s.items[0]).toMatchObject({ kind: 'tool', result: 'ok' })
+  })
+
+  it('reads the reply text from whichever key the pod used', () => {
+    for (const args of [{ text: 'hi' }, { content: 'hi' }, { reply: 'hi' }, { body: 'hi' }]) {
+      const s = fromMessages([{ role: 'tool_call', id: 'c', name: 'say_to_user', args }])
+      expect(s.items[0]).toMatchObject({ kind: 'reply', content: 'hi' })
+    }
+  })
+
+  it('keeps a say_to_user card when the text is nowhere it recognises', () => {
+    // Better an odd card than a blank bubble where the answer should be.
+    const s = fromMessages([{ role: 'tool_call', id: 'c', name: 'say_to_user', args: { wat: 1 } }])
+    expect(s.items[0]).toMatchObject({ kind: 'tool', name: 'say_to_user' })
+  })
+
+  it('shows a result whose call was trimmed out of history', () => {
+    const s = fromMessages([{ role: 'tool_result', id: 'orphan', name: 'bash', result: 'ok' }])
+    expect(s.items[0]).toMatchObject({ kind: 'tool', name: 'bash', status: 'done', result: 'ok' })
+  })
+
+  it('opens a reopened chat idle, never mid-turn', () => {
+    const s = fromMessages(stored)
+    expect(s.busy).toBe(false)
+    expect(s.thinking).toBe(false)
   })
 })
