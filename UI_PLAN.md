@@ -1,6 +1,6 @@
 # UI_PLAN — the Orca shell
 
-**Status:** S1–S5 done (2026-08-22); S6–S7 outstanding. Companion to `PLAN.md`; this document
+**Status:** S1–S7 done (2026-08-22) — the Orca shell is complete. Companion to `PLAN.md`; this document
 owns the *shape of the window*, PLAN.md owns the product. Where they overlap
 (PLAN §10 surfaces, §11 P2 "tabs/panes/splits", §14.2 "layout is local") PLAN.md
 is the authority on *what* and this is the authority on *where it sits*.
@@ -192,17 +192,44 @@ A side sheet rather than a centred modal, so the list stays put behind it and
 comparing two packs is a click each way instead of a re-search.
 
 ### S6 — nudge cards
-The bottom-left dismissible card stack, driven by unmet setup facts (no interface
-source, no Octaweave, no packs installed).
+**Built.** Orca's bottom-left setup card, driven by facts three other stores
+already own: no interface source bound, no packs installed, packs but no agents.
+Ranked in that order — spawning an agent you cannot talk to is worse than having
+nothing to spawn.
 
-This is what lets `sourceBound === false` stop being a **full-screen takeover**
-(`stores/ui.ts`) for someone whose pod already works. Only a genuinely keyless
-pod — which cannot think, so a fleet would be a dead end — still gets the
-takeover; everything else in PLAN §9.3–9.4 becomes a nudge you can ignore.
+**One card, not a stack.** The original spec here said stack; a queue of setup
+nags in the corner of a working app is noise, and the second-most-urgent thing
+can wait until the first is handled or dismissed.
+
+**Dismissals expire with their condition.** Waving away "no agents to spawn from"
+once should not silence it forever if every pack is later uninstalled, so a
+dismissal is forgotten the moment its condition resolves.
+
+**Never while the fleet is loading.** Every condition is "you have none of X",
+and an empty list mid-fetch is indistinguishable from an empty pod — nudging on
+that would flash a wrong card on every launch.
+
+Nothing nudges toward Octaweave (PLAN §9.3 / P7). It is not built, and a card
+offering a button that goes nowhere is worse than silence.
+
+*Correction to the original plan:* this section claimed S6 was what would stop
+`sourceBound === false` being a "full-screen takeover". That stopped being true
+at S3 — once views became tabs, the source step was already a focused tab rather
+than a takeover.
 
 ### S7 — command palette
-`cmdk` is already a dependency and currently unused. The `▷ Command` button at
-the right of the tab strip plus `⌘K`: instances, presets, open tabs, actions.
+**Built.** `⌘K` and the `▷ Command` button at the right of the tab strip.
+
+Ordered by what someone is actually reaching for: the agent they want to talk to,
+then the tab they left open, then spawning, then the places, then the view
+toggles. **Presets rank below instances deliberately** — "open Amy" is far more
+common than "spawn a second Amy", and a palette that puts creation first is one
+that creates things by accident.
+
+An agent's preset is part of its searchable value, not just its label, so typing
+a pack name surfaces every agent spawned from it.
+
+`⌘N` came along with it, since the palette needed a New-agent entry anyway.
 
 ---
 
@@ -211,5 +238,31 @@ the right of the tab strip plus `⌘K`: instances, presets, open tabs, actions.
 S1–S3 shipped as one commit: the frame without tabs is a decoration, and moving
 to tabs rewrites `App.tsx`'s view switch either way, so splitting them would have
 meant writing that switch twice. S4–S5 followed together — both are chrome around
-the same frame, and S5's honest-gap decision only becomes visible once the rail
-proves the pattern. S6–S7 remain independent and can land in any order.
+the same frame — then S5b, then S6–S7 together as the last of the furniture.
+
+## 4. Shortcuts
+
+| | |
+|---|---|
+| `⌘K` | Command palette |
+| `⌘N` | New agent |
+| `⌘B` | Sidebar |
+| `⌘J` | Details rail |
+| `⌘W` | Close tab |
+| `⌘1`–`⌘9` | Select tab (`⌘9` is the last, matching browsers) |
+| `⌘⇧[` / `⌘⇧]` | Cycle tabs |
+
+## 5. What the shell still doesn't have
+
+Honest gaps, so nobody rediscovers them as bugs:
+
+- **No theme toggle.** `index.css` has the `data-theme` hooks and every colour is
+  a `light-dark()` pair, so the work is a store and a button — it just has not
+  been done, and the app follows the OS.
+- **No split panes.** PLAN §11 P2 says "tabs/panes/splits"; tabs and the two side
+  columns are built, splitting the centre is not.
+- **No transcript virtualization.** `@tanstack/react-virtual` is a dependency and
+  unused; long sessions will get slow before they get unusable.
+- **No windowed-allowance meter.** The status bar shows a credit balance because
+  that is what the ledger has (§S5). Orca's "10% used this month" needs a
+  denominator nothing serves.

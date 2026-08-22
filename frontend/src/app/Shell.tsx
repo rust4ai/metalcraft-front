@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { PacksView } from '@/features/packs/PacksView'
@@ -11,6 +11,8 @@ import { Sidebar } from './Sidebar'
 import { TabStrip } from './TabStrip'
 import { StatusBar } from './StatusBar'
 import { RightRail } from './RightRail'
+import { Nudges } from './Nudges'
+import { CommandPalette } from './CommandPalette'
 
 /**
  * The persistent frame (UI_PLAN §2, S1).
@@ -35,11 +37,14 @@ export function Shell() {
     if (instances.length) prune(instances.map((i) => i.id))
   }, [instances, prune])
 
-  useShortcuts()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useShortcuts(setPaletteOpen)
 
   return (
     <div
-      className="grid h-full min-h-0"
+      // `relative` so the nudge card can sit over the bottom-left corner the way
+      // Orca's does, without taking a column in the grid.
+      className="relative grid h-full min-h-0"
       style={{
         gridTemplateColumns: `${sidebarOpen ? 'auto ' : ''}1fr${railOpen ? ' auto' : ''}`,
         gridTemplateRows: '1fr auto',
@@ -47,7 +52,7 @@ export function Shell() {
     >
       {sidebarOpen && <Sidebar />}
       <main className="flex min-h-0 min-w-0 flex-col bg-page">
-        <TabStrip />
+        <TabStrip onCommand={() => setPaletteOpen(true)} />
         <div className="min-h-0 flex-1">
           {view.kind === 'session' ? (
             // Keyed so switching agents rebuilds the transcript rather than
@@ -64,9 +69,11 @@ export function Shell() {
       </main>
       {railOpen && <RightRail />}
       <StatusBar />
-      {/* One dialog for the whole shell: the sidebar, the tab strip and the
-          fleet's own button all open the same thing. */}
+      <Nudges />
+      {/* One dialog for the whole shell: the sidebar, the tab strip, the palette
+          and the fleet's own button all open the same thing. */}
       <NewAgentDialog />
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   )
 }
@@ -76,8 +83,8 @@ function SourceTab() {
   return <InterfaceSourceView onDone={markSourceBound} />
 }
 
-function useShortcuts() {
-  const { close, select, step, activeKey, tabs } = useUi()
+function useShortcuts(setPaletteOpen: (open: boolean) => void) {
+  const { close, select, step, activeKey, tabs, setNewAgentOpen } = useUi()
   const toggleSidebar = useLayout((s) => s.toggleSidebar)
   const toggleRail = useLayout((s) => s.toggleRail)
 
@@ -93,7 +100,13 @@ function useShortcuts() {
         }
         return
       }
-      if (e.key.toLowerCase() === 'w') {
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(true)
+      } else if (e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        setNewAgentOpen(true)
+      } else if (e.key.toLowerCase() === 'w') {
         e.preventDefault()
         close(activeKey)
       } else if (e.key.toLowerCase() === 'b') {

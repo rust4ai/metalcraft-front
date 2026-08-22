@@ -51,7 +51,10 @@ pub enum LoginStatus {
 pub struct Credits {
     #[serde(default)]
     pub credits: i64,
-    #[serde(default, rename = "available_credits")]
+    // Deserialize-only: a bare `rename` also renames on the way *out*, which
+    // would hand the webview `available_credits` while its type says
+    // `available` — and a status bar that crashes takes the whole shell with it.
+    #[serde(default, rename(deserialize = "available_credits"))]
     pub available: i64,
     #[serde(default)]
     pub micro_credits: i64,
@@ -190,5 +193,42 @@ mod tests {
     fn an_unknown_status_from_a_newer_hub_is_not_an_error() {
         let s: LoginStatus = serde_json::from_str(r#"{"status":"rate_limited"}"#).unwrap();
         assert!(matches!(s, LoginStatus::Unknown));
+    }
+}
+
+#[cfg(test)]
+mod credits_tests {
+    use super::Credits;
+
+    /// The hub's field name in, our field name out.
+    ///
+    /// Worth a test because `#[serde(rename)]` renames in *both* directions by
+    /// default, and the asymmetry is invisible until the webview reads a field
+    /// that isn't there. A TypeScript-side stub cannot catch this: it asserts the
+    /// shape we assumed, not the one that crosses the boundary.
+    #[test]
+    fn deserializes_the_hub_name_and_serializes_ours() {
+        let c: Credits =
+            serde_json::from_str(r#"{"credits":1200,"available_credits":1150,"micro_credits":1}"#)
+                .expect("hub payload");
+        assert_eq!(c.available, 1150);
+
+        let out = serde_json::to_value(&c).expect("serialize");
+        assert!(
+            out.get("available").is_some(),
+            "the webview reads `available`"
+        );
+        assert!(
+            out.get("available_credits").is_none(),
+            "and only `available`"
+        );
+    }
+
+    /// A hub that reports a balance but no reservations must not decode to zero.
+    #[test]
+    fn tolerates_a_payload_without_available() {
+        let c: Credits = serde_json::from_str(r#"{"credits":5}"#).expect("partial payload");
+        assert_eq!(c.credits, 5);
+        assert_eq!(c.available, 0);
     }
 }

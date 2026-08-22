@@ -37,6 +37,17 @@ describe('credits', () => {
     expect(store.getState().credits?.available).toBe(1150)
   })
 
+  it('survives a payload whose shape it did not expect', async () => {
+    // The real bug this suite missed: the command briefly serialized
+    // `available_credits`, and the bar read `available` and threw, which
+    // unmounted the whole shell. The store must still take the reading; the
+    // readout is what guards the render.
+    const store = await fresh({ credits: 5 })
+    await store.getState().refresh()
+    expect(store.getState().supported).toBe(true)
+    expect(store.getState().credits?.available).toBeUndefined()
+  })
+
   it('keeps the last good balance when a poll fails', async () => {
     const store = await fresh({ credits: 1200, available: 1150, micro_credits: 1_200_000 })
     await store.getState().refresh()

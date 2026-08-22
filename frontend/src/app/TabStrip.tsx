@@ -1,4 +1,4 @@
-import { Bot, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, Store, X } from 'lucide-react'
+import { Bot, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, Store, X } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -42,7 +42,7 @@ function TabIcon({ view }: { view: View }) {
  * full-width title bar, so the empty space to the right of the last tab is the
  * window's other drag region.
  */
-export function TabStrip() {
+export function TabStrip({ onCommand }: { onCommand: () => void }) {
   const { tabs, activeKey, select, close, setNewAgentOpen } = useUi()
   const instances = useFleet((s) => s.instances)
   const { sidebarOpen, toggleSidebar, railOpen, toggleRail } = useLayout()
@@ -124,6 +124,16 @@ export function TabStrip() {
 
       {/* The rest of the row is window chrome. */}
       <div data-tauri-drag-region className="h-full flex-1" />
+
+      <button
+        type="button"
+        onClick={onCommand}
+        title="Command palette  ⌘K"
+        className="flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1 text-[12px] text-ink-2 hover:bg-hover hover:text-ink"
+      >
+        <Play className="h-3 w-3" />
+        Command
+      </button>
 
       <button
         type="button"

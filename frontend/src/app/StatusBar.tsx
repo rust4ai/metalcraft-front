@@ -44,10 +44,17 @@ export function StatusBar() {
 }
 
 function CreditsReadout({ credits }: { credits: NonNullable<ReturnType<typeof useCredits.getState>['credits']> }) {
-  const held = credits.credits - credits.available
+  // Defensive against the shape rather than trusting it: this is the last row of
+  // the window, and a throw here unmounts the entire shell. A hub that answers
+  // with a field we did not expect should cost the readout, not the app.
+  const available = typeof credits.available === 'number' ? credits.available : null
+  const total = typeof credits.credits === 'number' ? credits.credits : null
+  if (available === null) return null
+  const held = total === null ? 0 : total - available
+
   return (
     <span className="tnum" title={held > 0 ? `${held.toLocaleString()} held by turns in flight` : undefined}>
-      {credits.available.toLocaleString()} credits
+      {available.toLocaleString()} credits
       {/* Only worth saying when it is true, and then it explains a number that
           would otherwise look wrong against the account page. */}
       {held > 0 && <span className="text-ink-3"> · {held.toLocaleString()} held</span>}
