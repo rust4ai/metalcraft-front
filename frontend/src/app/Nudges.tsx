@@ -55,7 +55,7 @@ export function Nudges() {
         icon: Store,
         title: 'No agents to spawn from',
         body: 'Agent packs bring the presets and personas you spawn instances from. Axoniac Prime is the default host.',
-        action: 'Browse agents',
+        action: 'Browse agent presets',
         run: () => go({ kind: 'packs' }),
       })
     } else if (instances.length === 0) {

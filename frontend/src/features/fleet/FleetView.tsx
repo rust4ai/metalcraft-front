@@ -32,7 +32,7 @@ export function FleetView() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => go({ kind: 'packs' })}>
             <Store className="h-4 w-4" />
-            Browse agents
+            Browse agent presets
           </Button>
           <Button size="sm" disabled={presets.length === 0} onClick={() => setNewAgentOpen(true)}>
             <Plus className="h-4 w-4" />

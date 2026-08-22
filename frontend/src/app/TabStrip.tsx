@@ -11,7 +11,7 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
     case 'fleet':
       return 'Fleet'
     case 'packs':
-      return 'Browse agents'
+      return 'Agent presets'
     // Not "Interface source": a tab label is a word, not a sentence, and the
     // pane it opens already carries the full title.
     case 'source':

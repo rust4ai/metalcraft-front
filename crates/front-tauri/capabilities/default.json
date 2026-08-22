@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for the main window. Nothing that touches the network or the filesystem is exposed to the webview — every such call goes through a typed RPC command in the Rust core (PLAN §8).",
+  "description": "Capabilities for the main window. Nothing that touches the network or the filesystem is exposed to the webview — every such call goes through a typed RPC command in the Rust core (PLAN §8). start-dragging is the one window verb outside core:default that we need: with titleBarStyle Overlay there is no native title bar, so the data-tauri-drag-region elements in the tab strip are the only way to move the window, and they are dead without it.",
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "deep-link:default",
     "store:default"
   ]

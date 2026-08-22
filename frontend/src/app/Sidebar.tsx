@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { KeyRound, PanelLeft, Plus, Search, Store } from 'lucide-react'
+import { KeyRound, LayoutGrid, PanelLeft, Plus, Search, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -11,10 +11,10 @@ import { cn } from '@/lib/cn'
 /**
  * The left column (UI_PLAN §2, S2).
  *
- * The nav rows above the search field are deliberately *not* the fleet: the
- * agents tree below is the fleet, the same way Orca's Projects tree is the
- * projects and Tasks/Automations are somewhere else. Duplicating the tree as a
- * nav row would be a second door onto the same room.
+ * The nav rows above the search field are destinations, not fleet contents: "My
+ * fleet" focuses the pinned fleet tab (the grid view of every agent), while the
+ * tree below is the fleet itself, one row per agent. The row and the tree open
+ * the same room, but only one of them scales with the number of agents.
  */
 export function Sidebar() {
   const { sidebarWidth, setSidebarWidth, toggleSidebar } = useLayout()
@@ -62,8 +62,14 @@ export function Sidebar() {
 
       <nav className="px-2 pb-2">
         <NavRow
+          icon={<LayoutGrid className="h-4 w-4" />}
+          label="My fleet"
+          selected={activeKey === 'fleet'}
+          onClick={() => go({ kind: 'fleet' })}
+        />
+        <NavRow
           icon={<Store className="h-4 w-4" />}
-          label="Browse agents"
+          label="Browse agent presets"
           selected={activeKey === 'packs'}
           onClick={() => go({ kind: 'packs' })}
         />

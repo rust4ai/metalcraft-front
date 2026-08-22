@@ -109,7 +109,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
         <Group heading="Go">
           <Item value="go fleet" onSelect={() => run(() => go({ kind: 'fleet' }))} icon={<Bot className="h-3.5 w-3.5" />} label="Fleet" />
-          <Item value="go packs browse agents registry axoniac" onSelect={() => run(() => go({ kind: 'packs' }))} icon={<Store className="h-3.5 w-3.5" />} label="Browse agents" />
+          <Item value="go packs browse agent presets registry axoniac" onSelect={() => run(() => go({ kind: 'packs' }))} icon={<Store className="h-3.5 w-3.5" />} label="Browse agent presets" />
           <Item value="go interface source key provider" onSelect={() => run(() => go({ kind: 'source' }))} icon={<KeyRound className="h-3.5 w-3.5" />} label="Interface source" />
         </Group>
 
