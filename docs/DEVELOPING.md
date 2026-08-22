@@ -8,18 +8,46 @@ npm --prefix frontend install
 ./run.sh --release                  # release: frontend embedded, no dev server
 ```
 
-**A debug Tauri build loads `build.devUrl`, not `frontendDist`.** Run the debug binary
-without the Vite dev server and you get a blank white window with nothing in the log — the
-process is alive, the webview simply has nothing to load. `./run.sh` starts Vite for you and
-refuses to launch if it cannot come up, because a silent white window is the worst possible
-failure mode.
+### What decides whether the webview loads a dev server or the embedded frontend
 
-Only `--release` embeds `frontend/dist`. That path also touches `crates/front-tauri/src/main.rs`
-first, because `tauri-build` embeds `frontendDist` at compile time but does **not** treat it as
-a rebuild input — rebuild only the frontend and you ship the previous UI.
+Not the cargo profile. The `tauri` crate's build script computes `dev = !custom_protocol`, so
+**the `custom-protocol` feature is the switch**:
 
-Corollary worth internalising: **a running process is not a rendering UI.** If you want to know
-whether the app works, look at the window or run the tests — `pgrep` proves nothing.
+| Build | Webview loads |
+|---|---|
+| without `custom-protocol` (any profile, `--release` included) | `build.devUrl` — i.e. Vite on :5173 |
+| with `custom-protocol` | the embedded `frontendDist` (`tauri://localhost`) |
+
+The tauri CLI passes that feature for `tauri build`. We build with plain cargo, so `run.sh
+--release` passes it. Miss it and a release build still wants a dev server that isn't running,
+and you get a blank white window with an empty log.
+
+`./run.sh` (dev) starts Vite, waits for it, and **refuses to launch** without it, for the same
+reason. The release path also touches `crates/front-tauri/src/main.rs` first, because
+`tauri-build` embeds `frontendDist` at compile time but does not treat it as a rebuild input —
+rebuild only the frontend and you ship the previous UI.
+
+### The boot probe
+
+`main.rs` evals a small script into the webview before the bundle runs. It reports three things
+to the Rust side, which land in the log:
+
+```
+tauri context: release — the webview loads embedded frontendDist
+webview loaded: tauri://localhost
+webview mounted: root children=1
+```
+
+plus any `error` / `unhandledrejection` from the page. Keep it. A blank window with a live
+process and an empty log is the worst failure mode in this stack, and this turns it into a line
+of text — `loaded` tells you *what* the webview fetched, `mounted` tells you whether React got
+there.
+
+Two corollaries, both learned expensively here:
+
+- **A running process is not a rendering UI.** `pgrep` proves a PID exists and nothing else.
+- **Do not conclude from an absence.** "No connection to :5173, therefore it must be serving
+  embedded assets" was wrong twice: it tried, was refused, and gave up. Ask the thing itself.
 
 For UI work, run the renderer with HMR and point the shell at it:
 
