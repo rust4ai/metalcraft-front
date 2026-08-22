@@ -4,13 +4,22 @@
 
 ```bash
 npm --prefix frontend install
-./run.sh                            # builds the renderer, then runs the shell
+./run.sh                            # dev: Vite + the debug shell, with HMR
+./run.sh --release                  # release: frontend embedded, no dev server
 ```
 
-`run.sh` touches `crates/front-tauri/src/main.rs` before building, and that matters:
-`tauri-build` embeds `frontendDist` at compile time but does **not** treat it as a rebuild
-input. Rebuilding only the frontend leaves you running the previous UI — the app starts
-fine and your change is simply absent, which is a confusing hour if you do not know it.
+**A debug Tauri build loads `build.devUrl`, not `frontendDist`.** Run the debug binary
+without the Vite dev server and you get a blank white window with nothing in the log — the
+process is alive, the webview simply has nothing to load. `./run.sh` starts Vite for you and
+refuses to launch if it cannot come up, because a silent white window is the worst possible
+failure mode.
+
+Only `--release` embeds `frontend/dist`. That path also touches `crates/front-tauri/src/main.rs`
+first, because `tauri-build` embeds `frontendDist` at compile time but does **not** treat it as
+a rebuild input — rebuild only the frontend and you ship the previous UI.
+
+Corollary worth internalising: **a running process is not a rendering UI.** If you want to know
+whether the app works, look at the window or run the tests — `pgrep` proves nothing.
 
 For UI work, run the renderer with HMR and point the shell at it:
 
