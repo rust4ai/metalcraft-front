@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { Bot, Plus, RefreshCw, AlertTriangle, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
-import { NewAgentDialog } from './NewAgentDialog'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatusDot } from '@/components/ui/StatusDot'
@@ -59,7 +58,6 @@ export function FleetView() {
           ))}
         </div>
       )}
-      <NewAgentDialog />
     </div>
   )
 }

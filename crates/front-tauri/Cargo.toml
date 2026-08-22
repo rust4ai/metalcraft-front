@@ -11,6 +11,15 @@ description = "metalcraft-front desktop shell"
 name = "metalcraft-front"
 path = "src/main.rs"
 
+[features]
+# Tauri decides dev-vs-production from this one feature: the `tauri` crate's build
+# script computes `dev = !custom_protocol`. With it off the webview loads
+# `build.devUrl` (a dev server); with it on it serves the embedded `frontendDist`.
+# The tauri CLI passes it for `tauri build` — we build with plain cargo, so
+# `run.sh --release` passes it instead. Without it, a release build still wants a
+# dev server and shows a blank window when there isn't one.
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 front-core = { path = "../front-core" }
 front-cloud = { path = "../front-cloud" }

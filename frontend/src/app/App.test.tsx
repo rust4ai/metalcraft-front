@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // Tabs and layout persist to localStorage, which outlives vi.resetModules() —
+  // without this, the keyless-pod case leaves a source tab open for the next one.
+  localStorage.clear()
+})
 import type { Transport } from '@/rpc/transport'
 
 /**
@@ -47,7 +52,8 @@ describe('App', () => {
     })
     await waitFor(() => expect(screen.getByText('a@b.com')).toBeTruthy())
     // Auto-connects when the account has exactly one pod, and lands on the fleet.
-    await waitFor(() => expect(screen.getByText('Fleet')).toBeTruthy())
+    // By role: the shell also names the tab "Fleet".
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
   })
 
   it('sends a pod with no provider key to the interface source step', async () => {

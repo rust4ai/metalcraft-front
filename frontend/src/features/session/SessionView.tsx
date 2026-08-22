@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { ArrowLeft, AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import type { ToolCard, TranscriptItem } from './transcript'
 import { useSessions } from '@/stores/sessions'
 import { useFleet } from '@/stores/fleet'
-import { useUi } from '@/stores/ui'
-import { Button } from '@/components/ui/Button'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { Trace } from './Trace'
 import { Composer } from './Composer'
@@ -15,7 +13,6 @@ import { groupIntoBlocks } from './blocks'
 export function SessionView({ instanceId }: { instanceId: string }) {
   const { byInstance, opening, open, send } = useSessions()
   const instance = useFleet((s) => s.instances.find((i) => i.id === instanceId))
-  const go = useUi((s) => s.go)
   const session = byInstance[instanceId]
   const bottom = useRef<HTMLDivElement>(null)
 
@@ -34,9 +31,6 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={() => go({ kind: 'fleet' })} aria-label="Back to fleet">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <StatusDot status={busy ? (session?.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
         <div className="min-w-0">
           <div className="truncate text-sm font-medium">{instance?.name ?? 'Agent'}</div>

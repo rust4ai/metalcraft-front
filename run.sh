@@ -5,10 +5,12 @@
 #   ./run.sh              dev: Vite dev server + the debug shell (HMR)
 #   ./run.sh --release    release: frontend embedded in the binary, no server
 #
-# The distinction is not cosmetic. A **debug** Tauri build loads `build.devUrl`
-# from tauri.conf.json — it does not look at `frontendDist` at all — so running
-# the debug binary without Vite gives you a blank white window and no error.
-# Only a release build embeds `frontend/dist`.
+# The distinction is not cosmetic, and it is not the cargo profile that decides
+# it: the `tauri` crate computes `dev = !custom_protocol`, so a build *without*
+# the `custom-protocol` feature loads `build.devUrl` and never looks at
+# `frontendDist` — release profile included. The tauri CLI passes that feature on
+# `tauri build`; we use plain cargo, so `--release` passes it here. Get this wrong
+# and you get a blank white window with an empty log.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -17,7 +19,7 @@ if [[ "${1:-}" == "--release" ]]; then
   # tauri-build embeds frontendDist at compile time but does not treat it as a
   # rebuild input, so without this you ship the previous UI.
   touch crates/front-tauri/src/main.rs
-  exec cargo run --release -p front-tauri
+  exec cargo run --release --features custom-protocol -p front-tauri
 fi
 
 vite_pid=""

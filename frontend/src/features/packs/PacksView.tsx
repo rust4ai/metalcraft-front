@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Check, Download, ExternalLink, Loader2, Search } from 'lucide-react'
+import { BadgeCheck, Check, Download, ExternalLink, Loader2, Search } from 'lucide-react'
 import { usePacks } from '@/stores/packs'
 import { useFleet } from '@/stores/fleet'
-import { useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/cn'
@@ -19,7 +18,6 @@ import type { SearchHit } from '@/types'
 export function PacksView() {
   const { registries, active, connection, results, installed, query, loading, installing, error, load, select, search, connect, install } =
     usePacks()
-  const go = useUi((s) => s.go)
   const loadFleet = useFleet((s) => s.load)
 
   useEffect(() => {
@@ -31,9 +29,6 @@ export function PacksView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={() => go({ kind: 'fleet' })} aria-label="Back to fleet">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <div className="min-w-0">
           <div className="text-sm font-medium">Agents</div>
           <div className="text-[11.5px] text-ink-2">Install an agent from a registry</div>
