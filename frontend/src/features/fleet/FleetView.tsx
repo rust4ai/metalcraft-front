@@ -94,7 +94,12 @@ function InstanceCard({
       )}
 
       <div className="mt-3 flex items-center justify-between text-xs text-ink-faint">
-        <span>{instance.persistent ? 'persistent' : 'ephemeral'}</span>
+        <span>
+          {instance.persistent ? 'persistent' : 'ephemeral'}
+          {instance.conversation_count
+            ? ` · ${instance.conversation_count} conversation${instance.conversation_count === 1 ? '' : 's'}`
+            : ''}
+        </span>
         <span>{relative(instance.last_active_at || instance.created_at)}</span>
       </div>
     </Card>

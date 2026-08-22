@@ -53,11 +53,13 @@ export function NewAgentDialog() {
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-sm font-medium">{p.name || p.slug}</span>
-              {p.agent_pack && (
-                <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-faint">{p.agent_pack}</span>
+              {p.pack_id && (
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-faint">{p.pack_id}</span>
               )}
             </div>
-            {p.description && <p className="mt-0.5 line-clamp-2 text-xs text-ink-dim">{p.description}</p>}
+                {(p.tagline || p.description) && (
+              <p className="mt-0.5 line-clamp-2 text-xs text-ink-dim">{p.tagline || p.description}</p>
+            )}
           </button>
         ))}
       </div>

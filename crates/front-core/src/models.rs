@@ -61,8 +61,13 @@ pub struct AgentInstance {
     pub created_at: String,
     #[serde(default)]
     pub last_active_at: String,
+    /// Flattened into the instance by the list endpoint — how many conversations
+    /// this agent has accumulated.
+    #[serde(default)]
+    pub conversation_count: usize,
 }
 
+/// A preset as the pod summarises it (`agent_preset::PresetSummary`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPresetSummary {
     pub slug: String,
@@ -71,9 +76,39 @@ pub struct AgentPresetSummary {
     #[serde(default)]
     pub description: String,
     #[serde(default)]
-    pub agent_pack: Option<String>,
+    pub tagline: Option<String>,
+    /// The agent pack that provided it, if any. Named `pack_id` on the wire.
+    #[serde(default)]
+    pub pack_id: Option<String>,
     #[serde(default)]
     pub default_persona: Option<String>,
+    #[serde(default)]
+    pub persona_count: usize,
+    /// Pack-provided presets cannot be edited on the pod.
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// `GET /agents/instances` — the instance plus what the pod counts alongside it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct InstanceList {
+    #[serde(default)]
+    pub instances: Vec<AgentInstance>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PresetList {
+    #[serde(default)]
+    pub presets: Vec<AgentPresetSummary>,
+    /// The preset used when a caller names none.
+    #[serde(default)]
+    pub default: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentPackList {
+    #[serde(default)]
+    pub agent_packs: Vec<InstalledAgentPack>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,11 +165,18 @@ pub struct NewChat {
 pub struct KeyEntry {
     pub name: String,
     #[serde(default)]
-    pub masked: Option<String>,
+    pub masked: String,
+    /// `"global"` or `"channel"`.
     #[serde(default)]
-    pub source: Option<String>,
+    pub scope: String,
     #[serde(default)]
     pub channel_id: Option<String>,
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// Platform-injected and read-only — the pod refuses writes to these, so the
+    /// UI must not offer one.
+    #[serde(default)]
+    pub managed: bool,
 }
 
 /// A host the pod is willing to fetch agent packs from.
@@ -174,4 +216,66 @@ pub struct InstalledAgentPack {
     pub description: Option<String>,
     #[serde(default)]
     pub presets: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Shapes copied from the agent's handlers. If the pod changes one of these,
+    /// this is where it should break — not in a panel that silently shows zero
+    /// agents.
+    #[test]
+    fn instance_list_unwraps_and_keeps_the_flattened_count() {
+        let json = r#"{"instances":[{"id":"i1","agent_preset":"general-agent","name":"Amy",
+            "persona":"orchestrator-agent","origin":{"kind":"workshop"},"persistent":true,
+            "created_at":"2026-08-01T00:00:00Z","last_active_at":"2026-08-02T00:00:00Z",
+            "conversation_count":3}]}"#;
+        let list: InstanceList = serde_json::from_str(json).unwrap();
+        assert_eq!(list.instances[0].conversation_count, 3);
+        assert!(matches!(list.instances[0].origin, InstanceOrigin::Workshop));
+    }
+
+    #[test]
+    fn a_gateway_instance_keeps_its_channel() {
+        let json = r#"{"id":"i2","agent_preset":"p","name":"n","persona":"x",
+            "origin":{"kind":"gateway","channel":"metalcraft"},"created_at":"","last_active_at":""}"#;
+        let i: AgentInstance = serde_json::from_str(json).unwrap();
+        match i.origin {
+            InstanceOrigin::Gateway { channel } => assert_eq!(channel, "metalcraft"),
+            other => panic!("expected gateway, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preset_list_unwraps_and_reads_pack_id() {
+        // The pod calls it `pack_id`, not `agent_pack` — the field the New agent
+        // dialog shows to say where a preset came from.
+        let json = r#"{"presets":[{"slug":"amy","name":"Amy","description":"d","tagline":null,
+            "default_persona":"chef","persona_count":2,"pack_id":"amy_kitchen","read_only":true}],
+            "default":"general-agent"}"#;
+        let list: PresetList = serde_json::from_str(json).unwrap();
+        assert_eq!(list.presets[0].pack_id.as_deref(), Some("amy_kitchen"));
+        assert!(list.presets[0].read_only);
+        assert_eq!(list.default.as_deref(), Some("general-agent"));
+    }
+
+    #[test]
+    fn a_managed_key_is_flagged_so_the_ui_does_not_offer_to_edit_it() {
+        let json =
+            r#"[{"name":"METALCRAFT_TOKEN","masked":"mck_…1234","scope":"global","managed":true}]"#;
+        let keys: Vec<KeyEntry> = serde_json::from_str(json).unwrap();
+        assert!(keys[0].managed);
+        assert_eq!(keys[0].scope, "global");
+    }
+
+    #[test]
+    fn an_unknown_origin_kind_does_not_fail_the_whole_fleet() {
+        let i: AgentInstance = serde_json::from_str(
+            r#"{"id":"i","agent_preset":"p","name":"n","persona":"x",
+                "origin":{"kind":"telepathy"},"created_at":"","last_active_at":""}"#,
+        )
+        .unwrap();
+        assert!(matches!(i.origin, InstanceOrigin::Unknown));
+    }
 }

@@ -178,8 +178,13 @@ impl PodConnection {
         self.get("/info").await
     }
 
+    /// The pod wraps its lists (`{"instances": [...]}`, `{"presets": [...]}`,
+    /// `{"agent_packs": [...]}`) while `keys` and `chats` come back bare. The
+    /// asymmetry is the pod's, so it is absorbed here rather than leaking into
+    /// every caller.
     pub async fn list_instances(&self) -> anyhow::Result<Vec<AgentInstance>> {
-        self.get("/agents/instances").await
+        let wrapped: InstanceList = self.get("/agents/instances").await?;
+        Ok(wrapped.instances)
     }
 
     pub async fn create_instance(
@@ -196,7 +201,8 @@ impl PodConnection {
     }
 
     pub async fn list_presets(&self) -> anyhow::Result<Vec<AgentPresetSummary>> {
-        self.get("/agent-presets").await
+        let wrapped: PresetList = self.get("/agent-presets").await?;
+        Ok(wrapped.presets)
     }
 
     pub async fn list_chats(&self) -> anyhow::Result<Vec<ChatSummary>> {
@@ -222,9 +228,26 @@ impl PodConnection {
     /// Upsert a secret. This is the mechanism behind binding an interface source:
     /// `OPENAI_API_KEY` + `OPENAI_BASE_URL` written here are what point the agent
     /// at Metalcraft Inference, OpenAI, OpenRouter, or a custom gateway.
+    ///
+    /// The name is in the path and only the value in the body — and the pod
+    /// rejects an empty value outright, so clearing a key means `delete_key`.
     pub async fn save_key(&self, name: &str, value: &str) -> anyhow::Result<()> {
-        let body = serde_json::json!({ "name": name, "value": value });
-        let _: serde_json::Value = self.post("/keys", &body).await?;
+        let body = serde_json::json!({ "value": value });
+        let resp = self
+            .client
+            .put(self.url(&format!("/keys/{name}")))
+            .bearer_auth(self.bearer())
+            .json(&body)
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            anyhow::bail!(
+                "{status} saving {name}: {}",
+                resp.text().await.unwrap_or_default()
+            );
+        }
         Ok(())
     }
 
@@ -233,7 +256,8 @@ impl PodConnection {
     }
 
     pub async fn list_agent_packs(&self) -> anyhow::Result<Vec<InstalledAgentPack>> {
-        self.get("/agent-packs").await
+        let wrapped: AgentPackList = self.get("/agent-packs").await?;
+        Ok(wrapped.agent_packs)
     }
 
     /// The hosts this pod will fetch packs from — Axoniac Prime and any peer.

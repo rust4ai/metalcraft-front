@@ -66,21 +66,32 @@ export interface AgentInstance {
   persona_fallback_from?: string | null
   created_at: string
   last_active_at: string
+  /** Conversations this agent has accumulated (flattened in by the list endpoint). */
+  conversation_count?: number
 }
 
 export interface AgentPreset {
   slug: string
   name: string
   description: string
-  agent_pack?: string | null
+  tagline?: string | null
+  /** The agent pack that provided it — `pack_id` on the wire, not `agent_pack`. */
+  pack_id?: string | null
   default_persona?: string | null
+  persona_count?: number
+  /** Pack-provided presets cannot be edited on the pod. */
+  read_only?: boolean
 }
 
 export interface KeyEntry {
   name: string
-  masked?: string | null
-  source?: string | null
+  masked: string
+  /** `'global'` or `'channel'`. */
+  scope: string
   channel_id?: string | null
+  channel_name?: string | null
+  /** Platform-injected and read-only; the pod refuses writes to these. */
+  managed: boolean
 }
 
 export interface ChatSummary {

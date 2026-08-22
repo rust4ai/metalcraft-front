@@ -43,7 +43,7 @@ describe('App', () => {
       active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
       list_instances: [],
       list_presets: [],
-      list_keys: [{ name: 'OPENAI_API_KEY', masked: 'sk-…1234' }],
+      list_keys: [{ name: 'OPENAI_API_KEY', masked: 'sk-…1234', scope: 'global', managed: false }],
     })
     await waitFor(() => expect(screen.getByText('a@b.com')).toBeTruthy())
     // Auto-connects when the account has exactly one pod, and lands on the fleet.
