@@ -434,12 +434,15 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     chat per firing converts our entire transcript stack — reducer, tool cards, trace
     collapsing, right rail — onto flow runs with **no new client code**. A 3am cron becomes
     something you watch replay live. *(agent, medium — the one that matters)*
-12. **Arming has no consent summary and manual runs are second-class.**
-    `POST /flows/{id}/run` takes no `instance_id`, so triggering an armed flow by hand runs
-    it memoryless and invisibly, unlike the same flow firing itself a minute later; and
-    `GET /flows/{id}/preview` (the agent plan's §6 arm dialog — personas, domains, keys,
-    which tools mutate) was specified and never built. Our arm dialog cannot be honest
-    without it. *(agent, small + medium)*
+12. **Manual runs are second-class.** `POST /flows/{id}/run` takes no `instance_id`, so
+    triggering an armed flow by hand runs it memoryless and invisibly — unlike the same
+    flow firing itself a minute later. *(agent, small)*
+    **Not a gap:** the arm consent summary is already served. `GET /flows/{id}/binding`
+    returns `FlowBindingView.consent` — reachable domains, `requires_env`, **`missing_env`**
+    (credentials whose absence would otherwise surface at 3am), `mutating_tools`,
+    `base_memories` — plus per-persona `allowed` verdicts and `armed[]` with
+    `instance_id`/`instance_name`. Our arm dialog is a client-side render of a payload that
+    exists today.
 
 ## 13. Testing & release
 
