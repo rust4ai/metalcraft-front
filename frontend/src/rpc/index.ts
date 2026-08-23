@@ -66,6 +66,10 @@ export const automations = {
    *  scheduled firing. Resolves when the flow finishes, not when it starts. */
   run: (flowId: string, instanceId?: string) =>
     call<FlowRunSummary>('run_flow', { flowId, instanceId }),
+  /** Take the decision a paused run is waiting on. It picks up in the
+   *  conversation it paused in. */
+  resume: (runId: string, handle: string) =>
+    call<FlowRunSummary>('resume_flow_run', { runId, handle }),
   /** Arming is what creates the agent. Pass `instanceId` to attach to one instead. */
   arm: (flowId: string, scheduleId: string, instanceId?: string) =>
     call<AgentInstance>('arm_schedule', { flowId, scheduleId, instanceId }),

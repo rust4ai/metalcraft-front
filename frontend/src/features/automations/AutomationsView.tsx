@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, Clock, Loader2, PauseCircle, Play, RefreshCw, Zap } from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
+import { ArmDialog } from './ArmDialog'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Card } from '@/components/ui/Card'
@@ -19,6 +20,10 @@ import type { Flow, FlowRun, FlowSchedule } from '@/types'
  */
 export function AutomationsView() {
   const { flows, runs, loading, error, load } = useAutomations()
+  // Held here rather than per-row so the dialog survives the list re-rendering
+  // underneath it — arming reloads the flows, and a row-owned modal would
+  // unmount itself mid-confirm.
+  const [arming, setArming] = useState<{ flow: Flow; schedule: FlowSchedule } | null>(null)
 
   useEffect(() => {
     void load()
@@ -65,10 +70,16 @@ export function AutomationsView() {
       ) : (
         <div className="space-y-3">
           {flows.map((flow) => (
-            <FlowCard key={flow.id} flow={flow} />
+            <FlowCard key={flow.id} flow={flow} onArm={setArming} />
           ))}
         </div>
       )}
+
+      <ArmDialog
+        flow={arming?.flow ?? null}
+        schedule={arming?.schedule ?? null}
+        onClose={() => setArming(null)}
+      />
 
       {runs.length > waiting.length && (
         <section className="mt-8">
@@ -87,7 +98,13 @@ export function AutomationsView() {
   )
 }
 
-function FlowCard({ flow }: { flow: Flow }) {
+function FlowCard({
+  flow,
+  onArm,
+}: {
+  flow: Flow
+  onArm: (target: { flow: Flow; schedule: FlowSchedule }) => void
+}) {
   const { run, busy } = useAutomations()
   const go = useUi((s) => s.go)
   const running = busy[flow.id] ?? false
@@ -135,15 +152,23 @@ function FlowCard({ flow }: { flow: Flow }) {
       </div>
       <div className="mt-3 divide-y divide-line border-t border-line">
         {flow.schedules.map((s) => (
-          <ScheduleRow key={s.id} flow={flow} schedule={s} />
+          <ScheduleRow key={s.id} flow={flow} schedule={s} onArm={onArm} />
         ))}
       </div>
     </Card>
   )
 }
 
-function ScheduleRow({ flow, schedule }: { flow: Flow; schedule: FlowSchedule }) {
-  const { arm, disarm, busy } = useAutomations()
+function ScheduleRow({
+  flow,
+  schedule,
+  onArm,
+}: {
+  flow: Flow
+  schedule: FlowSchedule
+  onArm: (target: { flow: Flow; schedule: FlowSchedule }) => void
+}) {
+  const { disarm, busy } = useAutomations()
   const go = useUi((s) => s.go)
   const instances = useFleet((s) => s.instances)
   const working = busy[`${flow.id}:${schedule.id}`] ?? false
@@ -186,12 +211,15 @@ function ScheduleRow({ flow, schedule }: { flow: Flow; schedule: FlowSchedule })
         <span className="shrink-0 text-[11.5px] text-ink-3">not armed</span>
       )}
 
+      {/* Asymmetric on purpose: arming asks first, because it is the moment
+          this pod agrees to act unwatched. Disarming just stops a timer and
+          keeps the agent, so it needs no ceremony. */}
       <Button
         variant="ghost"
         size="sm"
         disabled={working}
         onClick={() =>
-          void (armed ? disarm(flow.id, schedule.id) : arm(flow.id, schedule.id))
+          armed ? void disarm(flow.id, schedule.id) : onArm({ flow, schedule })
         }
       >
         {working ? '…' : armed ? 'Disarm' : 'Arm'}
@@ -202,8 +230,14 @@ function ScheduleRow({ flow, schedule }: { flow: Flow; schedule: FlowSchedule })
 
 function RunRow({ run, flows }: { run: FlowRun; flows: Flow[] }) {
   const go = useUi((s) => s.go)
+  const { resume, busy } = useAutomations()
   const name = flows.find((f) => f.id === run.flow_id)?.name ?? run.flow_id
   const paused = run.status === 'paused'
+  const deciding = busy[run.id] ?? false
+  // A `wait` pause resumes on time, not on a decision — offering "after" as a
+  // button would let someone skip the wait they asked for. Only an approval's
+  // handles are choices a person is meant to make.
+  const decisions = run.pause?.reason === 'approval' ? (run.pause.resume_handles ?? []) : []
 
   return (
     <Card className="flex items-center gap-3 py-3">
@@ -227,8 +261,20 @@ function RunRow({ run, flows }: { run: FlowRun; flows: Flow[] }) {
           <div className="truncate text-[11.5px] text-orange">{run.warnings[0]}</div>
         )}
       </div>
-      {/* Resuming an approval is a decision with consequences and needs the
-          run's own surface; this is the way back to the agent that paused. */}
+      {/* The decision, taken here. The run picks up in the conversation it
+          paused in, so an approval answered three days later is a continuation
+          rather than a request the agent has no context for. */}
+      {decisions.map((handle, i) => (
+        <Button
+          key={handle}
+          variant={i === 0 ? 'primary' : 'ghost'}
+          size="sm"
+          disabled={deciding}
+          onClick={() => void resume(run.id, handle)}
+        >
+          {deciding ? '…' : handle}
+        </Button>
+      ))}
       {run.instance_id && (
         <Button
           variant="ghost"

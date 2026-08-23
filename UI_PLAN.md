@@ -288,10 +288,22 @@ Octaweave learns to. Zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 (`mck_` in
 
 ### S9 — the third pill, and where automations live
 
-`app/Sidebar.tsx` nav, `features/automations/*`, `stores/automations.ts`. **Built**
-(list, arm/disarm, runs) against the `GET /api/v1/flows` this work added to the pod.
-Still to come: the arm **consent dialog** (the payload exists — `/flows/{id}/binding`),
-resuming a paused run, and the xyflow graph editor.
+`app/Sidebar.tsx` nav, `features/automations/*`, `stores/automations.ts`. **Built**:
+list, run-now, arm/disarm behind a consent dialog, a paused-runs section, and answering
+an approval in place — on the `GET /api/v1/flows` and run-as-agent this work added to the
+pod. Still to come: the xyflow graph editor.
+
+A paused run's approval is answered in place: its `resume_handles` become buttons, and
+the run continues **in the conversation it paused in** — an approval answered three days
+later is a continuation, not a request the agent has no context for. A `wait` pause gets
+no buttons; it resumes on the clock, and offering its `after` handle would let someone
+skip the wait the flow asked for.
+
+The dialog is asymmetric on purpose. **Arming asks; disarming does not.** Arming is
+the moment this pod agrees to act while nobody is watching, so it states what the
+automation can reach, which credentials it uses, **which of them this pod does not
+have**, and which of its tools *change* something. Disarming stops a timer and keeps
+the agent and its memory, so it needs no ceremony.
 
 S2 shipped one nav row. S9 makes it three, and the grouping is the whole design:
 
@@ -349,15 +361,10 @@ Honest gaps, so nobody rediscovers them as bugs:
 - **No published `octaweave` pack.** The connection card works; the install step
   fails with *no version of 'octaweave' matches* until the pack is pushed to
   packs.metalcraftai.com. The card names that state rather than hiding it.
-- **No arm consent dialog.** S9 arms a schedule on one click. The pod already serves
-  what the dialog should say — reachable domains, `missing_env`, `mutating_tools`
-  (`/flows/{id}/binding`) — and arming is the moment a pod agrees to act unwatched, so
-  one click is too few. `automations.binding()` is wired and unused, waiting for it.
-- **No way to resume a paused run.** The Automations view surfaces runs stuck on an
-  approval — the point of the section — but resolving one still means
-  `POST /flow-runs/{id}/resume` from elsewhere. It routes you to the agent instead.
-- **A flow-born agent opens onto an empty transcript.** Not this repo's bug: a firing
-  leaves no conversation until the pod's phase B lands (PLAN §12.11).
+- **A long run blocks its button.** `POST /flows/{id}/run` is synchronous on the pod,
+  so "Run now" spins until the whole graph finishes. Fine for a briefer, wrong for a
+  flow with an `approval` in it — that one returns *paused* and the run shows up in
+  "Waiting on you", which is at least the right place.
 - **No windowed-allowance meter.** The status bar shows a credit balance because
   that is what the ledger has (§S5). Orca's "10% used this month" needs a
   denominator nothing serves.

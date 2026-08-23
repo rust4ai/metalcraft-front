@@ -131,6 +131,7 @@ fn main() {
             rpc::flows::list_flow_runs,
             rpc::flows::flow_binding,
             rpc::flows::run_flow,
+            rpc::flows::resume_flow_run,
             rpc::flows::arm_schedule,
             rpc::flows::disarm_schedule,
             rpc::keys::list_keys,

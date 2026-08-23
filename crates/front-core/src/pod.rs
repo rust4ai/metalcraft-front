@@ -401,6 +401,21 @@ impl PodConnection {
         self.get(&format!("/flows/{flow_id}/binding")).await
     }
 
+    /// Resume a run paused at an `approval` or `wait` node.
+    ///
+    /// `handle` is the decision — one of the pause's `resume_handles`. The run
+    /// continues **in the conversation it paused in**, so the agent still has the
+    /// thread it was mid-way through rather than being handed a decision it has
+    /// no context for.
+    pub async fn resume_flow_run(
+        &self,
+        run_id: &str,
+        handle: &str,
+    ) -> anyhow::Result<FlowRunSummary> {
+        let body = serde_json::json!({ "handle": handle });
+        self.post(&format!("/flow-runs/{run_id}/resume"), &body).await
+    }
+
     /// Arm a schedule — **the act that creates the agent**. The pod mints a
     /// persistent instance (or attaches to `instance_id` if given) and returns it.
     ///

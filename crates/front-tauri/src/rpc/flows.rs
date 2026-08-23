@@ -83,6 +83,24 @@ pub async fn run_flow(
         .map_err(|e| e.to_string())
 }
 
+/// Take the decision a paused run is waiting on.
+///
+/// The run picks up in the conversation it paused in — which for an approval
+/// three days old is the difference between a coherent continuation and asking
+/// an agent to act on something it no longer remembers.
+#[tauri::command]
+pub async fn resume_flow_run(
+    run_id: String,
+    handle: String,
+    state: State<'_>,
+) -> Result<FlowRunSummary, String> {
+    state
+        .conn(None)?
+        .resume_flow_run(&run_id, &handle)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Stop running a schedule on a timer. The agent and its memory are kept.
 #[tauri::command]
 pub async fn disarm_schedule(

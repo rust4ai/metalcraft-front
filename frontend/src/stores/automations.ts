@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { automations } from '@/rpc'
-import type { AgentInstance, Flow, FlowRun, FlowRunSummary } from '@/types'
+import type { AgentInstance, Flow, FlowBinding, FlowRun, FlowRunSummary } from '@/types'
 
 /**
  * Automations: the pod's flows, and the runs they leave behind.
@@ -17,14 +17,20 @@ interface AutomationsState {
   error: string | null
   /** Per-schedule in-flight marker, keyed `flowId:scheduleId`. */
   busy: Record<string, boolean>
+  /** What arming each flow would permit, cached per flow. Fetched when the arm
+   *  dialog opens — it is the pod's answer, never assembled here. */
+  bindings: Record<string, FlowBinding>
 
   load: () => Promise<void>
+  loadBinding: (flowId: string) => Promise<void>
   /** Returns the new agent, or null with `error` set — the pod's refusal names
    *  the persona and the roster it is missing from, so it is worth showing. */
   arm: (flowId: string, scheduleId: string, instanceId?: string) => Promise<AgentInstance | null>
   disarm: (flowId: string, scheduleId: string) => Promise<void>
   /** Run now, and return what it did. Null with `error` set on refusal. */
   run: (flowId: string) => Promise<FlowRunSummary | null>
+  /** Answer a paused run. `handle` is one of its `resume_handles`. */
+  resume: (runId: string, handle: string) => Promise<FlowRunSummary | null>
 }
 
 /** Paused outranks failed outranks everything else: the first needs a person,
@@ -47,6 +53,7 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
   loading: false,
   error: null,
   busy: {},
+  bindings: {},
 
   load: async () => {
     set({ loading: true, error: null })
@@ -55,6 +62,18 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
       set({ flows, runs, loading: false })
     } catch (e) {
       set({ loading: false, error: String(e) })
+    }
+  },
+
+  loadBinding: async (flowId) => {
+    try {
+      const binding = await automations.binding(flowId)
+      set({ bindings: { ...get().bindings, [flowId]: binding } })
+    } catch (e) {
+      // Refetched every time the dialog opens rather than cached through an
+      // error: a consent summary that failed to load must not leave a stale one
+      // on screen next time.
+      set({ error: String(e) })
     }
   },
 
@@ -94,6 +113,24 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
     } finally {
       const busy = { ...get().busy }
       delete busy[flowId]
+      set({ busy })
+    }
+  },
+
+  resume: async (runId, handle) => {
+    set({ busy: { ...get().busy, [runId]: true }, error: null })
+    try {
+      const summary = await automations.resume(runId, handle)
+      // The answer may finish the run, fail it, or land on the *next* approval;
+      // only the pod knows which, so re-read rather than assume it is done.
+      await get().load()
+      return summary
+    } catch (e) {
+      set({ error: String(e) })
+      return null
+    } finally {
+      const busy = { ...get().busy }
+      delete busy[runId]
       set({ busy })
     }
   },

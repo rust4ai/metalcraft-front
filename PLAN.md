@@ -363,7 +363,7 @@ step is also a standalone settings surface.
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
 | **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect and a general **key store UI** done. **Two known blockers, both outside this repo** (source read at `~/ai/octaweave`, formerly `agent-cloud-spaces`): the `octaweave` integration pack is unpublished on packs.metalcraftai.com, and key creation accepts **no `redirect_uri`** (`POST /w/{ws}/keys`), so nothing can call our callback yet. True zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 — accept `mck_` in `auth/extract.rs` — which is unimplemented, and §3.2 notes an `mck_` names a *person* across every workspace where an `owk_` is pinned to one |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
-| **P9** 🟡 | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | third pill, flow list with per-schedule arm/disarm, click-through to the agent each armed schedule runs as, and a paused-runs section are **done** (UI_PLAN S9) on the `GET /api/v1/flows` this work added to the pod. **Outstanding:** the arm consent dialog, resuming a paused run, run-now, and the xyflow editor. A flow agent still opens onto an empty transcript until §12.11 lands |
+| **P9** 🟡 | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | third pill, flow list, run-now, arm/disarm behind a consent dialog, click-through to the agent each armed schedule runs as, and a paused-runs section with in-place approvals are **done** (UI_PLAN S9). The pod half landed with it: `GET /flows`, a conversation per firing, and run-as-the-armed-agent (`metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` A/B/C). **Outstanding:** the xyflow editor |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |
 | **P11** | **Web target**: `vite.web.config.ts` + `http` transport against a stateless Rust/Axum proxy (lifted from metalcraft-workshop-web: `mc_session` cookie login, in-memory pod-connect, streaming `/api/pod/*`) | the same UI runs at `workshop.metalcraftai.com`; workshop-web retires |
 
@@ -425,7 +425,10 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     joins each flow against its binding, so one call answers *which agent runs this*, *is it
     armed*, *when does it fire next*. Disabled flows included — they are the majority. The
     Automations surface is built on it.
-11. **A flow run leaves no conversation.** `grep chat src/flow_exec.rs` finds one comment.
+11. ~~**A flow run leaves no conversation.**~~ **BUILT** (agent `a06700a`): a firing opens
+    a conversation in its agent — lazily, so a tool-only flow leaves no empty chat — and
+    publishes to that chat's live bus, so a 3am cron replays in the session view with no
+    client change. Original diagnosis kept because the reasoning still explains the design: `grep chat src/flow_exec.rs` finds one comment.
     The run captures into the agent's memory but produces no chat, so a flow-born agent
     lists `conversation_count: 0` and opens onto an empty transcript — an agent that has
     never visibly done anything. The pod's own plan flags this as AP4's "Remaining".
@@ -434,9 +437,10 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     chat per firing converts our entire transcript stack — reducer, tool cards, trace
     collapsing, right rail — onto flow runs with **no new client code**. A 3am cron becomes
     something you watch replay live. *(agent, medium — the one that matters)*
-12. **Manual runs are second-class.** `POST /flows/{id}/run` takes no `instance_id`, so
-    triggering an armed flow by hand runs it memoryless and invisibly — unlike the same
-    flow firing itself a minute later. *(agent, small)*
+12. ~~**Manual runs are second-class.**~~ **BUILT**: `POST /flows/{id}/run` takes
+    `instance_id`, and resolves the flow's armed agent when given none — so running an
+    automation by hand is the same act as its scheduled firing. A flow armed to *two*
+    different agents runs as neither and says so in `warnings` rather than guessing.
     **Not a gap:** the arm consent summary is already served. `GET /flows/{id}/binding`
     returns `FlowBindingView.consent` — reachable domains, `requires_env`, **`missing_env`**
     (credentials whose absence would otherwise surface at 3am), `mutating_tools`,
