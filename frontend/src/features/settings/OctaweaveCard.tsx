@@ -111,7 +111,7 @@ export function OctaweaveCard() {
       ) : (
         <div className="mt-4">
           <ol className="space-y-3">
-            <Step n={1} text="Create a workspace key in Octaweave. It is shown once, at creation.">
+            <Step n={1} text="Open your Octaweave workspace, then Settings → Keys. The key is shown once, at creation.">
               <Button size="sm" variant="outline" onClick={() => void octaweave.openKeys()}>
                 Open Octaweave <ExternalLink className="h-3.5 w-3.5" />
               </Button>

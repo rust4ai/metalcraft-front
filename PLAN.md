@@ -250,6 +250,9 @@ One click, four things:
 1. Browser hand-off to octaweave.com to create/pick a workspace (an `owk_` key **cannot mint
    another key**, and key creation refuses key-auth outright — so this step is a signed-in
    human in a browser, by design, not something the app can do headlessly).
+   *Confirmed in source:* `controllers/keys.rs::create` returns `Forbidden` when
+   `principal.is_api_key()`. The app opens `/dashboard`, because the key UI is at
+   `/:org/:ws/settings/keys` and the org/workspace are unknowable without a key.
 2. Return via `metalcraft-front://octaweave/callback` with the `owk_live_…` token, which is
    shown exactly once at creation.
 3. Store it as `OCTAWEAVE_API_KEY` in the pod's key store (global scope).
@@ -269,9 +272,13 @@ Scope defaults to the **narrowest set that works** — `notes:write board:write 
 drive:write` — with `studio:write` off by default and flagged in the UI as "spends money".
 `blog:publish` is off by default: publishing is a public act.
 
-*Open:* whether the app should offer a workspace-creation API path if octaweave later exposes
-a session-authed provisioning endpoint. The browser hand-off works today and is the honest
-version of "one click".
+*Resolved:* there is no provisioning endpoint and no `redirect_uri` on key creation, so the
+browser hand-off is the whole of step 1 today. The route to genuine zero-paste is not a
+provisioning API — it is `ECOSYSTEM_PIVOT_PLAN.md` §3.1, accepting `mck_` hub tokens in
+`auth/extract.rs`. That is Octaweave-side work, and §3.2 is the reason to weigh it rather
+than assume it: an `mck_` token names a **person** and reaches every workspace they have,
+where an `owk_` key is pinned to one. Giving a pod agent the wider credential to save a
+paste should be a decision, not a convenience.
 
 ### 9.4 Browse Axoniac Prime and install agent packs *(optional)*
 [Axoniac Prime](https://github.com/…/axoniac-prime) is "Instagram, where every profile is an
@@ -339,7 +346,7 @@ step is also a standalone settings surface.
 | **P4** 🟡 | **Session view** — transcript reducer over all `ChatEvent` variants, tool cards, composer, drafts, error/402 rendering, diagnostics deep-link | transcript + tool cards + composer + error rendering done and tested against stubbed frames; **live-pod round trip outstanding**; markdown, drafts, virtualization, deep-link outstanding |
 | **P5** 🟡 | **Onboarding wizard** (§9) + **interface source** binding: the four providers, key/base-URL write via Keys API, verify-turn, model picker, resumable state | source picker + atomic key/base-URL write + honest restart/`/responses` warnings done, and a keyless pod routes here instead of to a dead fleet; **verify-turn and model picker outstanding** |
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
-| **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect, and a general **key store UI** all done. **Two things block the end-to-end proof:** the `octaweave` integration pack is not published on packs.metalcraftai.com (`/packs/octaweave/resolve` → *no version matches*), and whether octaweave.com will redirect to `metalcraft-front://octaweave/callback` is unknown — its site answers 200 on every path, so our half is implemented and inert until theirs exists. Scope narrowing is Octaweave's to offer at key creation; the app cannot request scopes it has no endpoint to ask for |
+| **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect and a general **key store UI** done. **Two known blockers, both outside this repo** (source read at `~/ai/octaweave`, formerly `agent-cloud-spaces`): the `octaweave` integration pack is unpublished on packs.metalcraftai.com, and key creation accepts **no `redirect_uri`** (`POST /w/{ws}/keys`), so nothing can call our callback yet. True zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 — accept `mck_` in `auth/extract.rs` — which is unimplemented, and §3.2 notes an `mck_` names a *person* across every workspace where an `owk_` is pinned to one |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
 | **P9** | Flows port (xyflow) + schedules + flow-run inspector; keys/gateway/channels settings | parity with workshop's editors |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |

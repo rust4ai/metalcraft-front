@@ -6,15 +6,25 @@
 //! key store. That is the same process-split rule the rest of the app follows
 //! (PLAN §2): no network credential crosses into the view layer.
 //!
-//! **What is verifiable here and what is not.** `GET /api/v1/whoami` is real and
-//! deployed (401 for an anonymous caller, which is the correct answer). It is
-//! also, per the pack's own tooling, "the cheapest proof the key works" — so it
-//! is the gate a key must pass *before* it is written anywhere. The browser
-//! hand-off in §9.3 needs Octaweave to redirect back to
-//! `metalcraft-front://octaweave/callback`, and whether it does is not
-//! discoverable from outside: octaweave.com is a single-page app that answers
-//! 200 on every path. Our half of that contract is implemented; theirs is not
-//! assumed.
+//! `GET /api/v1/whoami` is the gate a key must pass *before* it is written
+//! anywhere — per the pack's own tooling it is "the cheapest proof the key
+//! works", and a key that cannot identify itself is not worth storing in a pod
+//! and discovering mid-conversation.
+//!
+//! **The auto-return half is inert, and now for a known reason.** Reading
+//! Octaweave's source (`~/ai/octaweave`, formerly `agent-cloud-spaces`):
+//! `POST /w/{ws}/keys` accepts no `redirect_uri` — the only one in the codebase
+//! belongs to the OAuth sign-in handshake — so nothing will ever call
+//! `metalcraft-front://octaweave/callback` until Octaweave learns to. The
+//! handler below is that half of the contract, built and waiting.
+//!
+//! **The real fix is `mck_`, and it is Octaweave-side.**
+//! `docs/ECOSYSTEM_PIVOT_PLAN.md` §3.1 specifies accepting hub PATs in
+//! `auth/extract.rs` between `owk_` and the session cookie. It is unimplemented
+//! (`extract.rs` checks `owk_` only), and §3.2 is worth reading before wishing
+//! for it: an `mck_` token names a *person* and reaches every workspace they
+//! have, where an `owk_` key is pinned to one. Handing a pod the broader
+//! credential to save a paste is a trade worth making deliberately.
 
 use serde::{Deserialize, Serialize};
 

@@ -130,19 +130,22 @@ pub async fn octaweave_disconnect(state: State<'_>) -> Result<OctaweaveStatus, S
     octaweave_status(state).await
 }
 
-/// Open Octaweave's key page in the browser.
+/// Open Octaweave where keys are made.
 ///
-/// The hand-off is structural, not a missing feature: an `owk_` key cannot mint
-/// another and key creation refuses key-auth, so creating one is necessarily a
-/// signed-in human in a browser. We pass our callback URL so Octaweave *can*
-/// return the key directly once it supports doing so; until then the user copies
-/// it back, and `octaweave_connect` takes it either way.
+/// **`/dashboard`, not a key page, and that is not laziness.** Octaweave's key
+/// UI lives at `/:org/:ws/settings/keys` (`WorkspaceView.tsx`) — it is scoped to
+/// a workspace, and this app knows neither the org nor the workspace slug,
+/// because learning them would require a key we do not yet have. `/dashboard` is
+/// where a signed-in user picks one, so it is the deepest link that is correct
+/// for everybody. (A bare `/settings/keys` matches Octaweave's catch-all route
+/// and silently bounces to the landing page.)
+///
+/// No `redirect_uri` is passed. Octaweave's key creation does not accept one —
+/// its only `redirect_uri` is the OAuth sign-in handshake — so sending it would
+/// dress a parameter that is ignored as a contract that exists.
 #[tauri::command]
 pub fn octaweave_open_keys() -> String {
-    let url = format!(
-        "{}/settings/keys?redirect_uri=metalcraft-front%3A%2F%2Foctaweave%2Fcallback",
-        front_cloud::octaweave_base()
-    );
+    let url = format!("{}/dashboard", front_cloud::octaweave_base());
     front_cloud::id::open_in_browser(&url);
     url
 }

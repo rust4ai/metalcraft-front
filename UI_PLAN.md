@@ -281,9 +281,10 @@ Three states the card refuses to collapse:
 
 The deep-link handler is implemented (`metalcraft-front://octaweave/callback`) and
 routes a returned key through the *same* `connect` path as a pasted one, so there
-is one place verification happens. Whether Octaweave will redirect there is its
-half of the contract and is not knowable from outside — its site answers 200 on
-every path — so ours is built and inert rather than assumed.
+is one place verification happens. It is **inert for a known reason**: Octaweave's
+`POST /w/{ws}/keys` accepts no `redirect_uri`, so nothing will call it until
+Octaweave learns to. Zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 (`mck_` in
+`auth/extract.rs`), which is Octaweave-side and unbuilt.
 
 ## 5. What the shell still doesn't have
 
@@ -296,6 +297,8 @@ Honest gaps, so nobody rediscovers them as bugs:
   columns are built, splitting the centre is not.
 - **No transcript virtualization.** `@tanstack/react-virtual` is a dependency and
   unused; long sessions will get slow before they get unusable.
+- **No auto-return from Octaweave.** Confirmed, not assumed: key creation takes
+  no `redirect_uri`. Ours is built and waiting.
 - **No published `octaweave` pack.** The connection card works; the install step
   fails with *no version of 'octaweave' matches* until the pack is pushed to
   packs.metalcraftai.com. The card names that state rather than hiding it.
