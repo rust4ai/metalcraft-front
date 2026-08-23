@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { chats } from '@/rpc'
 import { emptyTranscript, fromMessages, reduce, type TranscriptState } from '@/features/session/transcript'
+import { helpText, parse } from '@/features/session/commands'
 import type { ChatEvent, ChatSummary } from '@/types'
 import { useFleet } from './fleet'
 
@@ -36,6 +37,9 @@ interface SessionsState {
 
   open: (instanceId: string) => Promise<void>
   send: (instanceId: string, message: string) => Promise<void>
+  /** Send, unless the text is a slash command — then act on the conversation
+   *  instead of continuing it. The composer's only entry point. */
+  submit: (instanceId: string, input: string) => Promise<void>
   close: (instanceId: string) => void
   apply: (instanceId: string, ev: ChatEvent) => void
 }
@@ -107,6 +111,67 @@ export const useSessions = create<SessionsState>((set, get) => ({
     } catch (e) {
       // The pod refuses a concurrent turn per chat with a 409; surface that
       // rather than leaving the composer locked on a turn that never started.
+      const current = get().byInstance[instanceId]
+      if (current) {
+        set({
+          byInstance: { ...get().byInstance, [instanceId]: { ...current, sending: false, error: String(e) } },
+        })
+      }
+    }
+  },
+
+  submit: async (instanceId, input) => {
+    const session = get().byInstance[instanceId]
+    if (!session || !session.chatId) return
+    const parsed = parse(input)
+    if (parsed.kind === 'message') return get().send(instanceId, input)
+
+    const notice = (content: string) => {
+      const current = get().byInstance[instanceId]
+      if (!current) return
+      set({
+        byInstance: {
+          ...get().byInstance,
+          [instanceId]: {
+            ...current,
+            transcript: {
+              ...current.transcript,
+              items: [
+                ...current.transcript.items,
+                { kind: 'notice', id: `n${current.transcript.items.length}`, content },
+              ],
+            },
+          },
+        },
+      })
+    }
+
+    if (parsed.kind === 'unknown') {
+      return notice(`Unknown command: ${parsed.name}. Try /help.`)
+    }
+    if (!parsed.command.run) return notice(helpText())
+
+    // Commands lock the composer the way a turn does: /compact pays for a
+    // summarization call, and the pod refuses a turn while it runs anyway.
+    set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, sending: true, error: null } } })
+    try {
+      const result = await parsed.command.run(session.chatId)
+      const current = get().byInstance[instanceId]
+      if (!current) return
+      set({
+        byInstance: {
+          ...get().byInstance,
+          [instanceId]: {
+            ...current,
+            // A cleared conversation keeps the notice that says so — an empty
+            // pane with no explanation reads as a bug.
+            transcript: result.cleared ? emptyTranscript() : current.transcript,
+            sending: false,
+          },
+        },
+      })
+      if (result.notice) notice(result.notice)
+    } catch (e) {
       const current = get().byInstance[instanceId]
       if (current) {
         set({

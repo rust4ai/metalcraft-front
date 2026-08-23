@@ -30,6 +30,10 @@ export type TranscriptItem =
   | { kind: 'user'; id: string; content: string }
   | { kind: 'reply'; id: string; content: string }
   | { kind: 'error'; id: string; code: string; message: string; retryable: boolean }
+  /** Local, never from the pod: the result of a slash command. Part of the
+   *  transcript because that is where the user is looking, but it is this
+   *  client talking, not the agent. */
+  | { kind: 'notice'; id: string; content: string }
   | ToolCard
 
 export interface TranscriptState {

@@ -11,7 +11,7 @@ import { groupIntoBlocks } from './blocks'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
-  const { byInstance, opening, open, send } = useSessions()
+  const { byInstance, opening, open, submit } = useSessions()
   const instance = useFleet((s) => s.instances.find((i) => i.id === instanceId))
   const session = byInstance[instanceId]
   const bottom = useRef<HTMLDivElement>(null)
@@ -63,7 +63,7 @@ export function SessionView({ instanceId }: { instanceId: string }) {
         )}
       </div>
 
-      <Composer busy={busy} onSend={(m) => void send(instanceId, m)} />
+      <Composer busy={busy} onSend={(m) => void submit(instanceId, m)} />
     </div>
   )
 }
@@ -72,6 +72,15 @@ function Item({ item }: { item: Exclude<TranscriptItem, ToolCard> }) {
   if (item.kind === 'user') {
     return (
       <div className="animate-fade-up max-w-[85%] self-end whitespace-pre-wrap rounded-card rounded-br-sm bg-accent px-3.5 py-2 text-[13.5px] text-accent-ink">
+        {item.content}
+      </div>
+    )
+  }
+  if (item.kind === 'notice') {
+    // This client talking, not the agent — centred and quiet, so it never reads
+    // as something the agent said.
+    return (
+      <div className="animate-fade-up mx-auto max-w-[85%] whitespace-pre-wrap text-center text-[12px] leading-relaxed text-ink-3">
         {item.content}
       </div>
     )

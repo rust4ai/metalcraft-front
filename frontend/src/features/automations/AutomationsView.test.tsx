@@ -108,7 +108,8 @@ describe('AutomationsView', () => {
     // The case that matters: a pack ships its flows off, so a view that showed
     // only what is running would show nothing on a freshly-installed pod.
     await mount()
-    await waitFor(() => expect(screen.getByText('Morning brief')).toBeTruthy())
+    // `getAll`: the armed flow's name also appears on its paused run above.
+    await waitFor(() => expect(screen.getAllByText('Morning brief').length).toBeGreaterThan(0))
     expect(screen.getByText('Sunday prep')).toBeTruthy()
     expect(screen.getByText('off')).toBeTruthy()
   })
@@ -133,7 +134,8 @@ describe('AutomationsView', () => {
   it('puts a run waiting on a human above everything else', async () => {
     await mount()
     await waitFor(() => expect(screen.getByText('Waiting on you')).toBeTruthy())
-    expect(screen.getByText('Order 3 items?')).toBeTruthy()
+    // Regex: the approval prompt shares its line with the run's age.
+    expect(screen.getByText(/Order 3 items\?/)).toBeTruthy()
   })
 
   it('arms a schedule and re-reads the pod rather than guessing the result', async () => {
@@ -141,7 +143,7 @@ describe('AutomationsView', () => {
     // flow's `armed`; the store re-loads instead of patching state locally.
     const { calls } = await mount()
     await waitFor(() => expect(screen.getAllByText('Arm').length).toBe(2))
-    await userEvent.click(screen.getAllByText('Arm')[0])
+    await userEvent.click(screen.getAllByText('Arm')[0]!)
     await waitFor(() => expect(calls.some((c) => c.method === 'arm_schedule')).toBe(true))
     const armed = calls.find((c) => c.method === 'arm_schedule')
     expect(armed?.args).toMatchObject({ flowId: 'brief', scheduleId: 'evening' })

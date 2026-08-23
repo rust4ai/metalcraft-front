@@ -283,6 +283,27 @@ impl PodConnection {
         self.delete_path(&format!("/chats/{id}")).await
     }
 
+    /// What this conversation's context currently costs.
+    pub async fn chat_context(&self, id: &str) -> anyhow::Result<ChatContext> {
+        self.get(&format!("/chats/{id}/context")).await
+    }
+
+    /// Compact now, whatever the size. The pod's automatic rule only fires at 60%
+    /// of the window, which is long after the point where someone can feel a
+    /// conversation getting heavy and wants room before the question that matters.
+    ///
+    /// Summarizing costs an LLM call, so this is slower than it looks — the pod
+    /// holds the chat busy for its duration and refuses a concurrent turn.
+    pub async fn compact_chat(&self, id: &str) -> anyhow::Result<ChatCompacted> {
+        self.post(&format!("/chats/{id}/compact"), &()).await
+    }
+
+    /// Drop the conversation, keep the chat. Distinct from `delete_chat`, which
+    /// removes the chat itself.
+    pub async fn clear_chat(&self, id: &str) -> anyhow::Result<ChatContext> {
+        self.post(&format!("/chats/{id}/clear"), &()).await
+    }
+
     pub async fn list_keys(&self) -> anyhow::Result<Vec<KeyEntry>> {
         self.get("/keys").await
     }

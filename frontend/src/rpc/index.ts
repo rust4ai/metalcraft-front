@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding } from '@/types'
+import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -102,6 +102,13 @@ export const chats = {
   get: (id: string) => call<ChatDetail>('get_chat', { id }),
   send: (chatId: string, message: string) => call<void>('send_turn', { chatId, message }),
   watch: (chatId: string) => call<void>('watch_chat', { chatId }),
+  /** What this conversation's context costs right now. */
+  context: (chatId: string) => call<ChatContext>('chat_context', { chatId }),
+  /** Compact now, whatever the size — the pod's automatic rule only fires at 60%
+   *  of the window, long after someone can feel a conversation getting heavy. */
+  compact: (chatId: string) => call<ChatCompacted>('compact_chat', { chatId }),
+  /** Drop the conversation, keep the chat. Distinct from deleting it. */
+  clear: (chatId: string) => call<ChatContext>('clear_chat', { chatId }),
   /** Live frames for one chat. The channel name is the core's contract. */
   onEvent: (chatId: string, cb: (ev: ChatEvent) => void) => listen<ChatEvent>(`session://${chatId}`, cb),
 }

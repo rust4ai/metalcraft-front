@@ -149,6 +149,9 @@ fn main() {
             rpc::chat::create_chat,
             rpc::chat::get_chat,
             rpc::chat::send_turn,
+            rpc::chat::chat_context,
+            rpc::chat::compact_chat,
+            rpc::chat::clear_chat,
             rpc::chat::watch_chat,
         ])
         .run(tauri::generate_context!())

@@ -202,6 +202,31 @@ pub struct InferenceStatus {
     pub gateway: bool,
 }
 
+/// What a chat's context costs — the read behind `/tokens`, and the number a
+/// client needs to show headroom before someone hits the wall.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatContext {
+    pub estimated_tokens: usize,
+    pub message_count: usize,
+    pub context_window: usize,
+    pub compact_threshold_tokens: usize,
+    #[serde(default)]
+    pub would_compact: bool,
+}
+
+/// The result of a forced compaction — `/compact`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompacted {
+    /// False when there was nothing old enough to summarize. Not an error.
+    pub compacted: bool,
+    pub tokens_before: usize,
+    pub tokens_after: usize,
+    pub messages_before: usize,
+    pub messages_after: usize,
+    #[serde(default)]
+    pub summary: Option<String>,
+}
+
 /// A host the pod is willing to fetch agent packs from.
 ///
 /// The pod returns these (rather than only enforcing them) so a UI can say what it

@@ -288,8 +288,10 @@ Octaweave learns to. Zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 (`mck_` in
 
 ### S9 — the third pill, and where automations live
 
-`app/Sidebar.tsx` nav, `features/automations/*`. **Planned, not built** — blocked on
-`GET /api/v1/flows` (PLAN §12.10).
+`app/Sidebar.tsx` nav, `features/automations/*`, `stores/automations.ts`. **Built**
+(list, arm/disarm, runs) against the `GET /api/v1/flows` this work added to the pod.
+Still to come: the arm **consent dialog** (the payload exists — `/flows/{id}/binding`),
+resuming a paused run, and the xyflow graph editor.
 
 S2 shipped one nav row. S9 makes it three, and the grouping is the whole design:
 
@@ -347,9 +349,15 @@ Honest gaps, so nobody rediscovers them as bugs:
 - **No published `octaweave` pack.** The connection card works; the install step
   fails with *no version of 'octaweave' matches* until the pack is pushed to
   packs.metalcraftai.com. The card names that state rather than hiding it.
-- **No automations surface.** S9 is designed and unbuilt: flows cannot be listed,
-  armed, or inspected from this app, and a flow-born agent shows up in the fleet with
-  nothing to open. The pod-side blockers are PLAN §12.10–12.
+- **No arm consent dialog.** S9 arms a schedule on one click. The pod already serves
+  what the dialog should say — reachable domains, `missing_env`, `mutating_tools`
+  (`/flows/{id}/binding`) — and arming is the moment a pod agrees to act unwatched, so
+  one click is too few. `automations.binding()` is wired and unused, waiting for it.
+- **No way to resume a paused run.** The Automations view surfaces runs stuck on an
+  approval — the point of the section — but resolving one still means
+  `POST /flow-runs/{id}/resume` from elsewhere. It routes you to the agent instead.
+- **A flow-born agent opens onto an empty transcript.** Not this repo's bug: a firing
+  leaves no conversation until the pod's phase B lands (PLAN §12.11).
 - **No windowed-allowance meter.** The status bar shows a credit balance because
   that is what the ledger has (§S5). Orca's "10% used this month" needs a
   denominator nothing serves.

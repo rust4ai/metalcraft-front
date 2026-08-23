@@ -54,6 +54,28 @@ export interface InferenceStatus {
   gateway: boolean
 }
 
+/** What a chat's context currently costs — the read behind `/tokens`. */
+export interface ChatContext {
+  /** Rough estimate (~4 chars per token), the same one compaction decides on. */
+  estimated_tokens: number
+  message_count: number
+  context_window: number
+  /** Automatic compaction fires above this. */
+  compact_threshold_tokens: number
+  would_compact: boolean
+}
+
+/** The result of a forced compaction — `/compact`. */
+export interface ChatCompacted {
+  /** False when there was nothing old enough to summarize. Not an error. */
+  compacted: boolean
+  tokens_before: number
+  tokens_after: number
+  messages_before: number
+  messages_after: number
+  summary?: string | null
+}
+
 /** The connected pod, as the renderer is allowed to see it. */
 export interface ActivePod {
   slug: string

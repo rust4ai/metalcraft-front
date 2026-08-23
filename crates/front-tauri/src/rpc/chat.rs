@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use front_core::{ChatDetail, ChatSummary, NewChat};
+use front_core::{ChatCompacted, ChatContext, ChatDetail, ChatSummary, NewChat};
 use tauri::Emitter;
 
 use crate::state::AppState;
@@ -55,6 +55,38 @@ pub async fn get_chat(id: String, state: State<'_>) -> Result<ChatDetail, String
 }
 
 /// Run a turn. Returns as soon as the stream is attached; frames arrive as events.
+/// What this conversation's context costs — backs `/tokens` and the headroom
+/// readout.
+#[tauri::command]
+pub async fn chat_context(chat_id: String, state: State<'_>) -> Result<ChatContext, String> {
+    state
+        .conn(None)?
+        .chat_context(&chat_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Force a compaction — `/compact`. Slower than most commands: the pod pays for a
+/// summarization call and holds the chat busy while it runs.
+#[tauri::command]
+pub async fn compact_chat(chat_id: String, state: State<'_>) -> Result<ChatCompacted, String> {
+    state
+        .conn(None)?
+        .compact_chat(&chat_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Drop the conversation, keep the chat — `/clear`.
+#[tauri::command]
+pub async fn clear_chat(chat_id: String, state: State<'_>) -> Result<ChatContext, String> {
+    state
+        .conn(None)?
+        .clear_chat(&chat_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn send_turn(
     chat_id: String,
