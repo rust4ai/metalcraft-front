@@ -1,4 +1,5 @@
 import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, Settings, Store, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -55,6 +56,19 @@ export function TabStrip({ onCommand }: { onCommand: () => void }) {
   const instances = useFleet((s) => s.instances)
   const { sidebarOpen, toggleSidebar, railOpen, toggleRail } = useLayout()
   const nameOf = (id: string) => instances.find((i) => i.id === id)?.name
+  const activeTab = useRef<HTMLDivElement>(null)
+
+  // Keep the focused tab visible. The strip scrolls once the tabs outgrow it,
+  // and with both side panels widened the centre column gets narrow enough that
+  // the active tab can sit almost entirely outside the scroller — reading as
+  // "Ge" with its close button out of reach. Selecting a tab you cannot see is
+  // the state this prevents.
+  //
+  // `inline: 'nearest'` so an already-visible tab does not jolt the strip, and
+  // `block: 'nearest'` so a horizontal scroll never drags the page vertically.
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+  }, [activeKey, tabs.length])
 
   return (
     <div
@@ -84,6 +98,7 @@ export function TabStrip({ onCommand }: { onCommand: () => void }) {
           return (
             <div
               key={tab.key}
+              ref={active ? activeTab : undefined}
               className={cn(
                 'group flex h-[26px] min-w-0 shrink-0 items-center gap-1.5 rounded-control pl-2.5 text-[12.5px] transition-colors duration-150',
                 closable ? 'pr-1' : 'pr-2.5',
