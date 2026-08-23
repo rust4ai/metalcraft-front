@@ -138,11 +138,37 @@ describe('submit', () => {
     expect(sent()).toEqual(['/Users/amy/notes.md'])
   })
 
-  it('unlocks the composer when a command fails', async () => {
-    const { useSessions } = await mount({ compact_chat: new Error('chat is already mid-turn') })
+  it('reports a failed command in the transcript, not over it', async () => {
+    // `session.error` replaces the whole conversation with a red panel. Losing
+    // what you were reading because a command missed is the wrong trade.
+    const { useSessions, lastNotice } = await mount({
+      compact_chat: new Error('409 Conflict /chats/c1/compact: chat is already mid-turn'),
+    })
     await useSessions.getState().submit('i1', '/compact')
     const s = useSessions.getState().byInstance.i1!
     expect(s.sending).toBe(false)
-    expect(s.error).toContain('mid-turn')
+    expect(s.error).toBeNull()
+    expect(lastNotice()).toContain('mid-turn')
+  })
+
+  it('says a pod is old rather than that the chat is broken', async () => {
+    // The commonest miss: a pod that serves the chat fine and 404s the command,
+    // because these endpoints are newer than the chat surface. Axum answers an
+    // unmatched route with an empty body — that is what tells it apart from the
+    // pod's own "no such chat".
+    const { useSessions, lastNotice } = await mount({
+      compact_chat: new Error('404 Not Found /chats/c1/compact: '),
+    })
+    await useSessions.getState().submit('i1', '/compact')
+    expect(lastNotice()).toContain('too old for /compact')
+  })
+
+  it('passes the pod its own words when it means the 404', async () => {
+    const { useSessions, lastNotice } = await mount({
+      compact_chat: new Error("404 Not Found /chats/c1/compact: chat 'c1' not found"),
+    })
+    await useSessions.getState().submit('i1', '/compact')
+    expect(lastNotice()).toContain('not found')
+    expect(lastNotice()).not.toContain('too old')
   })
 })

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { automations } from '@/rpc'
-import type { AgentInstance, Flow, FlowRun } from '@/types'
+import type { AgentInstance, Flow, FlowRun, FlowRunSummary } from '@/types'
 
 /**
  * Automations: the pod's flows, and the runs they leave behind.
@@ -23,6 +23,8 @@ interface AutomationsState {
    *  the persona and the roster it is missing from, so it is worth showing. */
   arm: (flowId: string, scheduleId: string, instanceId?: string) => Promise<AgentInstance | null>
   disarm: (flowId: string, scheduleId: string) => Promise<void>
+  /** Run now, and return what it did. Null with `error` set on refusal. */
+  run: (flowId: string) => Promise<FlowRunSummary | null>
 }
 
 /** Paused outranks failed outranks everything else: the first needs a person,
@@ -72,6 +74,26 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
     } finally {
       const busy = { ...get().busy }
       delete busy[key]
+      set({ busy })
+    }
+  },
+
+  run: async (flowId) => {
+    // Keyed by flow rather than schedule: running is an act on the whole graph,
+    // and the row it disables is the flow's own Run button.
+    set({ busy: { ...get().busy, [flowId]: true }, error: null })
+    try {
+      const summary = await automations.run(flowId)
+      // A run leaves a conversation and may leave a paused record; both are
+      // things this view shows, so re-read rather than infer.
+      await get().load()
+      return summary
+    } catch (e) {
+      set({ error: String(e) })
+      return null
+    } finally {
+      const busy = { ...get().busy }
+      delete busy[flowId]
       set({ busy })
     }
   },

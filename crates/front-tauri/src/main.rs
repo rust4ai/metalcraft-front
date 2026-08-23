@@ -130,6 +130,7 @@ fn main() {
             rpc::flows::list_flows,
             rpc::flows::list_flow_runs,
             rpc::flows::flow_binding,
+            rpc::flows::run_flow,
             rpc::flows::arm_schedule,
             rpc::flows::disarm_schedule,
             rpc::keys::list_keys,

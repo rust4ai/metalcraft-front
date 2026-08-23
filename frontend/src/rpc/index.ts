@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding } from '@/types'
+import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -62,6 +62,10 @@ export const automations = {
   runs: () => call<FlowRun[]>('list_flow_runs'),
   /** What arming would permit: personas, domains, keys, which tools mutate. */
   binding: (flowId: string) => call<FlowBinding>('flow_binding', { flowId }),
+  /** Run now. The pod resolves the armed agent, so this is the same act as a
+   *  scheduled firing. Resolves when the flow finishes, not when it starts. */
+  run: (flowId: string, instanceId?: string) =>
+    call<FlowRunSummary>('run_flow', { flowId, instanceId }),
   /** Arming is what creates the agent. Pass `instanceId` to attach to one instead. */
   arm: (flowId: string, scheduleId: string, instanceId?: string) =>
     call<AgentInstance>('arm_schedule', { flowId, scheduleId, instanceId }),

@@ -94,6 +94,37 @@ export function helpText(): string {
   return COMMANDS.map((c) => `/${c.name} — ${c.summary}`).join('\n')
 }
 
+/**
+ * Turn a failed command into something a person can act on.
+ *
+ * These endpoints are newer than the chat surface itself, so the failure that
+ * matters is a pod that predates them: it serves the chat perfectly well and then
+ * 404s the command. Told raw, that reads as "your conversation is broken".
+ *
+ * Same discrimination as `describeRegistryError`: the pod's own 404 (no such
+ * chat) carries `{"error": …}`, which reaches us as the detail after the path,
+ * while axum answers an unmatched route with an empty body. No version is named
+ * because the agent's tags do not track its Cargo version, and a number that
+ * turned out to be wrong is worse than "update the pod".
+ *
+ * Anything else is returned untouched — the pod's account of its own trouble
+ * beats one written here.
+ */
+export function describeCommandError(error: unknown, command: string): string {
+  const message = String(error).replace(/^Error:\s*/, '')
+  if (!isMissingRoute(message)) return message
+  return `This pod is too old for /${command} — update it and try again.`
+}
+
+function isMissingRoute(message: string): boolean {
+  if (!/^404\b/.test(message)) return false
+  const at = message.indexOf(' /chats/')
+  if (at === -1) return false
+  // Everything after the path is the pod's own words. A route miss has none.
+  const detail = message.slice(at).split(':').slice(1).join(':')
+  return detail.trim() === ''
+}
+
 /** Command-shaped: a single lowercase token, no second slash. `/Users/amy` is
  *  not, which is the point — see the module note. */
 const SHAPED = /^\/[a-z][a-z0-9-]*$/

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { AlertTriangle, Clock, PauseCircle, RefreshCw, Zap } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, PauseCircle, Play, RefreshCw, Zap } from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
@@ -88,6 +88,10 @@ export function AutomationsView() {
 }
 
 function FlowCard({ flow }: { flow: Flow }) {
+  const { run, busy } = useAutomations()
+  const go = useUi((s) => s.go)
+  const running = busy[flow.id] ?? false
+
   return (
     <Card className="p-0">
       <div className="flex items-start gap-3 px-4 pt-3.5">
@@ -111,6 +115,23 @@ function FlowCard({ flow }: { flow: Flow }) {
             runs as {flow.preset} · {flow.node_count} nodes · edited {relative(flow.updated_at)}
           </div>
         </div>
+        {/* Running an armed automation by hand *is* its scheduled firing — same
+            agent, same memory — so this lands you in the conversation it just
+            wrote rather than reporting a status code. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={running}
+          onClick={() =>
+            void run(flow.id).then((summary) => {
+              const armed = flow.schedules.find((s) => s.instance_id)?.instance_id
+              if (summary?.chat_id && armed) go({ kind: 'session', instanceId: armed })
+            })
+          }
+        >
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          {running ? 'Running…' : 'Run now'}
+        </Button>
       </div>
       <div className="mt-3 divide-y divide-line border-t border-line">
         {flow.schedules.map((s) => (

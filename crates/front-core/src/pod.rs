@@ -379,6 +379,22 @@ impl PodConnection {
         self.get("/flow-runs").await
     }
 
+    /// Run a flow now.
+    ///
+    /// Omitting `instance_id` lets the pod resolve the flow's armed agent, so
+    /// pressing "run" on an automation that fires every morning is the same act
+    /// as the morning firing — same memory, same conversation. An unarmed flow
+    /// runs memoryless and leaves nothing behind, which is what testing one
+    /// should do.
+    pub async fn run_flow(
+        &self,
+        flow_id: &str,
+        instance_id: Option<&str>,
+    ) -> anyhow::Result<FlowRunSummary> {
+        let body = serde_json::json!({ "instance_id": instance_id });
+        self.post(&format!("/flows/{flow_id}/run"), &body).await
+    }
+
     /// What arming this flow would actually permit: personas, domains, keys, and
     /// which of its tools mutate.
     pub async fn flow_binding(&self, flow_id: &str) -> anyhow::Result<FlowBinding> {

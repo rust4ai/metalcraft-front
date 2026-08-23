@@ -81,6 +81,7 @@ async function mount(over: Record<string, unknown> = {}) {
     list_flows: [BRIEF, DORMANT],
     list_flow_runs: [PAUSED_RUN],
     arm_schedule: { id: 'inst_new', name: 'Amy — Evening recap' },
+    run_flow: { run_id: 'run_2', flow_id: 'brief', status: 'completed', chat_id: 'chat_1', warnings: [] },
     disarm_schedule: null,
     list_instances: [],
     list_presets: [],
@@ -148,6 +149,19 @@ describe('AutomationsView', () => {
     const armed = calls.find((c) => c.method === 'arm_schedule')
     expect(armed?.args).toMatchObject({ flowId: 'brief', scheduleId: 'evening' })
     expect(calls.filter((c) => c.method === 'list_flows').length).toBeGreaterThan(1)
+  })
+
+  it('lands you in the conversation a hand-run just wrote', async () => {
+    // Running an armed automation by hand is its scheduled firing: the reward is
+    // a transcript, so the button ends in the agent rather than in a status code.
+    const { calls } = await mount()
+    await waitFor(() => expect(screen.getAllByText('Run now').length).toBe(2))
+    await userEvent.click(screen.getAllByText('Run now')[0]!)
+    await waitFor(() => expect(calls.some((c) => c.method === 'run_flow')).toBe(true))
+    expect(calls.find((c) => c.method === 'run_flow')?.args).toMatchObject({ flowId: 'brief' })
+
+    const { useUi } = await import('@/stores/ui')
+    await waitFor(() => expect(useUi.getState().activeKey).toBe('session:inst_amy'))
   })
 
   it('says what to do when the pod has no automations at all', async () => {

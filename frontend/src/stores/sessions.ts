@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { chats } from '@/rpc'
 import { emptyTranscript, fromMessages, reduce, type TranscriptState } from '@/features/session/transcript'
-import { helpText, parse } from '@/features/session/commands'
+import { describeCommandError, helpText, parse } from '@/features/session/commands'
 import type { ChatEvent, ChatSummary } from '@/types'
 import { useFleet } from './fleet'
 
@@ -172,12 +172,17 @@ export const useSessions = create<SessionsState>((set, get) => ({
       })
       if (result.notice) notice(result.notice)
     } catch (e) {
+      // A failed command reports itself in the transcript, never as the session
+      // error — that one replaces the whole conversation with a red panel, and
+      // losing what you were reading because a command missed is the wrong
+      // trade. The commonest miss is an old pod, which is not broken at all.
       const current = get().byInstance[instanceId]
       if (current) {
         set({
-          byInstance: { ...get().byInstance, [instanceId]: { ...current, sending: false, error: String(e) } },
+          byInstance: { ...get().byInstance, [instanceId]: { ...current, sending: false } },
         })
       }
+      notice(describeCommandError(e, parsed.command.name))
     }
   },
 

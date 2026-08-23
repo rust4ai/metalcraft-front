@@ -699,3 +699,24 @@ mod automation_tests {
         // the run record cannot break this client.
     }
 }
+
+/// What `POST /flows/{id}/run` answers with for a v2 flow.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowRunSummary {
+    #[serde(default)]
+    pub run_id: String,
+    #[serde(default)]
+    pub flow_id: String,
+    /// `completed` | `failed` | `paused`, or whatever the terminal `end` node
+    /// declared as its status.
+    #[serde(default)]
+    pub status: String,
+    /// The conversation the run wrote itself into, when it had an agent and
+    /// something to say. This is the link from "it ran" to "here is what it did".
+    #[serde(default)]
+    pub chat_id: Option<String>,
+    /// Non-fatal notes — a missing pack, or an ambiguity the pod refused to guess
+    /// through. Worth showing: they are why a run did less than expected.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}

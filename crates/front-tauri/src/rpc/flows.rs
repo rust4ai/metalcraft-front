@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use front_core::{AgentInstance, Flow, FlowBinding, FlowRun};
+use front_core::{AgentInstance, Flow, FlowBinding, FlowRun, FlowRunSummary};
 
 use crate::state::AppState;
 
@@ -61,6 +61,24 @@ pub async fn arm_schedule(
     state
         .conn(None)?
         .arm_schedule(&flow_id, &schedule_id, instance_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Run a flow now, as the agent its schedule armed.
+///
+/// Synchronous on the pod: this resolves when the flow finishes, which for a
+/// multi-node flow is not instant. The reward is `chat_id` — the conversation it
+/// just wrote, which the caller can open to read what happened.
+#[tauri::command]
+pub async fn run_flow(
+    flow_id: String,
+    instance_id: Option<String>,
+    state: State<'_>,
+) -> Result<FlowRunSummary, String> {
+    state
+        .conn(None)?
+        .run_flow(&flow_id, instance_id.as_deref())
         .await
         .map_err(|e| e.to_string())
 }

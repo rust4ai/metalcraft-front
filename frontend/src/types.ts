@@ -432,3 +432,13 @@ export interface ArmConsent {
   tool_count: number
   base_memories: number
 }
+
+/** What a hand-triggered run answers with. */
+export interface FlowRunSummary {
+  run_id: string
+  flow_id: string
+  status: string
+  /** The conversation it wrote — the link from "it ran" to "here is what it did". */
+  chat_id?: string | null
+  warnings: string[]
+}
