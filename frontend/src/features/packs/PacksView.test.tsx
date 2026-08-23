@@ -117,4 +117,16 @@ describe('PacksView', () => {
     await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
     expect(screen.queryByRole('button', { name: /^install$/i })).toBeNull()
   })
+
+  it('names the real problem when the pod predates the registry proxy', async () => {
+    // The tab still lists axoniac — a pod knows its hosts long before it can
+    // browse them — so the only clue is a bodyless 404 under the proxy path.
+    await mount({
+      registry_status: new Error('404 Not Found /agent-packs/registries/axoniac/status: '),
+      registry_search: new Error('404 Not Found /agent-packs/registries/axoniac/search?limit=50: '),
+    })
+    await waitFor(() => expect(screen.getByText(/too old to browse axoniac/)).toBeTruthy())
+    // And it must not also claim the catalogue is merely empty.
+    expect(screen.queryByText(/nothing to show yet/)).toBeNull()
+  })
 })

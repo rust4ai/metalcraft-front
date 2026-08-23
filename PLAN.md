@@ -334,6 +334,21 @@ step is also a standalone settings surface.
 6. **Settings.** Account, pods, **interface source**, **Octaweave connection**, keys/secrets
    (global + per-channel scopes), registries & installed packs, gateway channels,
    integrations, diagnostics, updates, theme.
+7. **Automations.** The pod calls them flows; a user arms a *standing instruction*, so the
+   UI says **Automations** and the API keeps `flows` (see
+   `~/ai/metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` §2.1). Third sidebar pill, its own
+   tab. Lists every installed flow — **including disabled ones**, which is most of them,
+   since packs ship flows disabled — with its schedule, whether it is armed, and **the
+   agent it runs as**, click-through to that agent's session. Second section: **runs**,
+   paused-first, because a run halted on an `approval` node is the pod's most urgent
+   object and nothing surfaces it today. Arming opens a consent dialog (agent, personas,
+   reachable domains, keys, *which tools mutate*) — the second consent moment after pack
+   install, and the more serious one, since an armed flow acts while nobody is watching.
+
+   **An armed automation is an agent, not a parallel object.** It appears in the fleet
+   with the other agents, carrying a clock badge; there is no second "active flows" list.
+   Two lists over one record would split provenance and make "why does this agent know
+   that?" answerable only in whichever surface you happened to open.
 
 ## 11. Phases
 
@@ -348,7 +363,7 @@ step is also a standalone settings surface.
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
 | **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect and a general **key store UI** done. **Two known blockers, both outside this repo** (source read at `~/ai/octaweave`, formerly `agent-cloud-spaces`): the `octaweave` integration pack is unpublished on packs.metalcraftai.com, and key creation accepts **no `redirect_uri`** (`POST /w/{ws}/keys`), so nothing can call our callback yet. True zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 — accept `mck_` in `auth/extract.rs` — which is unimplemented, and §3.2 notes an `mck_` names a *person* across every workspace where an `owk_` is pinned to one |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
-| **P9** | Flows port (xyflow) + schedules + flow-run inspector; keys/gateway/channels settings | parity with workshop's editors |
+| **P9** | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | an automation can be armed from this app, its agent opened, and its 3am run read back — see `~/ai/metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md`, whose §3 blocks all of it |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |
 | **P11** | **Web target**: `vite.web.config.ts` + `http` transport against a stateless Rust/Axum proxy (lifted from metalcraft-workshop-web: `mc_session` cookie login, in-memory pod-connect, streaming `/api/pod/*`) | the same UI runs at `workshop.metalcraftai.com`; workshop-web retires |
 
@@ -406,6 +421,25 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
 9. **MCP client in the agent** (0 hits for `mcp` in `metalcraft-agent/src`). Not required —
    packs cover our tools — but it is the one thing that would let metalcraft agents consume
    the wider ecosystem the way Orca-hosted CLIs do. Separate decision, separate plan.
+10. **No `GET /api/v1/flows`.** There is no list endpoint — only `/flows/{id}`, so a client
+    must already know the id. Confirmed against the pod's own `openapi.json`. **This blocks
+    P9 entirely**; nothing else in the Automations surface can be built around it.
+    *(agent, small — do this first)*
+11. **A flow run leaves no conversation.** `grep chat src/flow_exec.rs` finds one comment.
+    The run captures into the agent's memory but produces no chat, so a flow-born agent
+    lists `conversation_count: 0` and opens onto an empty transcript — an agent that has
+    never visibly done anything. The pod's own plan flags this as AP4's "Remaining".
+    **The payoff is disproportionate:** `stores/sessions.ts:15` already promises that a
+    session joins a turn in progress "fired by a schedule … or another device", so one
+    chat per firing converts our entire transcript stack — reducer, tool cards, trace
+    collapsing, right rail — onto flow runs with **no new client code**. A 3am cron becomes
+    something you watch replay live. *(agent, medium — the one that matters)*
+12. **Arming has no consent summary and manual runs are second-class.**
+    `POST /flows/{id}/run` takes no `instance_id`, so triggering an armed flow by hand runs
+    it memoryless and invisibly, unlike the same flow firing itself a minute later; and
+    `GET /flows/{id}/preview` (the agent plan's §6 arm dialog — personas, domains, keys,
+    which tools mutate) was specified and never built. Our arm dialog cannot be honest
+    without it. *(agent, small + medium)*
 
 ## 13. Testing & release
 

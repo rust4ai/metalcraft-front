@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { blockedByTrust, canConnect, describeConnection, isInstalled, updateAvailable } from './registryState'
+import {
+  blockedByTrust,
+  canConnect,
+  describeConnection,
+  describeRegistryError,
+  isInstalled,
+  updateAvailable,
+} from './registryState'
 import type { InstalledPack, RegistryConnection, SearchHit } from '@/types'
 
 const conn = (over: Partial<RegistryConnection>): RegistryConnection => ({
@@ -79,5 +86,39 @@ describe('installed state', () => {
     expect(updateAvailable(hit({ version: '1.0.0' }), installed)).toBeNull()
     // Nothing to compare is not an update.
     expect(updateAvailable(hit(), installed)).toBeNull()
+  })
+})
+
+describe('describeRegistryError', () => {
+  // What a pod built before the registry proxy answers: axum's own 404, which has
+  // no body, so nothing follows the path.
+  const routeMiss = '404 Not Found /agent-packs/registries/axoniac/search?limit=50: '
+
+  it('reads a bodyless 404 on the proxy as a pod that is too old', () => {
+    const said = describeRegistryError(routeMiss, 'axoniac')
+    expect(said).toMatch(/too old to browse axoniac/)
+    expect(said).toMatch(/0\.30\.0/)
+  })
+
+  it('sees through the Error wrapper the transport adds', () => {
+    expect(describeRegistryError(new Error(routeMiss), 'axoniac')).toMatch(/too old/)
+  })
+
+  it('leaves a 404 the pod actually meant alone', () => {
+    // The pod says "no such pack" with the same status. Its words are better than
+    // a guess about the pod's age, and rewriting this one would be a lie.
+    const real = "404 Not Found /agent-packs/registries/axoniac/packs/amy/manifest: 'amy' is not published on axoniac"
+    expect(describeRegistryError(real, 'axoniac')).toBe(real)
+  })
+
+  it('leaves every other failure in the pod’s own words', () => {
+    const unsupported =
+      '501 Not Implemented /agent-packs/registries/metalcraft/search?limit=50: metalcraft does not offer search.'
+    expect(describeRegistryError(unsupported, 'metalcraft')).toBe(unsupported)
+    expect(describeRegistryError('502 Bad Gateway /agent-packs/registries/axoniac/search: down', 'axoniac')).toMatch(
+      /^502/,
+    )
+    // A 404 from somewhere else entirely is not evidence about the proxy.
+    expect(describeRegistryError('404 Not Found /chats/abc: ', 'axoniac')).toBe('404 Not Found /chats/abc: ')
   })
 })

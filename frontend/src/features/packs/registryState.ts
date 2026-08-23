@@ -63,3 +63,44 @@ export function updateAvailable(hit: SearchHit, installed: InstalledPack[]): str
   if (!mine?.version || !hit.version) return null
   return mine.version === hit.version ? null : mine.version
 }
+
+/**
+ * The version of metalcraft-agent that first served the registry proxy
+ * (`registries/{name}/status`, `/search`, `/manifest` — agent `3a6ab9a`). The
+ * plain `registries` list is older, which is what makes the failure confusing:
+ * an out-of-date pod names its hosts perfectly well and then 404s every attempt
+ * to browse one.
+ */
+export const REGISTRY_PROXY_SINCE = '0.30.0'
+
+/**
+ * Turn a failed proxy call into something a person can act on.
+ *
+ * The pod is careful about its own failures — 404 for a registry it does not
+ * have, 501 for a host that is fetch-only, 502 for a host having a bad day — but
+ * a route that does not *exist* is also a 404, and axum's is the same status as
+ * the pod's own. Two things tell them apart. This UI only ever browses hosts the
+ * pod itself listed, so "no such registry" cannot be true here; and axum answers
+ * an unmatched route with an empty body, while every 404 the pod means carries
+ * `{"error": …}` that reaches us as the detail after the path.
+ *
+ * Anything else is returned untouched: the pod's message about its own trouble is
+ * better than one written here.
+ */
+export function describeRegistryError(error: unknown, registry: string): string {
+  const message = String(error).replace(/^Error:\s*/, '')
+  if (!isMissingProxy(message)) return message
+  return (
+    `This pod is too old to browse ${registry}. Browsing a registry needs ` +
+    `metalcraft-agent ${REGISTRY_PROXY_SINCE} or newer — update the pod and try again.`
+  )
+}
+
+function isMissingProxy(message: string): boolean {
+  if (!/^404\b/.test(message)) return false
+  const path = message.indexOf(' /agent-packs/registries/')
+  if (path === -1) return false
+  // Everything after the path is the pod's own words. A route miss has none.
+  const detail = message.slice(path).split(':').slice(1).join(':')
+  return detail.trim() === ''
+}

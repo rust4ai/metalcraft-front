@@ -286,6 +286,51 @@ is one place verification happens. It is **inert for a known reason**: Octaweave
 Octaweave learns to. Zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 (`mck_` in
 `auth/extract.rs`), which is Octaweave-side and unbuilt.
 
+### S9 — the third pill, and where automations live
+
+`app/Sidebar.tsx` nav, `features/automations/*`. **Planned, not built** — blocked on
+`GET /api/v1/flows` (PLAN §12.10).
+
+S2 shipped one nav row. S9 makes it three, and the grouping is the whole design:
+
+```
+◈  My fleet                 ← agents: chat-born and flow-born, one list
+◷  Automations              ← flows: definitions, schedules, runs
+───────────────────────────
+▣  Browse agent presets     ← the catalog you install from
+```
+
+Two rows for what this pod *has*, a rule, then one row for what it could have. "My fleet"
+and "Automations" are destinations you own; "Browse agent presets" is a shop.
+
+The rule that keeps the first two from becoming two doors onto one room — the failure the
+`Sidebar.tsx` header comment already names:
+
+> **An armed automation *is* an agent and lives in My fleet. A flow is a definition and
+> lives in Automations. A run is neither, and lives in Automations → Runs.**
+
+The pod agrees already: `InstanceOrigin::Flow` is a first-class origin, arming a schedule
+mints a persistent instance with its own memory, and disarming keeps it. So a flow-born
+agent needs no new row type here — an `InstanceRow` clock badge where `kept` renders now,
+and the rail gains a "Scheduled" block from `GET /agents/instances/{id}/flows`.
+
+Two things Automations must carry that the fleet cannot:
+
+- **Disabled flows.** Packs ship flows disabled, so an unarmed flow is the normal case and
+  the arm dialog's entire reason to exist. They have no agent, so they cannot appear in a
+  fleet list at all.
+- **Paused runs.** A run halted on an `approval` node is waiting on a human and nothing in
+  this shell shows it. `/api/v1/flow-runs` has served `status: "paused"` with its
+  `resume_handles` since flows v2 and no client has ever read it.
+
+Vocabulary: the pod says *flow* everywhere and keeps saying it (`SavedFlow`,
+`/api/v1/flows`, `FlowRun`). The UI says *Automation*, because what a person arms is not a
+graph, it is a standing instruction. Two words at two altitudes; forcing one would make
+either the API vague or the UI jargon.
+
+Keys: the palette gains `go automations`; no new global shortcut — three pills do not
+need one each.
+
 ## 5. What the shell still doesn't have
 
 Honest gaps, so nobody rediscovers them as bugs:
@@ -302,6 +347,9 @@ Honest gaps, so nobody rediscovers them as bugs:
 - **No published `octaweave` pack.** The connection card works; the install step
   fails with *no version of 'octaweave' matches* until the pack is pushed to
   packs.metalcraftai.com. The card names that state rather than hiding it.
+- **No automations surface.** S9 is designed and unbuilt: flows cannot be listed,
+  armed, or inspected from this app, and a flow-born agent shows up in the fleet with
+  nothing to open. The pod-side blockers are PLAN §12.10–12.
 - **No windowed-allowance meter.** The status bar shows a credit balance because
   that is what the ledger has (§S5). Orca's "10% used this month" needs a
   denominator nothing serves.

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { keys, packs } from '@/rpc'
+import { describeRegistryError } from '@/features/packs/registryState'
 import type { InstalledPack, KeyEntry, PackManifest, Registries, RegistryConnection, SearchHit } from '@/types'
 
 /**
@@ -74,7 +75,12 @@ export const usePacks = create<PacksState>((set, get) => ({
         podKeys: stored.map((k) => k.name),
       })
     } catch (e) {
-      set({ manifestError: { ...get().manifestError, [hit.reference]: String(e) } })
+      set({
+        manifestError: {
+          ...get().manifestError,
+          [hit.reference]: describeRegistryError(e, registry),
+        },
+      })
     }
   },
 
@@ -102,7 +108,7 @@ export const usePacks = create<PacksState>((set, get) => ({
     set({
       connection: status.status === 'fulfilled' ? status.value : null,
       results: results.status === 'fulfilled' ? results.value : [],
-      error: results.status === 'rejected' ? String(results.reason) : null,
+      error: results.status === 'rejected' ? describeRegistryError(results.reason, name) : null,
       loading: false,
     })
   },
@@ -115,7 +121,7 @@ export const usePacks = create<PacksState>((set, get) => ({
     try {
       set({ results: await packs.search(name, query), loading: false, error: null })
     } catch (e) {
-      set({ loading: false, error: String(e) })
+      set({ loading: false, error: describeRegistryError(e, name) })
     }
   },
 
@@ -125,7 +131,7 @@ export const usePacks = create<PacksState>((set, get) => ({
     try {
       set({ connection: await packs.connect(name), error: null })
     } catch (e) {
-      set({ error: String(e) })
+      set({ error: describeRegistryError(e, name) })
     }
   },
 

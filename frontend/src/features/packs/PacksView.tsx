@@ -97,7 +97,9 @@ export function PacksView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {error && <p className="mb-3 text-[13px] text-red">{error}</p>}
-        {results.length === 0 && !loading ? (
+        {/* A failed browse is not an empty catalogue. Saying both at once invites
+            the reader to believe the reassuring one. */}
+        {results.length === 0 && !loading && !error ? (
           <p className="py-16 text-center text-[13px] text-ink-3">
             {query ? `Nothing on ${active} matches “${query}”.` : 'This registry has nothing to show yet.'}
           </p>
