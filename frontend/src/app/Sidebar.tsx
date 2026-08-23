@@ -5,6 +5,7 @@ import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
 import { useConnection } from '@/stores/connection'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
+import { Nudges } from './Nudges'
 import { Resizer } from './Resizer'
 import { cn } from '@/lib/cn'
 
@@ -135,6 +136,8 @@ export function Sidebar() {
           <Settings className="h-4 w-4" />
         </button>
       </footer>
+
+      <Nudges />
 
       <Resizer side="right" width={sidebarWidth} onResize={setSidebarWidth} />
     </aside>

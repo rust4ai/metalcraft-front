@@ -132,6 +132,22 @@ describe('Nudges', () => {
     expect(screen.getByText('No agents to spawn from')).toBeTruthy()
   })
 
+  it('stays inside the sidebar, where it cannot cover the composer', async () => {
+    // The regression this exists for: the card was `absolute bottom-10 left-4`
+    // on the *shell*, so a 320px card landed on top of the session composer. The
+    // textarea was still rendered and still focusable — just underneath — which
+    // reads exactly like "there is no input box".
+    //
+    // Bounded to the sidebar column, it cannot reach the centre pane at all.
+    await mount({ presets: [] })
+    const card = screen.getByText('No agents to spawn from').closest('.shadow-overlay')
+    expect(card).toBeTruthy()
+    // Spans the sidebar's own width rather than being placed from the window's
+    // left edge, so its right edge cannot cross into the centre column.
+    expect(card?.className).toContain('inset-x-2')
+    expect(card?.className).not.toContain('left-4')
+  })
+
   it('opens the source step from the card', async () => {
     const { useUi } = await mount({ ownSource: false })
     await userEvent.click(screen.getByRole('button', { name: 'Bind a source' }))

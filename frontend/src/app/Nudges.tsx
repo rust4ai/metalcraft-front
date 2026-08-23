@@ -93,7 +93,12 @@ export function Nudges() {
   if (!nudge) return null
 
   return (
-    <div className="animate-fade-up pointer-events-auto absolute bottom-10 left-4 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-card bg-surface p-4 shadow-overlay">
+    // Inside the sidebar column, not floating over the window. The first version
+    // was `absolute bottom-10 left-4` on the *shell*, which put a 320px card on
+    // top of the session composer — the text box was still there and still
+    // focusable, just underneath a card, which reads exactly like "there is no
+    // input box". Bounded by the sidebar, it cannot reach the centre pane at all.
+    <div className="animate-fade-up absolute inset-x-2 bottom-11 z-30 rounded-card bg-surface p-4 shadow-overlay">
       <div className="flex items-start gap-2">
         <nudge.icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
         <h2 className="flex-1 text-[13.5px] font-semibold">{nudge.title}</h2>

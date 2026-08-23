@@ -13,7 +13,6 @@ import { Sidebar } from './Sidebar'
 import { TabStrip } from './TabStrip'
 import { StatusBar } from './StatusBar'
 import { RightRail } from './RightRail'
-import { Nudges } from './Nudges'
 import { CommandPalette } from './CommandPalette'
 
 /**
@@ -31,13 +30,19 @@ export function Shell() {
   const railOpen = useLayout((s) => s.railOpen)
   const view = useUi(activeView)
   const instances = useFleet((s) => s.instances)
+  const fleetLoaded = useFleet((s) => s.loaded)
   const prune = useUi((s) => s.prune)
 
   // A restored tab can outlive the agent it pointed at — the instance may have
   // been deleted from another client while this one was closed.
+  //
+  // Gated on `loaded`, not on `instances.length`. The first version skipped an
+  // empty fleet to avoid pruning before the first load had answered — but that
+  // also meant a pod whose agents were *all* deleted kept every dead tab, each
+  // one opening onto a 404. Empty is a real answer; not-yet-asked is not.
   useEffect(() => {
-    if (instances.length) prune(instances.map((i) => i.id))
-  }, [instances, prune])
+    if (fleetLoaded) prune(instances.map((i) => i.id))
+  }, [fleetLoaded, instances, prune])
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   useShortcuts(setPaletteOpen)
@@ -75,7 +80,6 @@ export function Shell() {
       </main>
       {railOpen && <RightRail />}
       <StatusBar />
-      <Nudges />
       {/* One dialog for the whole shell: the sidebar, the tab strip, the palette
           and the fleet's own button all open the same thing. */}
       <NewAgentDialog />

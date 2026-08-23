@@ -15,6 +15,10 @@ interface FleetState {
   presets: AgentPreset[]
   status: Record<string, Status>
   loading: boolean
+  /** A load has completed at least once. Distinct from `!loading`, which is also
+   *  true before the first one — and "no agents" and "not asked yet" must not
+   *  look the same to anything that acts on emptiness. */
+  loaded: boolean
   error: string | null
 
   load: () => Promise<void>
@@ -36,13 +40,14 @@ export const useFleet = create<FleetState>((set, get) => ({
   presets: [],
   status: {},
   loading: false,
+  loaded: false,
   error: null,
 
   load: async () => {
     set({ loading: true, error: null })
     try {
       const [instances, presets] = await Promise.all([fleet.instances(), fleet.presets()])
-      set({ instances, presets, loading: false })
+      set({ instances, presets, loading: false, loaded: true })
     } catch (e) {
       set({ loading: false, error: String(e) })
     }

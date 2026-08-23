@@ -76,6 +76,20 @@ describe('tabs', () => {
     expect(ui.getState().activeKey).toBe('fleet')
   })
 
+  it('drops every session tab when the pod has no agents left', async () => {
+    // The regression: `prune` was called only when the fleet was non-empty, to
+    // avoid pruning before the first load had answered. A pod whose agents were
+    // *all* deleted therefore kept every dead tab, each opening onto a 404.
+    // Empty is a real answer; the caller gates on "loaded", not on "non-empty".
+    const ui = await fresh()
+    ui.getState().go(session('a'))
+    ui.getState().go(session('b'))
+
+    ui.getState().prune([])
+    expect(ui.getState().tabs.map((t) => t.key)).toEqual(['fleet'])
+    expect(ui.getState().activeKey).toBe('fleet')
+  })
+
   it('drops session tabs whose agent is gone, and rescues focus', async () => {
     const ui = await fresh()
     ui.getState().go({ kind: 'packs' })
