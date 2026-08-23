@@ -50,6 +50,50 @@ pub async fn session() -> Result<Option<Session>, String> {
     Ok(SessionStore::load())
 }
 
+/// Re-read the account from Metalcraft ID and update the cached session.
+///
+/// [`session`] returns a snapshot written at sign-in, so a plan that changed since
+/// — an upgrade, a lapse — stayed invisible until the next login. That matters
+/// because `premium` is what decides whether a pod's turns can bill the gateway,
+/// and deciding it from a stale `false` is how this app tells a paying user their
+/// working pod cannot think.
+///
+/// Best-effort by design: on any failure the caller keeps the cached session
+/// rather than being logged out by a flaky network. The keychain read is not a new
+/// prompt — boot already reaches for the PAT to list pods.
+#[tauri::command]
+pub async fn refresh_session() -> Result<Option<Session>, String> {
+    let Some(cached) = SessionStore::load() else {
+        return Ok(None);
+    };
+    let Some(pat) = SessionStore::pat() else {
+        return Ok(Some(cached));
+    };
+    let me = match IdClient::default().me(&pat).await {
+        Ok(me) => me,
+        Err(e) => {
+            log::info!("keeping the cached session: {e}");
+            return Ok(Some(cached));
+        }
+    };
+    let fresh = Session {
+        email: me
+            .get("email")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&cached.email)
+            .to_string(),
+        premium: me
+            .get("premium")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(cached.premium),
+    };
+    if let Err(e) = SessionStore::save(&fresh, &pat) {
+        // The value is still good for this run; only the cache write failed.
+        log::warn!("could not persist the refreshed session: {e}");
+    }
+    Ok(Some(fresh))
+}
+
 #[tauri::command]
 pub async fn logout(
     state: tauri::State<'_, std::sync::Arc<crate::state::AppState>>,

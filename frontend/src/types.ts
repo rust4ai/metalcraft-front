@@ -33,6 +33,27 @@ export interface Pod {
   version?: string | null
 }
 
+/**
+ * The pod's own answer to "can you think?" — `null` from the RPC when the pod is
+ * older than the endpoint and cannot say.
+ *
+ * Needed because the key store cannot answer it. `list_keys` returns `keys.json`;
+ * a provisioned pod's credential is injected as container env and is never in
+ * there, so a healthy pod reads as keyless. Inferring "no key, cannot think" from
+ * that told premium users their working pod was dead.
+ */
+export interface InferenceStatus {
+  /** A credential resolves. Not a promise the turn succeeds — see `gateway`. */
+  ready: boolean
+  /** Which one answered: bound here, injected/`.env`, or the pod's own identity. */
+  credential: 'stored' | 'environment' | 'pod_token' | 'none'
+  /** Where inference is routed, secrets stripped. Absent means OpenAI proper. */
+  base_url?: string | null
+  /** Routed at the Metalcraft gateway, so turns bill the account's credits — and
+   *  the account's premium, which the pod cannot see, is still the gate. */
+  gateway: boolean
+}
+
 /** The connected pod, as the renderer is allowed to see it. */
 export interface ActivePod {
   slug: string
@@ -300,4 +321,92 @@ export interface OctaweaveConnection {
   status: OctaweaveStatus
   /** The key stored but the pack did not install — a real halfway state. */
   pack_error?: string | null
+}
+
+// ── Automations ────────────────────────────────────────────────────────────
+//
+// The pod says *flow*; this app says **Automation**. These types name the wire,
+// so they keep the pod's word — see `metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md`
+// §2.1. Everything a user reads says Automation.
+
+/** One flow, already joined against its binding by `GET /flows`. */
+export interface Flow {
+  id: string
+  name: string
+  /** The flow-wide switch. Disabled is the *normal* case — packs ship flows off. */
+  enabled: boolean
+  node_count: number
+  created_at: string
+  updated_at: string
+  /** v2 flows run on the state-machine executor; v1 is the legacy prompt list. */
+  v2: boolean
+  /** The agent preset it runs as; unbound resolves to the pod's default agent. */
+  preset: string
+  /** Any schedule armed — i.e. this automation has an agent. */
+  armed: boolean
+  schedules: FlowSchedule[]
+}
+
+export interface FlowSchedule {
+  id: string
+  enabled: boolean
+  /** Trigger tag: `manual` | `minutes` | `hours` | `cron`. */
+  type: string
+  name?: string | null
+  cron?: string | null
+  interval?: number | null
+  timezone?: string | null
+  persona?: string | null
+  /** The agent this schedule was armed with; absent means it never fires. */
+  instance_id?: string | null
+  /** Absent if the agent was deleted out from under the binding. */
+  instance_name?: string | null
+  /** The pod's own rendering of the trigger — including `Invalid cron …`. Show
+   *  it verbatim: a schedule that will never fire should look broken. */
+  description: string
+  next_fire_at?: string | null
+}
+
+/** A persisted flow run. The pod only persists runs that **paused**, so this is
+ *  largely the list of things waiting on a human. */
+export interface FlowRun {
+  id: string
+  flow_id: string
+  /** `running` | `paused` | `completed` | `failed`. */
+  status: string
+  current_node_id: string
+  instance_id?: string | null
+  pause?: FlowPause | null
+  warnings: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface FlowPause {
+  /** `approval` or `wait`. */
+  reason: string
+  resume_handles: string[]
+  message?: string | null
+  wake_at?: string | null
+}
+
+/** `GET /flows/{id}/binding` — what arming this would actually permit. */
+export interface FlowBinding {
+  flow_id: string
+  preset: string
+  bound: boolean
+  personas: { slug: string; allowed: boolean }[]
+  armed: { schedule_id: string; instance_id: string; instance_name?: string | null }[]
+  consent: ArmConsent
+}
+
+export interface ArmConsent {
+  preset_name: string
+  domains: string[]
+  requires_env: string[]
+  /** Credentials this pod does not have — those tools fail at 3am, unwatched. */
+  missing_env: string[]
+  mutating_tools: string[]
+  tool_count: number
+  base_memories: number
 }

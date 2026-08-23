@@ -179,6 +179,29 @@ pub struct KeyEntry {
     pub managed: bool,
 }
 
+/// Whether the pod can run a turn, and on whose credential — the pod's own answer
+/// to a question nothing outside it can answer.
+///
+/// `list_keys` shows `keys.json`; a provisioned pod's credential is injected as
+/// container env and is never in there, so a healthy pod looks keyless from here.
+/// Reading that as "cannot think" is how a working pod got reported dead.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InferenceStatus {
+    /// A credential resolves. Not a promise the turn *succeeds* — the gateway
+    /// still meters credits and wants the account's premium, neither of which the
+    /// pod can see.
+    pub ready: bool,
+    /// `"stored"`, `"environment"`, `"pod_token"`, or `"none"`.
+    #[serde(default)]
+    pub credential: String,
+    /// Where inference is routed, secrets stripped. Absent means OpenAI proper.
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// Routed at the Metalcraft gateway, so turns bill the account's credits.
+    #[serde(default)]
+    pub gateway: bool,
+}
+
 /// A host the pod is willing to fetch agent packs from.
 ///
 /// The pod returns these (rather than only enforcing them) so a UI can say what it
@@ -380,4 +403,274 @@ pub struct Integration {
     /// Keys this pack needs in the pod's key store to actually work.
     #[serde(default)]
     pub requires_env: Vec<String>,
+}
+
+// ── Automations (the pod calls them flows) ──────────────────────────────────
+//
+// Vocabulary, decided once and held to: the pod says *flow* on the wire and this
+// crate matches it, because these types are that wire. The renderer says
+// **Automation**, because what a person arms is not a graph — it is a standing
+// instruction. See `~/ai/metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` §2.1.
+
+/// One flow on the pod, already joined against its binding by
+/// `GET /flows` — see the agent's `FlowListItem`.
+///
+/// The join matters: *which agent runs this*, *is it armed*, and *when does it
+/// fire next* live in three different places on the pod (the flow file,
+/// `flow_bindings.json`, a cron projection), and the endpoint exists precisely so
+/// a client does not make four calls per flow to answer them.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Flow {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// The flow-wide master switch. **Disabled is the normal case** — agent packs
+    /// ship their flows off — so this is a state to render, not a reason to hide
+    /// the row.
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub node_count: usize,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+    /// v2 flows run on the state-machine executor; v1 flows are the legacy
+    /// prompt-list shape and answer `/run` differently.
+    #[serde(default)]
+    pub v2: bool,
+    /// The agent preset this flow runs as. Always populated: unbound resolves to
+    /// the pod's default agent.
+    #[serde(default)]
+    pub preset: String,
+    /// Any schedule armed — i.e. this automation has an agent.
+    #[serde(default)]
+    pub armed: bool,
+    #[serde(default)]
+    pub schedules: Vec<FlowSchedule>,
+}
+
+/// One schedule of a flow: the stored spec (flattened by the pod) plus what it is
+/// armed to and when it fires next.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowSchedule {
+    pub id: String,
+    #[serde(default)]
+    pub enabled: bool,
+    /// The trigger tag: `manual` | `minutes` | `hours` | `cron`.
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub cron: Option<String>,
+    #[serde(default)]
+    pub interval: Option<u64>,
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Persona override for runs from this schedule.
+    #[serde(default)]
+    pub persona: Option<String>,
+    /// The agent this schedule was armed with. `None` means unarmed: it will not
+    /// fire, and no agent accumulates memory from it.
+    #[serde(default)]
+    pub instance_id: Option<String>,
+    /// Absent if the agent was deleted out from under the binding.
+    #[serde(default)]
+    pub instance_name: Option<String>,
+    /// The pod's own rendering of the trigger — `"Every 5 minute(s)"`, or
+    /// `"Invalid cron `0 8 * * *`: …"` when it cannot parse. Show it verbatim: a
+    /// schedule that will never fire should look broken rather than merely empty.
+    #[serde(default)]
+    pub description: String,
+    /// Next projected fire, absent for a manual (or unparseable) trigger.
+    #[serde(default)]
+    pub next_fire_at: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FlowList {
+    #[serde(default)]
+    pub flows: Vec<Flow>,
+}
+
+/// A persisted flow run. Only runs that **paused** are persisted by the pod, so
+/// this list is mostly "what is waiting on a human", which is exactly what makes
+/// it worth showing.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowRun {
+    pub id: String,
+    #[serde(default)]
+    pub flow_id: String,
+    /// `running` | `paused` | `completed` | `failed`.
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub current_node_id: String,
+    /// The agent this run belongs to, when a schedule armed one.
+    #[serde(default)]
+    pub instance_id: Option<String>,
+    #[serde(default)]
+    pub pause: Option<FlowPause>,
+    /// Missing packs/personas noticed when the run started — a run that cannot
+    /// fully work, saying so.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// Why a run is paused and what would resume it.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowPause {
+    /// `"approval"` or `"wait"`.
+    #[serde(default)]
+    pub reason: String,
+    /// For an approval: the decisions a human may take. For a wait: `["after"]`.
+    #[serde(default)]
+    pub resume_handles: Vec<String>,
+    /// The (interpolated) prompt shown to the human.
+    #[serde(default)]
+    pub message: Option<String>,
+    /// RFC-3339 time at/after which a `wait` may resume.
+    #[serde(default)]
+    pub wake_at: Option<String>,
+}
+
+/// `GET /flows/{id}/binding` — everything the arm dialog needs.
+///
+/// Arming is the second consent moment after installing a pack, and the sharper
+/// one: an armed automation acts **while nobody is watching**, so a mutating tool
+/// inside it is a bigger commitment than the same tool in a chat where an approval
+/// prompt exists.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowBinding {
+    #[serde(default)]
+    pub flow_id: String,
+    #[serde(default)]
+    pub preset: String,
+    /// The preset was chosen deliberately rather than defaulted.
+    #[serde(default)]
+    pub bound: bool,
+    #[serde(default)]
+    pub personas: Vec<FlowPersonaCheck>,
+    #[serde(default)]
+    pub armed: Vec<ArmedSchedule>,
+    #[serde(default)]
+    pub consent: ArmConsent,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FlowPersonaCheck {
+    #[serde(default)]
+    pub slug: String,
+    /// Whether the flow's preset can reach this persona — the containment rule.
+    #[serde(default)]
+    pub allowed: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArmedSchedule {
+    #[serde(default)]
+    pub schedule_id: String,
+    #[serde(default)]
+    pub instance_id: String,
+    #[serde(default)]
+    pub instance_name: Option<String>,
+}
+
+/// The resolved content of the arm dialog.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ArmConsent {
+    #[serde(default)]
+    pub preset_name: String,
+    /// Origins its tools can reach.
+    #[serde(default)]
+    pub domains: Vec<String>,
+    #[serde(default)]
+    pub requires_env: Vec<String>,
+    /// Credentials this pod does not have — those tools fail at 3am rather than
+    /// at a moment anyone is looking. The sharpest field here.
+    #[serde(default)]
+    pub missing_env: Vec<String>,
+    /// Tools that can change something on the other end.
+    #[serde(default)]
+    pub mutating_tools: Vec<String>,
+    #[serde(default)]
+    pub tool_count: usize,
+    /// Seed memories the agent starts from; it accumulates more every run.
+    #[serde(default)]
+    pub base_memories: usize,
+}
+
+#[cfg(test)]
+mod automation_tests {
+    use super::*;
+
+    /// The pod flattens each schedule's stored spec into the same object that
+    /// carries `instance_id` / `next_fire_at`, so the wire has one schedule shape
+    /// rather than two. Pinned here because that flattening is easy to break on
+    /// the pod side and the failure would be silent: serde would simply leave
+    /// `kind`/`cron` empty and the UI would render a schedule with no trigger.
+    const LISTING: &str = r#"{
+      "flows": [{
+        "id": "brief", "name": "Morning brief", "enabled": true,
+        "node_count": 2, "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-02T00:00:00Z", "v2": true,
+        "preset": "amy-kitchen", "armed": true,
+        "schedules": [
+          { "id": "morning", "name": "Morning brief", "type": "cron",
+            "cron": "0 0 8 * * *", "enabled": true,
+            "instance_id": "inst_abc", "instance_name": "Amy — Morning brief",
+            "description": "Cron `0 0 8 * * *` (local time)",
+            "next_fire_at": "2026-08-24T08:00:00-04:00" },
+          { "id": "adhoc", "type": "manual", "enabled": true,
+            "description": "Manual (runs only when triggered)" }
+        ]
+      }]
+    }"#;
+
+    #[test]
+    fn a_listing_carries_the_agent_each_schedule_runs_as() {
+        let list: FlowList = serde_json::from_str(LISTING).expect("parse listing");
+        let flow = &list.flows[0];
+        assert!(flow.armed);
+        assert_eq!(flow.preset, "amy-kitchen");
+
+        let armed = &flow.schedules[0];
+        assert_eq!(armed.kind, "cron");
+        assert_eq!(armed.cron.as_deref(), Some("0 0 8 * * *"));
+        assert_eq!(armed.instance_id.as_deref(), Some("inst_abc"));
+        assert!(armed.next_fire_at.is_some());
+
+        // Unarmed: no agent, nothing accumulating, and nothing to click through to.
+        let unarmed = &flow.schedules[1];
+        assert_eq!(unarmed.kind, "manual");
+        assert!(unarmed.instance_id.is_none());
+        assert!(unarmed.next_fire_at.is_none());
+    }
+
+    #[test]
+    fn a_paused_run_says_what_it_is_waiting_for() {
+        let run: FlowRun = serde_json::from_str(
+            r#"{ "id": "run_1", "flow_id": "brief", "status": "paused",
+                 "current_node_id": "approve", "instance_id": "inst_abc",
+                 "pause": { "reason": "approval",
+                            "resume_handles": ["approve", "reject"],
+                            "message": "Order 3 items?" },
+                 "variables": { "x": 1 }, "steps": [], "persona": "amy",
+                 "model": "gpt-5", "cwd": ".",
+                 "created_at": "2026-08-22T00:00:00Z",
+                 "updated_at": "2026-08-22T00:00:00Z" }"#,
+        )
+        .expect("parse run");
+        let pause = run.pause.expect("paused runs carry their pause");
+        assert_eq!(pause.reason, "approval");
+        assert_eq!(pause.resume_handles, ["approve", "reject"]);
+        // `variables`, `steps`, `persona`, `model`, `cwd` are the executor's
+        // business: ignored here rather than modelled, so a pod-side addition to
+        // the run record cannot break this client.
+    }
 }

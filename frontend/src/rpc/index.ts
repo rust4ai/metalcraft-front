@@ -3,12 +3,15 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona } from '@/types'
+import type { InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
   poll: (deviceCode: string) => call<LoginResult>('login_poll', { deviceCode }),
   session: () => call<Session | null>('session'),
+  /** Re-read the account from Metalcraft ID. `premium` decides whether a pod's
+   *  turns can bill the gateway, so a sign-in-time snapshot is not good enough. */
+  refresh: () => call<Session | null>('refresh_session'),
   logout: () => call<void>('logout'),
 }
 
@@ -49,8 +52,29 @@ export const fleet = {
   memory: (id: string) => call<InstanceMemory>('instance_memory', { id }),
 }
 
+/**
+ * Automations. The commands are named for the pod's vocabulary (`list_flows`);
+ * this object is named for the surface it drives.
+ */
+export const automations = {
+  list: () => call<Flow[]>('list_flows'),
+  /** Persisted runs — mostly the paused ones, which are the ones that need a human. */
+  runs: () => call<FlowRun[]>('list_flow_runs'),
+  /** What arming would permit: personas, domains, keys, which tools mutate. */
+  binding: (flowId: string) => call<FlowBinding>('flow_binding', { flowId }),
+  /** Arming is what creates the agent. Pass `instanceId` to attach to one instead. */
+  arm: (flowId: string, scheduleId: string, instanceId?: string) =>
+    call<AgentInstance>('arm_schedule', { flowId, scheduleId, instanceId }),
+  /** Stops the timer. Keeps the agent and everything it remembers. */
+  disarm: (flowId: string, scheduleId: string) =>
+    call<void>('disarm_schedule', { flowId, scheduleId }),
+}
+
 export const keys = {
   list: () => call<KeyEntry[]>('list_keys'),
+  /** Whether the pod can run a turn. `null` = too old to say; fall back to what
+   *  the account knows rather than guessing from an empty key store. */
+  inference: () => call<InferenceStatus | null>('inference_status'),
   save: (name: string, value: string) => call<void>('save_key', { name, value }),
   remove: (name: string) => call<void>('delete_key', { name }),
   /** Write the pair atomically so the pod is never left on one provider's URL

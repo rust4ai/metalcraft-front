@@ -1,5 +1,6 @@
 import { KeyRound } from 'lucide-react'
-import { useUi } from '@/stores/ui'
+import { useConnection } from '@/stores/connection'
+import { canThink, useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 import { OctaweaveCard } from './OctaweaveCard'
 import { KeysCard } from './KeysCard'
@@ -15,7 +16,9 @@ import { KeysCard } from './KeysCard'
  */
 export function SettingsView() {
   const go = useUi((s) => s.go)
-  const sourceBound = useUi((s) => s.sourceBound)
+  const ownSource = useUi((s) => s.ownSource)
+  const inference = useUi((s) => s.inference)
+  const premium = useConnection((s) => s.session?.premium ?? false)
 
   return (
     <div className="h-full overflow-y-auto px-8 py-6">
@@ -30,13 +33,17 @@ export function SettingsView() {
           <div className="min-w-0 flex-1">
             <h2 className="text-[14px] font-semibold">Interface source</h2>
             <p className="mt-0.5 text-[12.5px] text-ink-2">
-              {sourceBound === false
-                ? 'Not bound — the agent cannot think without one.'
-                : 'Where completions come from.'}
+              {ownSource
+                ? 'A key of your own, stored on this pod.'
+                : canThink({ inference, ownSource }, premium) === false
+                  ? inference?.ready
+                    ? 'Not bound — and this account has no premium to bill inference to.'
+                    : 'Not bound, and this pod has no credential of its own either.'
+                  : 'Metalcraft Inference, billed to your credits. Bind a key to use another provider.'}
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={() => go({ kind: 'source' })}>
-            {sourceBound === false ? 'Bind a source' : 'Change'}
+            {ownSource ? 'Change' : 'Bind a source'}
           </Button>
         </section>
 

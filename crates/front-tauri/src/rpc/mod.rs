@@ -11,6 +11,7 @@
 pub mod auth;
 pub mod chat;
 pub mod fleet;
+pub mod flows;
 pub mod keys;
 pub mod octaweave;
 pub mod packs;

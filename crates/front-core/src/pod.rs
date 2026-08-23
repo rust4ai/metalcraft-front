@@ -287,6 +287,30 @@ impl PodConnection {
         self.get("/keys").await
     }
 
+    /// Ask the pod whether it can actually think.
+    ///
+    /// Worth a round trip of its own because `list_keys` cannot answer it: it
+    /// lists `keys.json`, and the credential a provisioned pod runs on is injected
+    /// as container env. Inferring "no key, cannot think" from an empty store told
+    /// premium users their working pod was dead.
+    ///
+    /// `Ok(None)` on 404 — a pod older than this endpoint. Same reasoning as
+    /// `IdClient::credits`: "this pod cannot say" and "the call failed" want
+    /// opposite UI, and the caller has a weaker signal to fall back on.
+    pub async fn inference_status(&self) -> anyhow::Result<Option<InferenceStatus>> {
+        let resp = self
+            .client
+            .get(self.url("/inference"))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(Self::decode(resp, "/inference").await?))
+    }
+
     /// Upsert a secret. This is the mechanism behind binding an interface source:
     /// `OPENAI_API_KEY` + `OPENAI_BASE_URL` written here are what point the agent
     /// at Metalcraft Inference, OpenAI, OpenRouter, or a custom gateway.
@@ -315,6 +339,57 @@ impl PodConnection {
 
     pub async fn delete_key(&self, name: &str) -> anyhow::Result<()> {
         self.delete_path(&format!("/keys/{name}")).await
+    }
+
+    // ---- automations (the pod's flows) -----------------------------------
+
+    /// Every flow on the pod, joined against its binding.
+    ///
+    /// Disabled flows come back too, deliberately — they are the majority (packs
+    /// ship them off) and the ones an arm dialog exists to act on.
+    pub async fn list_flows(&self) -> anyhow::Result<Vec<Flow>> {
+        let wrapped: FlowList = self.get("/flows").await?;
+        Ok(wrapped.flows)
+    }
+
+    /// Persisted flow runs, newest first. The pod only persists a run that
+    /// **paused**, so this is largely the list of things waiting on a human.
+    pub async fn list_flow_runs(&self) -> anyhow::Result<Vec<FlowRun>> {
+        self.get("/flow-runs").await
+    }
+
+    /// What arming this flow would actually permit: personas, domains, keys, and
+    /// which of its tools mutate.
+    pub async fn flow_binding(&self, flow_id: &str) -> anyhow::Result<FlowBinding> {
+        self.get(&format!("/flows/{flow_id}/binding")).await
+    }
+
+    /// Arm a schedule — **the act that creates the agent**. The pod mints a
+    /// persistent instance (or attaches to `instance_id` if given) and returns it.
+    ///
+    /// Errors carry the pod's own message, which names the offending persona and
+    /// the roster it is missing from when the containment rule refuses; that
+    /// sentence is worth showing verbatim.
+    pub async fn arm_schedule(
+        &self,
+        flow_id: &str,
+        schedule_id: &str,
+        instance_id: Option<&str>,
+    ) -> anyhow::Result<AgentInstance> {
+        let body = serde_json::json!({ "instance_id": instance_id });
+        self.post(
+            &format!("/flows/{flow_id}/schedules/{schedule_id}/arm"),
+            &body,
+        )
+        .await
+    }
+
+    /// Disarm a schedule: stop running it on a timer. **The agent and everything
+    /// it remembers are kept** — disarming is not deletion, and the UI should not
+    /// imply otherwise.
+    pub async fn disarm_schedule(&self, flow_id: &str, schedule_id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/flows/{flow_id}/schedules/{schedule_id}/arm"))
+            .await
     }
 
     pub async fn list_agent_packs(&self) -> anyhow::Result<Vec<InstalledAgentPack>> {

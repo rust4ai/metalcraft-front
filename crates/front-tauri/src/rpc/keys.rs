@@ -4,15 +4,19 @@
 //! `OPENAI_BASE_URL`. There is no separate provider API on the agent, and adding
 //! one would be the wrong shape — a source *is* credentials plus an endpoint.
 //!
-//! Caveat the UI must state: the agent reads both from process env today, not
-//! from this store (`runtime.rs:426-440`), so a write here needs a pod restart
-//! until that is fixed upstream (PLAN §12.1). The fix is small — resolve through
-//! `key_store::lookup()`, which already prefers stored over env — and the turn
-//! path re-reads per turn, so afterwards the next turn just picks it up.
+//! Two things the UI has to get right about this store, both of which it once
+//! got wrong:
+//!
+//! 1. **A write takes effect on the next turn, not on restart.** The agent
+//!    resolves both names through `key_store::lookup_present` — store first, env
+//!    second — and rebuilds its client per turn.
+//! 2. **An empty store does not mean the pod cannot think.** Provisioning injects
+//!    the credential as container env, which this endpoint never lists. Ask
+//!    `inference_status` instead; it is the pod's own answer.
 
 use std::sync::Arc;
 
-use front_core::KeyEntry;
+use front_core::{InferenceStatus, KeyEntry};
 
 use crate::state::AppState;
 
@@ -26,6 +30,17 @@ pub async fn list_keys(state: State<'_>) -> Result<Vec<KeyEntry>, String> {
     state
         .conn(None)?
         .list_keys()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Whether the pod can actually run a turn. `None` means the pod is older than the
+/// endpoint and cannot say — the caller falls back to what the account knows.
+#[tauri::command]
+pub async fn inference_status(state: State<'_>) -> Result<Option<InferenceStatus>, String> {
+    state
+        .conn(None)?
+        .inference_status()
         .await
         .map_err(|e| e.to_string())
 }

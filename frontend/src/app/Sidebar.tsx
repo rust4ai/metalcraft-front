@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutGrid, PanelLeft, Plus, Search, Settings, Store } from 'lucide-react'
+import { Clock, LayoutGrid, PanelLeft, Plus, Search, Settings, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
@@ -67,6 +67,15 @@ export function Sidebar() {
           selected={activeKey === 'fleet'}
           onClick={() => go({ kind: 'fleet' })}
         />
+        <NavRow
+          icon={<Clock className="h-4 w-4" />}
+          label="Automations"
+          selected={activeKey === 'automations'}
+          onClick={() => go({ kind: 'automations' })}
+        />
+        {/* A rule, because the row below is a shop and the two above are rooms
+            in this pod. */}
+        <div className="my-1.5 h-px bg-line" />
         <NavRow
           icon={<Store className="h-4 w-4" />}
           label="Browse agent presets"

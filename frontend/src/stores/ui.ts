@@ -1,16 +1,19 @@
 import { create } from 'zustand'
 import { keys } from '@/rpc'
+import { useConnection } from '@/stores/connection'
+import type { InferenceStatus } from '@/types'
 
 /**
  * Where the user is, plus the one onboarding fact the shell has to know: whether
- * this pod has an interface source bound. Kept in its own store so the fleet and
- * session stores never import each other.
+ * this pod has an interface source of its own. Kept in its own store so the fleet
+ * and session stores never import each other.
  */
 export type View =
   | { kind: 'fleet' }
   | { kind: 'session'; instanceId: string }
   | { kind: 'source' }
   | { kind: 'packs' }
+  | { kind: 'automations' }
   | { kind: 'settings' }
 
 export interface Tab {
@@ -39,9 +42,13 @@ export interface UiState {
   tabs: Tab[]
   activeKey: string
   newAgentOpen: boolean
-  /** null until checked — the UI must not flash the setup step at someone who is
-   *  already set up. */
-  sourceBound: boolean | null
+  /** Whether a *user-supplied* provider key is stored on this pod — an override,
+   *  not a requirement. null until checked: the UI must not flash the setup step
+   *  at someone who is already set up. See `canThink`. */
+  ownSource: boolean | null
+  /** The pod's own account of what it will authenticate with. null when it has
+   *  not answered yet, or is too old to have the endpoint. */
+  inference: InferenceStatus | null
 
   /** Open a tab for this view, or focus it if it is already open. */
   go: (view: View) => void
@@ -54,9 +61,10 @@ export interface UiState {
   prune: (liveInstanceIds: string[]) => void
 
   setNewAgentOpen: (open: boolean) => void
-  /** Ask the pod whether a provider key exists; routes to setup if not. */
-  checkSource: () => Promise<void>
-  markSourceBound: () => void
+  /** Ask the pod whether a user key is stored; routes to setup only if the pod
+   *  genuinely cannot think without one. */
+  checkOwnSource: () => Promise<void>
+  markOwnSource: () => void
 }
 
 const KEY = 'mc.tabs'
@@ -93,7 +101,8 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...load(),
     newAgentOpen: false,
-    sourceBound: null,
+    ownSource: null,
+    inference: null,
 
     go: (view) => {
       const key = keyFor(view)
@@ -136,25 +145,70 @@ export const useUi = create<UiState>((set, get) => {
 
     setNewAgentOpen: (newAgentOpen) => set({ newAgentOpen }),
 
-    checkSource: async () => {
+    checkOwnSource: async () => {
       try {
-        const stored = await keys.list()
-        const bound = stored.some((k) => k.name === 'OPENAI_API_KEY')
-        set({ sourceBound: bound })
-        if (!bound) get().go({ kind: 'source' })
+        // Both, because they answer different questions: `inference` is whether a
+        // turn can run, `list_keys` is whether the *user* bound the key — which is
+        // what the settings row and its Bind/Change button are about. The pod's
+        // answer is authoritative where they overlap.
+        const [inference, stored] = await Promise.all([
+          keys.inference().catch(() => null),
+          keys.list(),
+        ])
+        const own = inference
+          ? inference.credential === 'stored'
+          : stored.some((k) => k.name === 'OPENAI_API_KEY')
+        set({ inference, ownSource: own })
+        // Only a pod that actually cannot think is worth interrupting for.
+        if (canThink(get(), useConnection.getState().session?.premium ?? false) === false) {
+          get().go({ kind: 'source' })
+        }
       } catch {
         // A pod that will not answer its key store is a connection problem, not an
         // onboarding one — leave the user on the fleet and let that error surface.
-        set({ sourceBound: true })
+        set({ ownSource: true })
       }
     },
 
-    markSourceBound: () => {
-      set({ sourceBound: true })
+    markOwnSource: () => {
+      set({ ownSource: true, inference: null })
       get().close('source')
     },
   }
 })
+
+/**
+ * Whether this pod can actually run a turn.
+ *
+ * The question needs both halves, because neither side can answer it alone:
+ *
+ * - **The pod** knows which credential resolves, and it is the only thing that
+ *   does. The one a provisioned pod runs on is injected as container env and never
+ *   appears in `keys.json`, so a client reading the key store sees an empty list
+ *   on a perfectly healthy pod — which is exactly how this app came to tell people
+ *   their working pod was dead. `GET /api/v1/inference` is the pod answering with
+ *   the same function the turn will use.
+ * - **The account** knows whether that credential is allowed to spend. At the
+ *   gateway the bill lands on the account, and a non-premium one is refused
+ *   (`not_premium`) however good the pod's credential is. Off the gateway the user
+ *   pays their own provider and premium is irrelevant.
+ *
+ * When the pod is too old to have the endpoint we fall back to the weaker rule:
+ * premium settles it, otherwise a key of the user's own does.
+ *
+ * `null` means not yet known — and unknown is never reported as "no".
+ */
+export function canThink(
+  s: Pick<UiState, 'inference' | 'ownSource'>,
+  premium: boolean,
+): boolean | null {
+  if (s.inference) {
+    if (!s.inference.ready) return false
+    return s.inference.gateway ? premium : true
+  }
+  if (premium) return true
+  return s.ownSource
+}
 
 /** The view currently on screen. Falls back to the pinned tab, which by
  *  construction is always present. */

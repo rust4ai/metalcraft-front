@@ -25,11 +25,19 @@ function stub(responses: Record<string, unknown>): Transport {
 }
 
 async function mount(responses: Record<string, unknown>) {
+  // Defaults for the calls every boot makes, so a case only states them when they
+  // are its point: the account re-read returns what the cached one did, and a pod
+  // that does not answer `inference_status` is one too old to have the endpoint.
+  const withDefaults = {
+    refresh_session: responses.session ?? null,
+    inference_status: null,
+    ...responses,
+  }
   // Reset the module graph so each case gets its own zustand stores; they are
   // module singletons and would otherwise carry state between tests.
   vi.resetModules()
   const transport = await import('@/rpc/transport')
-  transport.setTransport(stub(responses))
+  transport.setTransport(stub(withDefaults))
   const { App } = await import('./App')
   render(<App />)
 }
@@ -56,8 +64,12 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
   })
 
-  it('sends a pod with no provider key to the interface source step', async () => {
-    // The agent cannot think without one, so a fleet view would be a dead end.
+  it('leaves a premium account on the fleet with an empty key store', async () => {
+    // An empty key store is what a provisioned pod normally looks like: it is
+    // given `OPENAI_API_KEY` (its own METALCRAFT_TOKEN) and `OPENAI_BASE_URL` as
+    // container env, and the pod lists keys.json only — so the credential that
+    // makes it think is invisible here. Marching a premium user into setup told
+    // them their working pod was dead.
     await mount({
       session: { email: 'a@b.com', premium: true },
       list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
@@ -66,6 +78,25 @@ describe('App', () => {
       list_instances: [],
       list_presets: [],
       list_keys: [],
+      // What a provisioned pod reports: a credential the key store cannot show.
+      inference_status: { ready: true, credential: 'environment', gateway: true },
+    })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    expect(screen.queryByText('This pod cannot think yet')).toBeNull()
+  })
+
+  it('sends a pod to setup when nothing can pay for a turn', async () => {
+    // No key of its own and no premium to bill the gateway to: the turn would
+    // fail with `not_premium`, so a fleet view really is a dead end.
+    await mount({
+      session: { email: 'a@b.com', premium: false },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.30.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [],
+      inference_status: { ready: true, credential: 'pod_token', gateway: true },
     })
     await waitFor(() => expect(screen.getByText('Interface source')).toBeTruthy())
     expect(screen.getByText('Metalcraft Inference')).toBeTruthy()

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { InferenceStatus } from '@/types'
 
 afterEach(cleanup)
 beforeEach(() => localStorage.clear())
@@ -11,7 +12,9 @@ async function mount(state: {
   info?: unknown
   presets?: unknown[]
   instances?: unknown[]
-  sourceBound?: boolean | null
+  ownSource?: boolean | null
+  premium?: boolean
+  inference?: InferenceStatus | null
   loading?: boolean
 }) {
   vi.resetModules()
@@ -21,13 +24,16 @@ async function mount(state: {
   const { useNudges } = await import('@/stores/nudges')
   const { Nudges } = await import('./Nudges')
 
-  useConnection.setState({ info: (state.info ?? { name: 'agent', version: '1' }) as never })
+  useConnection.setState({
+    info: (state.info ?? { name: 'agent', version: '1' }) as never,
+    session: { email: 'a@b.c', premium: state.premium ?? false },
+  })
   useFleet.setState({
     presets: (state.presets ?? []) as never,
     instances: (state.instances ?? []) as never,
     loading: state.loading ?? false,
   })
-  useUi.setState({ sourceBound: state.sourceBound ?? true })
+  useUi.setState({ ownSource: state.ownSource ?? true, inference: state.inference ?? null })
   render(<Nudges />)
   return { useNudges, useUi }
 }
@@ -49,8 +55,36 @@ describe('Nudges', () => {
   it('leads with the source when the pod cannot think', async () => {
     // Ranked above "no agents": spawning something you cannot talk to is worse
     // than having nothing to spawn.
-    await mount({ sourceBound: false })
+    await mount({ ownSource: false })
     expect(screen.getByText('This pod cannot think yet')).toBeTruthy()
+  })
+
+  it('never claims a premium account\'s pod cannot think', async () => {
+    // An empty key store is the *normal* state of a provisioned pod: it thinks on
+    // the injected platform credential, which this app cannot see. Reading that as
+    // "cannot think" told people with a working pod it was dead.
+    await mount({ ownSource: false, premium: true, presets: [{ slug: 'p' }], instances: [{ id: 'i' }] })
+    expect(screen.queryByText('This pod cannot think yet')).toBeNull()
+  })
+
+  it('names the right cause when the pod has a credential but no plan', async () => {
+    // Ready, but routed at the gateway on an account that cannot pay: telling this
+    // person to paste an API key without saying why would be a non-sequitur.
+    await mount({
+      ownSource: false,
+      premium: false,
+      inference: { ready: true, credential: 'pod_token', gateway: true },
+    })
+    expect(screen.getByText(/needs premium on this account/)).toBeTruthy()
+  })
+
+  it('names the right cause when the pod has no credential at all', async () => {
+    await mount({
+      ownSource: false,
+      premium: true,
+      inference: { ready: false, credential: 'none', gateway: false },
+    })
+    expect(screen.getByText(/no provider credential at all/)).toBeTruthy()
   })
 
   it('offers the registry when there is nothing to spawn from', async () => {
@@ -65,7 +99,7 @@ describe('Nudges', () => {
 
   it('shows one card, never a stack', async () => {
     // Both conditions hold; a queue of setup nags in the corner is noise.
-    await mount({ sourceBound: false, presets: [] })
+    await mount({ ownSource: false, presets: [] })
     expect(screen.getAllByRole('button', { name: 'Dismiss' }).length).toBe(1)
   })
 
@@ -99,7 +133,7 @@ describe('Nudges', () => {
   })
 
   it('opens the source step from the card', async () => {
-    const { useUi } = await mount({ sourceBound: false })
+    const { useUi } = await mount({ ownSource: false })
     await userEvent.click(screen.getByRole('button', { name: 'Bind a source' }))
     expect(useUi.getState().activeKey).toBe('source')
   })

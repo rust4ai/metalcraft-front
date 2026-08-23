@@ -11,13 +11,13 @@ const showGallery = import.meta.env.DEV && new URLSearchParams(location.search).
 
 export function App() {
   const { ready, session, info, boot } = useConnection()
-  const checkSource = useUi((s) => s.checkSource)
+  const checkOwnSource = useUi((s) => s.checkOwnSource)
 
-  // Once connected, find out whether this pod can actually think before showing
-  // a fleet the user cannot talk to.
+  // Once connected, find out whether this pod has a provider key of its own —
+  // which only *matters* when the account cannot cover inference itself.
   useEffect(() => {
-    if (info) void checkSource()
-  }, [info, checkSource])
+    if (info) void checkOwnSource()
+  }, [info, checkOwnSource])
 
   useEffect(() => {
     void boot()

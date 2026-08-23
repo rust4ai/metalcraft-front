@@ -44,7 +44,18 @@ export const useConnection = create<ConnectionState>((set, get) => ({
     try {
       const session = await auth.session()
       set({ session, ready: true })
-      if (session) await get().refreshPods()
+      if (session) {
+        // Before the pods, because `premium` gates whether a pod's turns can bill
+        // the gateway and the cached copy is a sign-in-time snapshot: an upgrade
+        // since then would otherwise read as "this pod cannot think". Best-effort
+        // in the core — it returns the cached session rather than failing.
+        // Swallowed, not awaited into the failure path: this is an optimisation
+        // on a cached value we already have, and a core too old to know the
+        // command must not cost the user their pod list.
+        const fresh = await auth.refresh().catch(() => null)
+        if (fresh) set({ session: fresh })
+        await get().refreshPods()
+      }
     } catch (e) {
       set({ ready: true, error: String(e) })
     }

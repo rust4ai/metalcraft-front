@@ -8,11 +8,15 @@ import { SOURCES, type Source } from './sources'
 /**
  * PLAN §9.2 — bind an interface source.
  *
- * This is the step that makes the agent able to think, so it is also the step
- * that has to be truthful about a limitation: the pod reads its provider from
- * process env today, so a freshly bound key takes effect on restart. Saying that
- * plainly beats a green tick followed by a turn that fails for a reason the user
- * cannot see.
+ * On a provisioned pod this is an **override**, not a prerequisite: provisioning
+ * injects the pod's own credential and the gateway base URL as container env, so
+ * the agent already thinks on Metalcraft Inference against the account's credits.
+ * Binding here puts a key in the pod's store, which wins over that env
+ * (`key_store::resolve` is store-first for everything except `METALCRAFT_TOKEN`)
+ * and moves the billing to that provider.
+ *
+ * It stops being optional only when the account cannot cover inference itself —
+ * see `canThink`.
  */
 export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
   const [selected, setSelected] = useState<Source>(SOURCES[0]!)
@@ -57,7 +61,7 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
         </div>
         <div>
           <h1 className="text-lg font-semibold">Interface source</h1>
-          <p className="text-sm text-ink-2">Where this agent&rsquo;s thinking comes from.</p>
+          <p className="text-sm text-ink-2">Where this agent&rsquo;s thinking is billed.</p>
         </div>
       </div>
 
@@ -111,9 +115,9 @@ export function InterfaceSourceView({ onDone }: { onDone?: () => void }) {
       )}
 
       <Note>
-        The pod reads its provider from environment at turn time, so a key saved here applies after the pod
-        restarts. (Fix is upstream and small: resolve through the key store, which already prefers stored keys
-        over env.)
+        A pod on the Metalcraft plan already thinks without this — it is provisioned with its own credential
+        and bills your credits. Bind a key only to move that to another provider; it takes effect on the next
+        turn, no restart, because the pod resolves the key store ahead of its environment.
       </Note>
 
       {bound.includes('OPENAI_API_KEY') && !saved && (

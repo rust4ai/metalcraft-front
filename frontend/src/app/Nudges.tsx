@@ -3,7 +3,7 @@ import { KeyRound, Plus, Store, X } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
 import { useFleet } from '@/stores/fleet'
 import { useNudges } from '@/stores/nudges'
-import { useUi } from '@/stores/ui'
+import { canThink, useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 
 interface Nudge {
@@ -33,18 +33,24 @@ interface Nudge {
  */
 export function Nudges() {
   const info = useConnection((s) => s.info)
+  const premium = useConnection((s) => s.session?.premium ?? false)
   const { instances, presets, loading } = useFleet()
-  const { sourceBound, go, setNewAgentOpen } = useUi()
+  const { ownSource, inference, go, setNewAgentOpen } = useUi()
   const { dismissed, dismiss, revive } = useNudges()
 
   const applicable = useMemo<Nudge[]>(() => {
     const out: Nudge[] = []
-    if (sourceBound === false) {
+    // Never on an empty key store alone: a provisioned pod thinks on an injected
+    // credential that never appears there (see `canThink`).
+    if (canThink({ inference, ownSource }, premium) === false) {
       out.push({
         key: 'source',
         icon: KeyRound,
         title: 'This pod cannot think yet',
-        body: 'An interface source is where completions come from. Without one, an agent can be spawned but not talked to.',
+        // Two ways to get here, and they want different things done about them.
+        body: inference?.ready
+          ? 'Its thinking bills to Metalcraft credits, which needs premium on this account. Until then, give it a provider key of its own.'
+          : 'It has no provider credential at all, so a turn has nothing to authenticate with.',
         action: 'Bind a source',
         run: () => go({ kind: 'source' }),
       })
@@ -69,7 +75,7 @@ export function Nudges() {
       })
     }
     return out
-  }, [go, instances.length, presets.length, setNewAgentOpen, sourceBound])
+  }, [go, inference, instances.length, ownSource, premium, presets.length, setNewAgentOpen])
 
   // A dismissal only lasts as long as the thing it dismissed. Once a condition
   // resolves, forget that it was waved away, so it can speak again if it recurs.
