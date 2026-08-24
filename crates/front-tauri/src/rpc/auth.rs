@@ -59,8 +59,10 @@ pub async fn session() -> Result<Option<Session>, String> {
 /// working pod cannot think.
 ///
 /// Best-effort by design: on any failure the caller keeps the cached session
-/// rather than being logged out by a flaky network. The keychain read is not a new
-/// prompt — boot already reaches for the PAT to list pods.
+/// rather than being logged out by a flaky network. The keychain read costs no
+/// prompt: `SessionStore` reads the PAT once per process and the re-save below
+/// skips the keychain entirely when the token has not changed, which on this
+/// path is always.
 #[tauri::command]
 pub async fn refresh_session() -> Result<Option<Session>, String> {
     let Some(cached) = SessionStore::load() else {
