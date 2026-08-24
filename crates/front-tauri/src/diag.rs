@@ -143,7 +143,10 @@ impl DiagLog {
 }
 
 fn suffix(detail: &Option<String>) -> String {
-    detail.as_ref().map(|d| format!(" — {d}")).unwrap_or_default()
+    detail
+        .as_ref()
+        .map(|d| format!(" — {d}"))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
