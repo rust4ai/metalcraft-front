@@ -177,6 +177,22 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             ok(Value::Null)
         }
 
+        // The gateway (WhatsApp/SMS). Every arm is a pod call and nothing else
+        // — no account credential, no hub — so all four mirror cleanly, which
+        // is the point: this is the surface whose failures are hardest to
+        // arrange on a real account and easiest to program on the stub pod.
+        "gateway_status" => j(app.conn(None)?.gateway_status().await),
+        "gateway_register" => j(app
+            .conn(None)?
+            .gateway_register(need(args, "phoneNumber")?)
+            .await),
+        "gateway_connect" => j(app.conn(None)?.gateway_connect().await),
+        "gateway_disconnect" => j(app
+            .conn(None)?
+            .gateway_disconnect()
+            .await
+            .map(|_| json!(null))),
+
         // Keys.
         "list_keys" => j(app.conn(None)?.list_keys().await),
         "save_key" => j(app

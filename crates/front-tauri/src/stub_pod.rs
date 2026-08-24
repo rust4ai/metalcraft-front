@@ -39,6 +39,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use axum::extract::{Request, State as AxumState};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
@@ -135,7 +136,29 @@ pub struct Harness {
     keys: Mutex<Vec<String>>,
     /// Integration slugs that have been installed through `/integrations/install`.
     installed: Mutex<Vec<String>>,
+    /// The gateway connection, as this pod would report it.
+    ///
+    /// Stateful for the same reason the key store is: registering a number and
+    /// then reading the status has to agree with itself. The one transition a
+    /// fake cannot perform is *verification* — that happens when a human texts a
+    /// code from a real phone — so it stays false here and a test that needs the
+    /// verified pod programs the status route, which is what the harness is for.
+    gateway: Mutex<GatewayState>,
 }
+
+/// The stub's gateway state. Mirrors `metalcraft-agent`'s `GatewayStatus`, minus
+/// the fields a fake has no way to have an opinion about.
+#[derive(Debug, Clone, Default)]
+struct GatewayState {
+    registered: bool,
+    verified: bool,
+    connected: bool,
+    number: Option<String>,
+}
+
+/// The number this fake gateway hands out, and the code it asks for.
+const STUB_GATEWAY_NUMBER: &str = "+15550199";
+const STUB_VERIFY_CODE: &str = "424242";
 
 /// Cap the request log so a long-running stub cannot grow without bound.
 const SEEN_CAP: usize = 500;
@@ -160,6 +183,7 @@ impl Harness {
         self.seen.lock().clear();
         self.keys.lock().clear();
         self.installed.lock().clear();
+        *self.gateway.lock() = GatewayState::default();
     }
 
     /// Key names the stub currently holds. For tests that assert a credential
@@ -204,7 +228,12 @@ impl Harness {
 /// enough to connect to. Deliberately the *boring* pod — a test says out loud
 /// what it needs to be different, and anything it does not say is not the point
 /// of that test.
-fn default_answer(h: &Harness, method: &str, path: &str) -> Option<Value> {
+///
+/// Carries a status as well as a body because one default answer is a *refusal*:
+/// the pod 409s a gateway connect until the number is verified, and a fake that
+/// could only ever say 200 or 404 would leave the one gate on this surface
+/// untestable.
+fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, Value)> {
     // The stateful half first: writing a key and then reading the key store has
     // to agree with itself, or every test built on it proves nothing.
     if let Some(name) = path.strip_prefix("/api/v1/keys/") {
@@ -214,38 +243,109 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<Value> {
                 if !keys.iter().any(|k| k == name) {
                     keys.push(name.to_string());
                 }
-                return Some(Value::Null);
+                return Some((StatusCode::OK, Value::Null));
             }
             "DELETE" => {
                 h.keys.lock().retain(|k| k != name);
-                return Some(Value::Null);
+                return Some((StatusCode::OK, Value::Null));
             }
             _ => return None,
         }
     }
     if (method, path) == ("POST", "/api/v1/integrations/install") {
         h.installed.lock().push(PACK_ID.to_string());
-        return Some(json!({ "id": PACK_ID, "enabled": true, "api_tools": 32 }));
+        return Some((
+            StatusCode::OK,
+            json!({ "id": PACK_ID, "enabled": true, "api_tools": 32 }),
+        ));
+    }
+    if path.starts_with("/api/v1/gateway/metalcraft/") {
+        let mut gw = h.gateway.lock();
+        return match (
+            method,
+            path.trim_start_matches("/api/v1/gateway/metalcraft/"),
+        ) {
+            ("GET", "status") => Some((
+                StatusCode::OK,
+                json!({
+                    "configured": true,
+                    "registered": gw.registered,
+                    "verified": gw.verified,
+                    "connected": gw.connected,
+                    "streaming": gw.connected,
+                    "active_number": gw.registered.then(|| STUB_GATEWAY_NUMBER.to_string()),
+                    "channel": gw.registered.then(|| "whatsapp".to_string()),
+                    "has_public_url": true,
+                    "webhook_stale": false,
+                    "error": Value::Null,
+                }),
+            )),
+            ("POST", "register") => {
+                gw.registered = true;
+                gw.verified = false;
+                gw.number = Some("+15550100".into());
+                Some((
+                    StatusCode::OK,
+                    json!({
+                        "personal_number": gw.number,
+                        "active_number": STUB_GATEWAY_NUMBER,
+                        "channel": "whatsapp",
+                        "verified": false,
+                        "verify_code": STUB_VERIFY_CODE,
+                    }),
+                ))
+            }
+            // The real pod 409s here until the number is verified, and that
+            // refusal is the whole reason the button is gated — so the fake
+            // refuses too rather than being politely permissive.
+            ("POST", "connect") if !gw.verified => Some((
+                StatusCode::CONFLICT,
+                json!({ "error": "Register and verify your phone number before connecting" }),
+            )),
+            ("POST", "connect") => {
+                gw.connected = true;
+                Some((
+                    StatusCode::OK,
+                    json!({
+                        "connected": true,
+                        "active_number": STUB_GATEWAY_NUMBER,
+                        "integration_id": "int_stub",
+                        "channel": "whatsapp",
+                    }),
+                ))
+            }
+            ("POST", "disconnect") => {
+                gw.connected = false;
+                Some((StatusCode::OK, json!({ "connected": false })))
+            }
+            _ => None,
+        };
     }
     if (method, path) == ("GET", "/api/v1/keys") {
-        return Some(json!(
-            h.keys
-                .lock()
-                .iter()
-                .map(|name| json!({ "name": name, "masked": "…1234" }))
-                .collect::<Vec<_>>()
+        return Some((
+            StatusCode::OK,
+            json!(
+                h.keys
+                    .lock()
+                    .iter()
+                    .map(|name| json!({ "name": name, "masked": "…1234" }))
+                    .collect::<Vec<_>>()
+            ),
         ));
     }
     if (method, path) == ("GET", "/api/v1/integrations") {
-        return Some(json!(
-            h.installed
-                .lock()
-                .iter()
-                .map(|id| json!({
-                    "id": id, "name": id, "version": "1.0.0",
-                    "enabled": true, "api_tools": 32
-                }))
-                .collect::<Vec<_>>()
+        return Some((
+            StatusCode::OK,
+            json!(
+                h.installed
+                    .lock()
+                    .iter()
+                    .map(|id| json!({
+                        "id": id, "name": id, "version": "1.0.0",
+                        "enabled": true, "api_tools": 32
+                    }))
+                    .collect::<Vec<_>>()
+            ),
         ));
     }
 
@@ -263,7 +363,7 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<Value> {
         ("GET", "/api/v1/flow-runs") => json!([]),
         _ => return None,
     };
-    Some(body)
+    Some((StatusCode::OK, body))
 }
 
 /// Start the stub if `MC_STUB_POD` names a port. Never returns an error, for the
@@ -376,7 +476,7 @@ async fn serve(AxumState(h): AxumState<Arc<Harness>>, req: Request) -> impl Into
     }
 
     match default_answer(&h, &method, &path) {
-        Some(body) => (axum::http::StatusCode::OK, Json(body)),
+        Some((status, body)) => (status, Json(body)),
         None => (
             axum::http::StatusCode::NOT_FOUND,
             Json(json!({ "error": format!("stub pod has no answer for {method} {path}") })),
@@ -469,7 +569,7 @@ mod tests {
         assert!(default_answer(&h, "GET", "/api/v1/info").is_some());
         assert_eq!(
             default_answer(&h, "GET", "/api/v1/integrations"),
-            Some(json!([]))
+            Some((StatusCode::OK, json!([])))
         );
         assert!(default_answer(&h, "GET", "/api/v1/nope").is_none());
     }
@@ -483,10 +583,30 @@ mod tests {
         default_answer(&h, "PUT", "/api/v1/keys/OCTAWEAVE_API_KEY");
         assert_eq!(h.keys(), ["OCTAWEAVE_API_KEY"]);
 
-        let listed = default_answer(&h, "GET", "/api/v1/keys").unwrap();
+        let (_, listed) = default_answer(&h, "GET", "/api/v1/keys").unwrap();
         assert_eq!(listed[0]["name"], "OCTAWEAVE_API_KEY");
 
         default_answer(&h, "DELETE", "/api/v1/keys/OCTAWEAVE_API_KEY");
         assert!(h.keys().is_empty());
+    }
+
+    /// The gateway's one gate: a pod refuses to wire a channel for a number
+    /// nobody has proved they hold. A fake that answered 200 here would let the
+    /// card offer a button the real pod rejects.
+    #[test]
+    fn the_gateway_refuses_to_connect_an_unverified_number() {
+        let h = Harness::default();
+        let (status, _) =
+            default_answer(&h, "POST", "/api/v1/gateway/metalcraft/register").unwrap();
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, body) =
+            default_answer(&h, "GET", "/api/v1/gateway/metalcraft/status").unwrap();
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["registered"], true);
+        assert_eq!(body["verified"], false);
+
+        let (status, _) = default_answer(&h, "POST", "/api/v1/gateway/metalcraft/connect").unwrap();
+        assert_eq!(status, StatusCode::CONFLICT);
     }
 }

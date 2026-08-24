@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
+import type { GatewayRegistration, GatewayStatus, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -96,6 +96,26 @@ export const automations = {
   /** Stops the timer. Keeps the agent and everything it remembers. */
   disarm: (flowId: string, scheduleId: string) =>
     call<void>('disarm_schedule', { flowId, scheduleId }),
+}
+
+/**
+ * WhatsApp and SMS, through the pod (PLAN §10.6).
+ *
+ * Every call goes to the pod, never to gateway.metalcraftai.com — the pod is
+ * what receives a message, and a card that read the gateway directly could show
+ * a connection this pod does not have.
+ */
+export const gateway = {
+  /** `null` = a pod older than the endpoint. Not "not connected". */
+  status: () => call<GatewayStatus | null>('gateway_status'),
+  /** Returns the code to text back. Re-registering replaces the number. */
+  register: (phoneNumber: string) =>
+    call<GatewayRegistration>('gateway_register', { phoneNumber }),
+  /** Wire the channel. Idempotent, so it is also the fix for a stale webhook. */
+  connect: () => call<void>('gateway_connect'),
+  /** Stop receiving. The number stays registered, so reconnecting needs no
+   *  second verification. */
+  disconnect: () => call<void>('gateway_disconnect'),
 }
 
 export const keys = {

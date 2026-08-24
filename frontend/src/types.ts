@@ -396,6 +396,47 @@ export type OctaweaveConnectOutcome =
   | { kind: 'choose_workspace'; workspaces: OctaweaveWorkspace[] }
   | { kind: 'connected'; connection: OctaweaveConnection }
 
+/**
+ * The Metalcraft Gateway — WhatsApp and SMS (PLAN §10.6).
+ *
+ * The pod's shape, not the gateway's: the channel and its webhook live on the
+ * pod, so the pod is what gets asked. Four booleans rather than one, because
+ * they are four different dead ends with four different fixes.
+ */
+export interface GatewayStatus {
+  /** The pod is linked to a Metalcraft account at all. */
+  configured: boolean
+  registered: boolean
+  /** Proved by texting the code back. Required before connecting. */
+  verified: boolean
+  /** The pod's `metalcraft` channel is enabled and holds a webhook secret. */
+  connected: boolean
+  /** The inbound long-poll is draining *right now* — liveness, not config.
+   *  Always false in push mode, where no long-poll runs. */
+  streaming: boolean
+  active_number?: string | null
+  /** `whatsapp` or `sms`. */
+  channel?: string | null
+  has_public_url: boolean
+  /** Connected, but the registered webhook no longer points here: green light,
+   *  dead pipe. */
+  webhook_stale: boolean
+  /** The pod could not reach the gateway. The local half above is still true. */
+  error?: string | null
+}
+
+/** What registering a number answers with. The code is an instruction, not a
+ *  secret — the user texts it back from that phone. */
+export interface GatewayRegistration {
+  personal_number?: string | null
+  active_number?: string | null
+  channel?: string | null
+  verified: boolean
+  /** Absent when the number was already verified: nothing to text. */
+  verify_code?: string | null
+  verify_expires_at?: string | null
+}
+
 // ── Automations ────────────────────────────────────────────────────────────
 //
 // The pod says *flow*; this app says **Automation**. These types name the wire,

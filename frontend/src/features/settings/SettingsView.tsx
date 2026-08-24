@@ -3,16 +3,18 @@ import { useConnection } from '@/stores/connection'
 import { canThink, useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 import { OctaweaveCard } from './OctaweaveCard'
+import { GatewayCard } from './GatewayCard'
 import { KeysCard } from './KeysCard'
 
 /**
  * PLAN §10.6 — the settings surface, as far as it exists.
  *
  * Deliberately only the parts that are built: the interface source (which links
- * out to its own step rather than being duplicated here), the key store, and the
- * Octaweave connection. Account, pods, gateway channels, registries and updates
- * are named in PLAN §10.6 and are not here, so they are not stubbed either — an
- * empty settings panel implies a feature that does not exist.
+ * out to its own step rather than being duplicated here), the key store, the
+ * Octaweave connection, and the gateway channel that carries WhatsApp and SMS.
+ * Account, pods, per-channel configuration, registries and updates are named in
+ * PLAN §10.6 and are not here, so they are not stubbed either — an empty
+ * settings panel implies a feature that does not exist.
  */
 export function SettingsView() {
   const go = useUi((s) => s.go)
@@ -48,6 +50,7 @@ export function SettingsView() {
         </section>
 
         <OctaweaveCard />
+        <GatewayCard />
         <KeysCard />
       </div>
     </div>

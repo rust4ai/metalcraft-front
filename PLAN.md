@@ -350,7 +350,15 @@ step is also a standalone settings surface.
    flow-run inspector.
 6. **Settings.** Account, pods, **interface source**, **Octaweave connection**, keys/secrets
    (global + per-channel scopes), registries & installed packs, gateway channels,
-   integrations, diagnostics, updates, theme.
+   integrations, diagnostics, updates, theme. The **gateway channel** half is built:
+   WhatsApp/SMS is three steps that fail in unrelated ways — register a number,
+   verify it from the phone, then *connect*, which is the one nobody would guess
+   at because it is not about the number at all. It wires the pod's `metalcraft`
+   channel and its inbound webhook, and without it a verified number reaches a
+   gateway with nowhere to deliver. All of it is read from **the pod**, never
+   from gateway.metalcraftai.com: the pod is what receives a message, so asking
+   the account-level service instead could show a working connection for a pod
+   that is wired to nothing.
 7. **Automations.** The pod calls them flows; a user arms a *standing instruction*, so the
    UI says **Automations** and the API keeps `flows` (see
    `~/ai/metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` §2.1). Third sidebar pill, its own
@@ -380,7 +388,7 @@ step is also a standalone settings surface.
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
 | **P7** 🟢 | **Octaweave one-click**: connect with the Metalcraft account, key minted at module scopes, pack install, `whoami` verification, connection card in Settings | Done, and genuinely zero-paste since `ECOSYSTEM_PIVOT_PLAN.md` §3.1 landed Octaweave-side (2026-08-23). The core lists workspaces and mints an `owk_` key with the desktop's `mck_` PAT, then verifies, stores and installs; reconnecting revokes the key it made before, and disconnect revokes rather than orphaning. The paste field, the `metalcraft-front://` callback and the deep-link plugin are deleted. **One blocker remains, outside this repo:** the `octaweave` integration pack is still unpublished on packs.metalcraftai.com, so step 4 reports a named halfway state ("Key only") rather than failing the connection |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
-| **P9** 🟡 | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | third pill, flow list, run-now, arm/disarm behind a consent dialog, click-through to the agent each armed schedule runs as, and a paused-runs section with in-place approvals are **done** (UI_PLAN S9). The pod half landed with it: `GET /flows`, a conversation per firing, and run-as-the-armed-agent (`metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` A/B/C). **Outstanding:** the xyflow editor |
+| **P9** 🟡 | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | third pill, flow list, run-now, arm/disarm behind a consent dialog, click-through to the agent each armed schedule runs as, and a paused-runs section with in-place approvals are **done** (UI_PLAN S9). The pod half landed with it: `GET /flows`, a conversation per firing, and run-as-the-armed-agent (`metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` A/B/C). **Outstanding:** the xyflow editor. **Gateway settings are done** — a WhatsApp/SMS card in Settings (register → verify → connect), driven entirely off the pod's `/gateway/metalcraft/*` endpoints, which is the surface metalcraft-mobile has had since 0.3 and the desktop did not. Per-*channel* configuration (the `{slug,url,secret}` model, custom channels beyond the built-in `metalcraft` one) is still not built |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |
 | **P11** | **Web target**: `vite.web.config.ts` + `http` transport against a stateless Rust/Axum proxy (lifted from metalcraft-workshop-web: `mc_session` cookie login, in-memory pod-connect, streaming `/api/pod/*`) | the same UI runs at `workshop.metalcraftai.com`; workshop-web retires |
 
@@ -513,6 +521,22 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     ```sh
     curl -sXPOST -d '{}' http://127.0.0.1:1421/rpc/list_flows | jq
     ```
+
+15. **The pod cannot un-register a phone number.** `metalcraft-agent` proxies
+    `status`, `register`, `connect` and `disconnect` — but not the gateway's
+    `POST /api/v1/phone/unregister`, so a desktop that reaches only the pod can
+    disconnect a channel and cannot give a number back. It is a small gap in
+    practice: registering upserts on the account, so *changing* a number works,
+    and disconnect stops delivery. What is missing is the clean exit — leaving
+    the ecosystem without the gateway still holding a number the user
+    registered. Add `POST /api/v1/gateway/metalcraft/unregister` alongside the
+    four that exist. *(agent, small)*
+16. **Verification is only observable by polling.** A number goes verified when a
+    person texts a code back to Twilio; nothing pushes that anywhere, so both
+    clients sit in a loop asking `/gateway/metalcraft/status`. It is 5s for
+    perhaps a minute, so it is cheap — but it is the one place this app polls,
+    and an SSE frame (or reusing the chat bus, since inbound already flows
+    through the pod) would remove it. *(agent, small — cosmetic)*
 
 ## 13. Testing & release
 

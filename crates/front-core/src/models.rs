@@ -789,3 +789,149 @@ pub struct FlowRunSummary {
     #[serde(default)]
     pub warnings: Vec<String>,
 }
+
+// ── The Metalcraft Gateway: WhatsApp and SMS ────────────────────────────────
+//
+// The pod is the source of truth for this connection, not the gateway and not
+// the control plane (`metalcraft-gateway/src/controllers/agent.rs` says so in as
+// many words: the gateway's own web UI is a stateless proxy to the pod). So
+// these shapes are the pod's `/api/v1/gateway/metalcraft/*` surface, and the
+// desktop asks the same endpoints the Workshop did rather than opening a second
+// account-level client of its own.
+
+/// Registration, verification and connection, in one read.
+///
+/// Four booleans because they are four different failures with four different
+/// fixes, and collapsing them into "connected: false" is what makes a messaging
+/// setup impossible to debug: no account token on the pod, no number registered,
+/// a number registered but never verified, and a verified number whose channel
+/// was never wired up.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct GatewayStatus {
+    /// The pod holds a `METALCRAFT_TOKEN` — i.e. it is linked to an account at
+    /// all. False here makes every other field meaningless.
+    #[serde(default)]
+    pub configured: bool,
+    /// A personal number is registered at the gateway.
+    #[serde(default)]
+    pub registered: bool,
+    /// …and proved, by texting the code back. Required before connecting.
+    #[serde(default)]
+    pub verified: bool,
+    /// The pod's `metalcraft` channel is enabled and holds a webhook secret.
+    #[serde(default)]
+    pub connected: bool,
+    /// The Inbound Pull long-poll is draining right now. Distinct from
+    /// `connected` on purpose: that one is config on disk, this one is intrinsic
+    /// liveness and cannot be true while inbound delivery is dead. Always false
+    /// in push mode, where no long-poll runs.
+    #[serde(default)]
+    pub streaming: bool,
+    /// The gateway number the user's messages arrive at.
+    #[serde(default)]
+    pub active_number: Option<String>,
+    /// `whatsapp` or `sms`.
+    #[serde(default)]
+    pub channel: Option<String>,
+    /// Whether the pod knows its own public URL, for the inbound webhook. A pull-
+    /// mode pod does not need one.
+    #[serde(default)]
+    pub has_public_url: bool,
+    /// The registered webhook no longer points at this pod — "green light, dead
+    /// pipe". `connected` can be true while this is, which is exactly why it is
+    /// reported separately.
+    #[serde(default)]
+    pub webhook_stale: bool,
+    /// Why the pod could not ask the gateway. Carried rather than thrown: the
+    /// local half of the status is still true and still worth rendering.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// What registering a number answers with.
+///
+/// `verify_code` is the whole point: the user texts it back from that number,
+/// which is what proves they hold it. It is not a secret to hide from them —
+/// it is an instruction.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct GatewayRegistration {
+    #[serde(default)]
+    pub personal_number: Option<String>,
+    #[serde(default)]
+    pub active_number: Option<String>,
+    #[serde(default)]
+    pub channel: Option<String>,
+    #[serde(default)]
+    pub verified: bool,
+    /// Absent when the number was already verified — re-registering it is then a
+    /// no-op that re-points the integration, with nothing to text.
+    #[serde(default)]
+    pub verify_code: Option<String>,
+    /// RFC 3339. Fifteen minutes out, at the gateway's clock.
+    #[serde(default)]
+    pub verify_expires_at: Option<String>,
+}
+
+/// What connecting answers with: the channel is wired and the pod will now
+/// receive.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct GatewayConnected {
+    #[serde(default)]
+    pub connected: bool,
+    #[serde(default)]
+    pub active_number: String,
+    #[serde(default)]
+    pub integration_id: String,
+    #[serde(default)]
+    pub channel: String,
+}
+
+#[cfg(test)]
+mod gateway_tests {
+    use super::*;
+
+    /// A pod that cannot reach the gateway still answers — with the local half
+    /// filled in and `error` set. Treating that as a failed call would blank a
+    /// card that has something true to say.
+    #[test]
+    fn a_status_that_carries_an_error_still_carries_the_local_half() {
+        let status: GatewayStatus = serde_json::from_str(
+            r#"{"configured":true,"registered":false,"verified":false,"connected":true,
+                "streaming":false,"active_number":null,"channel":null,
+                "has_public_url":true,"webhook_stale":false,
+                "error":"gateway phone request failed"}"#,
+        )
+        .expect("parse status");
+        assert!(status.connected);
+        assert!(status.has_public_url);
+        assert_eq!(status.active_number, None);
+        assert!(status.error.is_some());
+    }
+
+    /// Every field is defaulted, so a pod older than one of them — or newer than
+    /// this client — deserializes rather than erroring the whole card out.
+    #[test]
+    fn a_status_missing_every_optional_field_still_parses() {
+        let status: GatewayStatus = serde_json::from_str(r#"{"configured":true}"#).unwrap();
+        assert!(status.configured);
+        assert!(!status.streaming);
+        assert!(!status.webhook_stale);
+    }
+
+    /// Re-registering an already-verified number answers without a code. The UI
+    /// must not then tell someone to text nothing.
+    #[test]
+    fn a_verified_registration_comes_back_without_a_code() {
+        let reg: GatewayRegistration = serde_json::from_str(
+            r#"{"personal_number":"+15550100","active_number":"+15550199",
+                "channel":"whatsapp","verified":true,"integration_id":"int_1",
+                "signing_secret":"whsec_x"}"#,
+        )
+        .expect("parse registration");
+        assert!(reg.verified);
+        assert_eq!(reg.verify_code, None);
+        // `signing_secret` is in the pod's passthrough and deliberately not in
+        // this shape: the desktop has no use for it, so it never crosses into
+        // the renderer.
+    }
+}

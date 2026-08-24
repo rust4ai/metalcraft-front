@@ -320,6 +320,85 @@ impl PodConnection {
         self.post(&format!("/chats/{id}/clear"), &()).await
     }
 
+    // ---- the Metalcraft Gateway (WhatsApp / SMS) -------------------------
+    //
+    // Four calls, all of them the pod's own. The gateway is an account-level
+    // service and this app holds an account PAT, so it *could* be called
+    // directly — the iOS app does exactly that. It is deliberately not called
+    // that way here: the pod is what actually receives a message, the channel
+    // and its webhook secret live on the pod, and a desktop that asked the
+    // gateway instead would render a connection the agent does not have. Same
+    // reasoning the gateway's own web UI settled on (its `agent.rs` proxies to
+    // the pod rather than reading its own tables).
+
+    /// Registration, verification and connection, in one read.
+    ///
+    /// `Ok(None)` on 404 — a pod older than the endpoint, which is a different
+    /// thing from a pod that answered "not connected" and wants a different card.
+    /// Same shape as [`Self::inference_status`].
+    pub async fn gateway_status(&self) -> anyhow::Result<Option<GatewayStatus>> {
+        let resp = self
+            .client
+            .get(self.url("/gateway/metalcraft/status"))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(
+            Self::decode(resp, "/gateway/metalcraft/status").await?,
+        ))
+    }
+
+    /// Register a personal number, and get back the code to text from it.
+    ///
+    /// The pod proxies this with its own account token, so re-registering
+    /// replaces whatever number was there before — there is no separate "change
+    /// number" call, and none is wanted.
+    pub async fn gateway_register(
+        &self,
+        phone_number: &str,
+    ) -> anyhow::Result<GatewayRegistration> {
+        let body = serde_json::json!({ "phone_number": phone_number.trim() });
+        self.post("/gateway/metalcraft/register", &body).await
+    }
+
+    /// Wire the channel: fetch the config, register the inbound webhook, store
+    /// the signing secret, enable the `metalcraft` channel. Idempotent, so it
+    /// doubles as "re-sync" when a number is reassigned or a webhook goes stale.
+    ///
+    /// **No connection token is sent.** The pod would adopt one as the channel's
+    /// outbound bearer, and the only token this app has is audience-scoped to
+    /// `pod:{slug}` — which the gateway rejects (`require_audience("gateway")`).
+    /// Omitting it is the Workshop path: the pod authenticates with its own
+    /// `METALCRAFT_TOKEN`.
+    pub async fn gateway_connect(&self) -> anyhow::Result<GatewayConnected> {
+        let resp = self
+            .client
+            .post(self.url("/gateway/metalcraft/connect"))
+            .bearer_auth(self.bearer())
+            .json(&serde_json::json!({}))
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        // The pod's 409 means one thing only, and its own sentence says it
+        // better than a status line does.
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            anyhow::bail!("register and verify your number before connecting");
+        }
+        Self::decode(resp, "/gateway/metalcraft/connect").await
+    }
+
+    /// Disable the channel and drop its secrets. Idempotent, and local to the
+    /// pod: the number stays registered at the gateway, so reconnecting needs no
+    /// second verification.
+    pub async fn gateway_disconnect(&self) -> anyhow::Result<()> {
+        let _: serde_json::Value = self.post("/gateway/metalcraft/disconnect", &()).await?;
+        Ok(())
+    }
+
     pub async fn list_keys(&self) -> anyhow::Result<Vec<KeyEntry>> {
         self.get("/keys").await
     }

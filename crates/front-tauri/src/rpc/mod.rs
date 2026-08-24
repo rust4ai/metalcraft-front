@@ -13,6 +13,7 @@ pub mod chat;
 pub mod diagnostics;
 pub mod fleet;
 pub mod flows;
+pub mod gateway;
 pub mod keys;
 pub mod octaweave;
 pub mod packs;

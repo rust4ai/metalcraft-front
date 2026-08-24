@@ -1,6 +1,8 @@
 import { create } from 'zustand'
-import { keys as keysRpc, octaweave } from '@/rpc'
+import { gateway, keys as keysRpc, octaweave } from '@/rpc'
 import type {
+  GatewayRegistration,
+  GatewayStatus,
   KeyEntry,
   OctaweaveConnection,
   OctaweaveStatus,
@@ -8,7 +10,8 @@ import type {
 } from '@/types'
 
 /**
- * The pod's key store and its Octaweave connection (PLAN §10.6, §9.3).
+ * The pod's key store, its Octaweave connection, and its gateway channel
+ * (PLAN §10.6, §9.3).
  *
  * Values are never held here. `KeyEntry` carries a `masked` preview and nothing
  * more, and the one place a real secret exists in this app is the argument to
@@ -29,6 +32,19 @@ interface SettingsState {
   octaweaveLinking: boolean
   /** More than one workspace, so the choice is the user's. */
   octaweaveChoices: OctaweaveWorkspace[] | null
+
+  /** `null` before the first read *and* on a pod too old to answer — the card
+   *  tells those apart with `gatewayUnsupported`. */
+  gatewayStatus: GatewayStatus | null
+  /** The pod answered 404: it predates the endpoint, so there is nothing to
+   *  offer and saying "not connected" would be a lie. */
+  gatewayUnsupported: boolean
+  /** The pending registration, held only until the number verifies. It carries
+   *  the code the user has to text, which is the one thing they cannot look up
+   *  again — the gateway re-issues a *new* one on every register. */
+  gatewayPending: GatewayRegistration | null
+  gatewayBusy: boolean
+  gatewayError: string | null
 
   loadKeys: () => Promise<void>
   saveKey: (name: string, value: string) => Promise<string | null>
@@ -51,6 +67,19 @@ interface SettingsState {
   cancelOctaweaveLink: () => void
   installOctaweavePack: () => Promise<string | null>
   disconnectOctaweave: () => Promise<void>
+
+  loadGateway: () => Promise<void>
+  /** Register a number and keep the code to text back. Answers whether it took,
+   *  so a card that swapped its own state to ask for the number can decide
+   *  whether to swap back — a refusal has to leave the field where it is, with
+   *  the number still in it. */
+  registerGatewayNumber: (phoneNumber: string) => Promise<boolean>
+  /** Forget the pending registration and go back to the number field, e.g. to
+   *  fix a typo. Local only — the gateway keeps whatever was registered until
+   *  the next register replaces it. */
+  clearGatewayPending: () => void
+  connectGateway: () => Promise<void>
+  disconnectGateway: () => Promise<void>
 }
 
 /**
@@ -76,6 +105,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
   octaweaveError: null,
   octaweaveLinking: false,
   octaweaveChoices: null,
+  gatewayStatus: null,
+  gatewayUnsupported: false,
+  gatewayPending: null,
+  gatewayBusy: false,
+  gatewayError: null,
 
   loadKeys: async () => {
     set({ loadingKeys: true, keyError: null })
@@ -188,6 +222,62 @@ export const useSettings = create<SettingsState>((set, get) => ({
       await get().loadKeys()
     } catch (e) {
       set({ octaweaveBusy: false, octaweaveError: String(e) })
+    }
+  },
+
+  loadGateway: async () => {
+    try {
+      const status = await gateway.status()
+      set({
+        gatewayStatus: status,
+        gatewayUnsupported: status === null,
+        // Verification happens on a phone, not in this window, so this poll is
+        // the only thing that can notice it. Dropping the code the moment it is
+        // no longer needed keeps a stale instruction off the screen.
+        gatewayPending: status?.verified ? null : get().gatewayPending,
+      })
+    } catch (e) {
+      // Unlike the Octaweave card, this one does not degrade quietly: every
+      // state it renders is a claim about whether messages are getting through,
+      // and "we could not ask" must not read as "not connected".
+      set({ gatewayError: String(e) })
+    }
+  },
+
+  registerGatewayNumber: async (phoneNumber) => {
+    set({ gatewayBusy: true, gatewayError: null })
+    try {
+      const pending = await gateway.register(phoneNumber)
+      set({ gatewayBusy: false, gatewayPending: pending.verified ? null : pending })
+      await get().loadGateway()
+      return true
+    } catch (e) {
+      set({ gatewayBusy: false, gatewayError: String(e) })
+      return false
+    }
+  },
+
+  clearGatewayPending: () => set({ gatewayPending: null, gatewayError: null }),
+
+  connectGateway: async () => {
+    set({ gatewayBusy: true, gatewayError: null })
+    try {
+      await gateway.connect()
+      set({ gatewayBusy: false })
+      await get().loadGateway()
+    } catch (e) {
+      set({ gatewayBusy: false, gatewayError: String(e) })
+    }
+  },
+
+  disconnectGateway: async () => {
+    set({ gatewayBusy: true, gatewayError: null })
+    try {
+      await gateway.disconnect()
+      set({ gatewayBusy: false })
+      await get().loadGateway()
+    } catch (e) {
+      set({ gatewayBusy: false, gatewayError: String(e) })
     }
   },
 }))
