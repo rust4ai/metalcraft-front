@@ -581,6 +581,92 @@ impl PodConnection {
             .await
     }
 
+    // ---- the library -----------------------------------------------------
+    //
+    // Reads only. Everything here answers "what is on this pod", which is a
+    // question the app could not previously ask: presets were listed for the
+    // spawn picker and integrations for one settings card, and nothing else the
+    // pod holds had a surface at all.
+
+    /// Everything installed, in one call.
+    ///
+    /// This is the only route that can enumerate personas and skills — the pod
+    /// exposes `/personas/{slug}` and `/skills/{slug}` but no list beside them,
+    /// so a library built from the per-artifact routes would have nothing to
+    /// start from.
+    ///
+    /// `Ok(None)` on 404, the same contract as [`Self::inference_status`]: a pod
+    /// older than the endpoint cannot say, which wants a different screen from a
+    /// pod that answered "nothing installed".
+    pub async fn snapshot(&self) -> anyhow::Result<Option<PodSnapshot>> {
+        let resp = self
+            .client
+            .get(self.url("/snapshot"))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(Self::decode(resp, "/snapshot").await?))
+    }
+
+    /// A preset with both halves: what it declares, and what this pod resolved.
+    ///
+    /// [`Self::preset_personas`] is the same request narrowed to the roster; it
+    /// stays because the persona switcher wants exactly that and nothing else.
+    pub async fn preset_detail(&self, slug: &str) -> anyhow::Result<PresetDetail> {
+        self.get(&format!("/agent-presets/{slug}")).await
+    }
+
+    /// One persona: its prompt, its tools, its skills, its integration grants.
+    pub async fn persona(&self, slug: &str) -> anyhow::Result<PersonaDetail> {
+        self.get(&format!("/personas/{slug}")).await
+    }
+
+    /// One skill, body included. The body is the artifact — a skill listing
+    /// without it is a filename.
+    pub async fn skill(&self, slug: &str) -> anyhow::Result<SkillDetail> {
+        self.get(&format!("/skills/{slug}")).await
+    }
+
+    /// One HTTP API tool's config, verbatim.
+    ///
+    /// Kept as `Value` on purpose: the config is a request template — mappings,
+    /// nested parameter paths, multipart descriptors — that the pod's executor
+    /// owns and this app only displays. Typing it here would be inventing a
+    /// second copy of a schema that changes whenever a tool author needs a new
+    /// body shape.
+    pub async fn api_tool(&self, name: &str) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!("/api-tools/{name}")).await
+    }
+
+    /// An integration with its contents named rather than counted.
+    pub async fn integration(&self, id: &str) -> anyhow::Result<IntegrationDetail> {
+        self.get(&format!("/integrations/{id}")).await
+    }
+
+    /// An installed agent pack's manifest, as the pod filed it. `Value` for the
+    /// same reason as [`Self::registry_manifest`]: the manifest is the pack
+    /// author's document, not this app's type.
+    pub async fn agent_pack(&self, id: &str) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!("/agent-packs/{id}")).await
+    }
+
+    /// The automations packs shipped, before anyone installed one as a flow.
+    pub async fn flow_templates(&self) -> anyhow::Result<Vec<FlowTemplateSummary>> {
+        self.get("/flow-templates").await
+    }
+
+    /// One template, graph included. `Value` because the graph belongs to the
+    /// external `metalcraft-flows` crate — the pod itself exposes it untyped for
+    /// the same reason, and inventing a shape here would be inventing one for a
+    /// document neither side owns.
+    pub async fn flow_template(&self, slug: &str) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!("/flow-templates/{slug}")).await
+    }
+
     pub async fn list_agent_packs(&self) -> anyhow::Result<Vec<InstalledAgentPack>> {
         let wrapped: AgentPackList = self.get("/agent-packs").await?;
         // The pod nests each pack's own fields under `manifest`; callers want one

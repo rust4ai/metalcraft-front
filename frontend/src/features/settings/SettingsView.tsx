@@ -1,8 +1,8 @@
-import { KeyRound } from 'lucide-react'
+import { KeyRound, ServerCog } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
 import { canThink, useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
-import { OctaweaveCard } from './OctaweaveCard'
+import { ConnectionCard } from './ConnectionCard'
 import { GatewayCard } from './GatewayCard'
 import { KeysCard } from './KeysCard'
 
@@ -11,16 +11,20 @@ import { KeysCard } from './KeysCard'
  *
  * Deliberately only the parts that are built: the interface source (which links
  * out to its own step rather than being duplicated here), the key store, the
- * Octaweave connection, and the gateway channel that carries WhatsApp and SMS.
+ * service connections, and the gateway channel that carries WhatsApp and SMS.
  * Account, pods, per-channel configuration, registries and updates are named in
  * PLAN §10.6 and are not here, so they are not stubbed either — an empty
  * settings panel implies a feature that does not exist.
+ *
+ * The two connection cards are one component twice, in a fixed order — a card
+ * that moved when you connected it would be a card you had to re-find.
  */
 export function SettingsView() {
   const go = useUi((s) => s.go)
   const ownSource = useUi((s) => s.ownSource)
   const inference = useUi((s) => s.inference)
   const premium = useConnection((s) => s.session?.premium ?? false)
+  const pod = useConnection((s) => s.pod)
 
   return (
     <div className="h-full overflow-y-auto px-8 py-6">
@@ -30,6 +34,23 @@ export function SettingsView() {
       </header>
 
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
+        {/* The Launchpad, from the other side of a connection. It is the same
+            surface the app opens on with no pod (LAUNCHPAD_PLAN §4) — reachable
+            here because switching machines and reconnecting a pod you run are
+            ordinary acts, not first-run acts. */}
+        <section className="flex items-center gap-3 rounded-card bg-surface p-5 shadow-card">
+          <ServerCog className="h-4 w-4 shrink-0 text-ink-3" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[14px] font-semibold">Pods</h2>
+            <p className="mt-0.5 text-[12.5px] text-ink-2">
+              {pod ? `This window is on ${pod.slug}.` : 'Where your agents run.'}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => go({ kind: 'pods' })}>
+            Connect another
+          </Button>
+        </section>
+
         <section className="flex items-center gap-3 rounded-card bg-surface p-5 shadow-card">
           <KeyRound className="h-4 w-4 shrink-0 text-ink-3" />
           <div className="min-w-0 flex-1">
@@ -49,7 +70,8 @@ export function SettingsView() {
           </Button>
         </section>
 
-        <OctaweaveCard />
+        <ConnectionCard service="octaweave" />
+        <ConnectionCard service="buildr" />
         <GatewayCard />
         <KeysCard />
       </div>

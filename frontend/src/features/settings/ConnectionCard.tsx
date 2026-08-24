@@ -3,61 +3,68 @@ import { AlertTriangle, Check, ExternalLink, Loader2, Unplug } from 'lucide-reac
 import { useSettings } from '@/stores/settings'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import type { ServiceId } from '@/types'
+import { judgeKey } from './keyHealth'
+import { SERVICES } from './services'
 
 /**
- * Connect an Octaweave workspace (PLAN §9.3, P7) — one button.
+ * Connect a service to this pod (PLAN §9.3, P7) — one button.
  *
  * The card used to walk the user through creating an API key and pasting it
  * back. It no longer asks for anything they hold: the core connects with the
- * Metalcraft account already signed in here, mints the workspace key itself and
- * installs the 32-tool pack.
+ * Metalcraft account already signed in here, mints the key itself and installs
+ * the pack.
  *
  * Two things can interrupt that, and both are clicks rather than typing. The
- * first time, Octaweave has never seen this Metalcraft account, so a browser
- * opens on its link page and this card waits. And an account with several
+ * first time, the service has never seen this Metalcraft account, so a browser
+ * opens on its link page and this card waits. And Octaweave with several
  * workspaces gets a picker, because which workspace an agent lives in is not a
  * choice to make on someone's behalf.
  *
- * No credential passes through this component. It renders a workspace name and
- * a scope list; the key exists only between Octaweave and the pod.
+ * **One component, both services.** It was written for Octaweave and copied for
+ * nothing: buildr.space arrived with the same five steps, the same three-minute
+ * browser poll, the same halfway state when the key stores and the pack does
+ * not. What differs is [`SERVICES`] — the words — and one branch that only
+ * Octaweave takes.
+ *
+ * No credential passes through this component. It renders a name and a scope
+ * list; the key exists only between the service and the pod.
  */
-export function OctaweaveCard() {
-  const {
-    octaweave: status,
-    connection,
-    octaweaveBusy,
-    octaweaveError,
-    octaweaveLinking,
-    octaweaveChoices,
-    loadOctaweave,
-    connectOctaweave,
-    cancelOctaweaveLink,
-    installOctaweavePack,
-    disconnectOctaweave,
-  } = useSettings()
+export function ConnectionCard({ service }: { service: ServiceId }) {
+  const spec = SERVICES[service]
+  const { status, connection, busy, error, linking, choices } = useSettings(
+    (s) => s.services[service],
+  )
+  const { loadService, connectService, cancelLink, installServicePack, disconnectService } =
+    useSettings()
   const [note, setNote] = useState<string | null>(null)
 
   useEffect(() => {
-    void loadOctaweave()
-  }, [loadOctaweave])
+    void loadService(service)
+  }, [loadService, service])
 
   const connected = status?.key_present ?? false
+  // What the pod holds and whether it still works are two questions, and only
+  // the first has an answer on the pod. See `keyHealth.ts`.
+  const key = judgeKey(status)
 
   return (
     <section className="rounded-card bg-surface p-5 shadow-card">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[14px] font-semibold">Octaweave</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-2">
-            Notes, board, drive, calendar, blog and studio — the workspace your agent can work in too.
-          </p>
+          <h2 className="text-[14px] font-semibold">{spec.name}</h2>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">{spec.blurb}</p>
         </div>
-        <StatusChip connected={connected} packInstalled={status?.pack_installed ?? false} />
+        <StatusChip
+          connected={connected}
+          packInstalled={status?.pack_installed ?? false}
+          broken={key.broken}
+        />
       </header>
 
       {connection && (
         <dl className="mt-4 rounded-chip bg-inset px-3 py-2 text-[11.5px]">
-          <Row label="Workspace" value={connection.label || connection.workspace_id} />
+          <Row label={spec.identity} value={connection.label || connection.id} />
           <Row label="Scopes" value={connection.scopes.join(' ') || 'none reported'} mono />
         </dl>
       )}
@@ -72,6 +79,12 @@ export function OctaweaveCard() {
         </p>
       )}
 
+      {/* Whether the key still authenticates — the half the pod cannot answer,
+          and the one that used to fail silently a month after connecting. */}
+      {key.tone === 'quiet' && <p className="mt-2 text-[11.5px] text-ink-3">{key.text}</p>}
+      {key.tone === 'warn' && <Note tone="warn" text={key.text ?? ''} />}
+      {key.tone === 'bad' && <Note tone="bad" text={key.text ?? ''} />}
+
       {/* Silence here would read as "it left the old key working", which is the
           one thing a reconnect must not be ambiguous about. */}
       {connection && connection.replaced > 0 && (
@@ -83,45 +96,60 @@ export function OctaweaveCard() {
       )}
 
       {note && <Note tone="warn" text={note} />}
-      {octaweaveError && <Note tone="bad" text={octaweaveError} />}
+      {error && <Note tone="bad" text={error} />}
 
       {connected ? (
         <div className="mt-4 flex items-center gap-2">
+          {/* A dead key needs replacing, and Disconnect-then-Connect is two
+              steps for one intention. Connect already revokes its predecessor,
+              so this is the same button under the name that fits the state. */}
+          {key.broken && (
+            <Button
+              size="sm"
+              onClick={() => void connectService(service).then(setNote)}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Reconnect
+            </Button>
+          )}
           {!status?.pack_installed && (
-            <Button size="sm" onClick={() => void installOctaweavePack().then(setNote)} disabled={octaweaveBusy}>
-              {octaweaveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            <Button
+              size="sm"
+              onClick={() => void installServicePack(service).then(setNote)}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Install the tools
             </Button>
           )}
           {connection?.url && (
             <Button size="sm" variant="outline" onClick={() => window.open(connection.url, '_blank')}>
-              Open workspace <ExternalLink className="h-3.5 w-3.5" />
+              {spec.open} <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           )}
           <Button
             size="sm"
             variant="danger"
             className="ml-auto"
-            onClick={() => void disconnectOctaweave()}
-            disabled={octaweaveBusy}
+            onClick={() => void disconnectService(service)}
+            disabled={busy}
           >
             <Unplug className="h-4 w-4" />
             Disconnect
           </Button>
         </div>
-      ) : octaweaveLinking ? (
-        <Waiting onCancel={cancelOctaweaveLink} />
-      ) : octaweaveChoices ? (
+      ) : linking ? (
+        <Waiting onCancel={() => cancelLink(service)} />
+      ) : choices ? (
         <div className="mt-4">
-          <p className="text-[12.5px] text-ink-2">
-            Which workspace should your agent work in?
-          </p>
+          <p className="text-[12.5px] text-ink-2">{spec.choose}</p>
           <ul className="mt-2 space-y-1.5">
-            {octaweaveChoices.map((w) => (
+            {choices.map((w) => (
               <li key={w.id}>
                 <button
-                  onClick={() => void connectOctaweave(w.id).then(setNote)}
-                  disabled={octaweaveBusy}
+                  onClick={() => void connectService(service, w.id).then(setNote)}
+                  disabled={busy}
                   className="flex w-full items-baseline gap-2 rounded-chip bg-inset px-3 py-2 text-left text-[12.5px] hover:bg-field disabled:opacity-50"
                 >
                   <span className="min-w-0 truncate">{w.name}</span>
@@ -135,14 +163,15 @@ export function OctaweaveCard() {
         </div>
       ) : (
         <div className="mt-4">
-          <Button size="sm" onClick={() => void connectOctaweave().then(setNote)} disabled={octaweaveBusy}>
-            {octaweaveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Connect Octaweave
+          <Button
+            size="sm"
+            onClick={() => void connectService(service).then(setNote)}
+            disabled={busy}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {spec.connect}
           </Button>
-          <p className="mt-3 text-[11px] text-ink-3">
-            Connects with the Metalcraft account you are signed in to. The key is created for one
-            workspace and stored on your pod — it never enters this window.
-          </p>
+          <p className="mt-3 text-[11px] text-ink-3">{spec.footnote}</p>
         </div>
       )}
     </section>
@@ -150,7 +179,7 @@ export function OctaweaveCard() {
 }
 
 /**
- * The browser is open on Octaweave's link page.
+ * The browser is open on the service's link page.
  *
  * Cancel is offered because the alternative is a spinner with no way out, and
  * cancelling costs nothing: it stops the asking, not the linking, so a link that
@@ -170,16 +199,44 @@ function Waiting({ onCancel }: { onCancel: () => void }) {
   )
 }
 
-function StatusChip({ connected, packInstalled }: { connected: boolean; packInstalled: boolean }) {
-  const label = !connected ? 'Not connected' : packInstalled ? 'Connected' : 'Key only'
+/**
+ * The one-word summary, and the one that must never be generous.
+ *
+ * `broken` outranks everything: a pod holding a revoked or lapsed key looks
+ * identical to a working one from here — same key name, same installed pack —
+ * and reading "Connected" over it is the failure this card was changed to end.
+ */
+function StatusChip({
+  connected,
+  packInstalled,
+  broken,
+}: {
+  connected: boolean
+  packInstalled: boolean
+  broken: boolean
+}) {
+  const label = broken
+    ? 'Key not working'
+    : !connected
+      ? 'Not connected'
+      : packInstalled
+        ? 'Connected'
+        : 'Key only'
   return (
     <span
       className={cn(
         'flex shrink-0 items-center gap-1 rounded-chip px-2 py-0.5 text-[11px]',
-        connected && packInstalled ? 'bg-green-tint text-green' : connected ? 'bg-orange-tint text-orange' : 'bg-inset text-ink-3',
+        broken
+          ? 'bg-red-tint text-red'
+          : connected && packInstalled
+            ? 'bg-green-tint text-green'
+            : connected
+              ? 'bg-orange-tint text-orange'
+              : 'bg-inset text-ink-3',
       )}
     >
-      {connected && packInstalled && <Check className="h-3 w-3" />}
+      {broken && <AlertTriangle className="h-3 w-3" />}
+      {!broken && connected && packInstalled && <Check className="h-3 w-3" />}
       {label}
     </span>
   )

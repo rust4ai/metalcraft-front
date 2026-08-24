@@ -351,16 +351,59 @@ export interface Diagnostic {
   origin: 'core' | 'app'
 }
 
-/** Where the Octaweave connection stands, as the settings card renders it. */
-export interface OctaweaveStatus {
+/**
+ * The services the app can connect a pod to in one click: Octaweave (the *life*
+ * workspace — notes, board, drive, calendar) and buildr.space (the *work* box —
+ * clone a repo, run it, push it).
+ *
+ * One union rather than two parallel ones because the flow is the same to the
+ * last detail: mint a key with the Metalcraft account already signed in here,
+ * prove it, store it on the pod, install the pack. The core keeps them apart —
+ * different origins, different endpoints, different prose — and everything from
+ * the transport up treats them as one shape with a name attached.
+ */
+export type ServiceId = 'octaweave' | 'buildr'
+
+/**
+ * Whether the key on the pod is still a credential, as far as anyone can tell.
+ *
+ * Three answers rather than a boolean, because "we could not ask" is a real
+ * state and the one a boolean would quietly turn into a lie. Reported only where
+ * the core can check it — today buildr.space, whose key list the app can read
+ * with the person's Metalcraft token. Absent means the question was never asked,
+ * which is why every field the card branches on is optional rather than false.
+ */
+export type KeyCheck =
+  /** Not asked. `why` is shown: "unknown" without a reason is a dead end. */
+  | { state: 'unchecked'; why: string }
+  /** The service still lists it. `expires_at` is RFC3339, or absent for a key
+   *  that never lapses — whether that date has *passed* is judged here, on the
+   *  clock the person is reading. */
+  | { state: 'live'; expires_at?: string | null }
+  /** The pod holds a key the service no longer lists: revoked, from its own UI,
+   *  from another machine, or by a disconnect this pod never heard about. */
+  | { state: 'gone' }
+
+/** Where a service connection stands, as the settings card renders it. */
+export interface ConnectionStatus {
+  /**
+   * The pod holds the key the pack reads.
+   *
+   * Presence, and only presence — the pod has no way to know whether that string
+   * still authenticates. `key_health` is the half it cannot answer.
+   */
   key_present: boolean
   pack_installed: boolean
+  /** Installed but switched off — the tools exist and will never fire. */
   pack_enabled: boolean
   pack_version?: string | null
   api_tools: number
+  /** Absent for a service whose core does not check. */
+  key_health?: KeyCheck | null
 }
 
-/** One Octaweave workspace this account administers, as the picker lists them. */
+/** One Octaweave workspace this account administers, as the picker lists them.
+ *  buildr.space has no equivalent: a key there belongs to the account. */
 export interface OctaweaveWorkspace {
   id: string
   org_slug: string
@@ -371,13 +414,15 @@ export interface OctaweaveWorkspace {
 }
 
 /** A finished connection. Carries no key — that never leaves the core. */
-export interface OctaweaveConnection {
-  workspace_id: string
-  /** The workspace's own name, which is what the user recognises. */
+export interface ConnectionInfo {
+  /** What the key is pinned to: a workspace for Octaweave, an account for
+   *  buildr.space. Handed back on disconnect so the core can revoke it. */
+  id: string
+  /** The name the user recognises — a workspace's, or an account's address. */
   label: string
   url: string
   scopes: string[]
-  status: OctaweaveStatus
+  status: ConnectionStatus
   /** The key stored but the pack did not install — a real halfway state. */
   pack_error?: string | null
   /** Keys this app had minted here before, now revoked. */
@@ -387,14 +432,15 @@ export interface OctaweaveConnection {
 /**
  * One step of connecting: done, or the single thing still missing.
  *
- * Both unfinished cases resolve by calling connect again — which is what lets
+ * Every unfinished case resolves by calling connect again — which is what lets
  * the app poll while the user is away in the browser instead of holding a
- * request open.
+ * request open. `choose_workspace` comes from Octaweave alone; buildr.space has
+ * nothing to pick between, so it never appears there.
  */
-export type OctaweaveConnectOutcome =
+export type ConnectOutcome =
   | { kind: 'needs_link'; url: string }
   | { kind: 'choose_workspace'; workspaces: OctaweaveWorkspace[] }
-  | { kind: 'connected'; connection: OctaweaveConnection }
+  | { kind: 'connected'; connection: ConnectionInfo }
 
 /**
  * The Metalcraft Gateway — WhatsApp and SMS (PLAN §10.6).
@@ -533,4 +579,167 @@ export interface FlowRunSummary {
   /** The conversation it wrote — the link from "it ran" to "here is what it did". */
   chat_id?: string | null
   warnings: string[]
+}
+
+// ── The library ─────────────────────────────────────────────────────────────
+//
+// What is actually installed on this pod, and what each artifact is made of.
+// Every type here is a read: the library is a browser, and the value it adds is
+// that the pod's artifacts reference each other by name — a preset names
+// personas, a persona names skills and integrations, an integration provides
+// api tools — so what looks like a list of strings is really a graph with the
+// edges left as text until something renders them as links.
+
+/**
+ * `GET /api/v1/snapshot`, narrowed to the artifacts the library shows.
+ *
+ * One call rather than five because it is the *only* call: the pod serves
+ * `/personas/{slug}` and `/skills/{slug}` but publishes no list beside either,
+ * so without the snapshot there is no way to know which personas and skills
+ * exist. `null` from the RPC means the pod is too old to have the endpoint —
+ * distinct from a pod that answered with nothing installed.
+ */
+export interface PodSnapshot {
+  agent_presets: AgentPreset[]
+  personas: PersonaSummary[]
+  skills: SkillSummary[]
+  api_tools: ApiToolSummary[]
+  /** The preset a pod with nothing chosen runs as. */
+  default_agent_preset: string
+}
+
+/** Set on any artifact an integration provided; absent means it was authored on
+ *  this pod. It is also a link: the id is an integration's show page. */
+interface Provided {
+  pack_id?: string | null
+  /** Pack-provided artifacts cannot be edited on the pod. */
+  read_only?: boolean
+}
+
+export interface PersonaSummary extends Provided {
+  slug: string
+  name: string
+  description: string
+}
+
+/** A skill without its body — the listing shape. The body is the artifact, and
+ *  it is one `/skills/{slug}` away. */
+export interface SkillSummary extends Provided {
+  slug: string
+  description: string
+}
+
+/** `name`, not `slug`: it is the string a model calls the tool by. */
+export interface ApiToolSummary extends Provided {
+  name: string
+  description: string
+}
+
+/**
+ * One persona in full.
+ *
+ * `integrations` is a *whole-integration grant* and is deliberately kept apart
+ * from `tools`: every HTTP tool that integration provides joins the persona's
+ * tool set without being named here, so folding the two lists together would
+ * show a persona with three tools when it has thirty.
+ *
+ * The wire carries no slug — it is in the path — so the caller keeps the one it
+ * navigated with.
+ */
+export interface PersonaDetail {
+  name: string
+  description: string
+  tools: string[]
+  skills: string[]
+  integrations: string[]
+  system_prompt: string
+  version?: string | null
+}
+
+export interface SkillDetail extends Provided {
+  slug: string
+  description: string
+  /** The markdown the agent actually loads. */
+  body: string
+}
+
+/**
+ * A preset as its own file declares it.
+ *
+ * The richest artifact on the pod: it names personas, skills and integrations,
+ * states what it needs in the key store, and declares a capability floor rather
+ * than a model. Every one of those is a link somewhere else, which is why this
+ * is the show page the library is built around.
+ */
+export interface AgentPresetDetail {
+  slug: string
+  name: string
+  tagline?: string | null
+  description: string
+  version?: string | null
+  avatar?: string | null
+  default_persona: string
+  personas: PresetPersona[]
+  skills: string[]
+  integrations: string[]
+  requires_env: string[]
+  model?: ModelFloor | null
+  memories?: MemoriesRef | null
+  manifest_version: number
+}
+
+/** A persona as the *preset* names it, before the pod tried to find it.
+ *  `RosterPersona` is the same entry after resolution. */
+export interface PresetPersona {
+  slug: string
+  description?: string | null
+  role?: string | null
+}
+
+/** **A capability floor, not a model name.** A preset that hard-codes a model
+ *  breaks on a pod without it, so it says what it needs and the pod maps that
+ *  onto what it has. `prefer` is a hint and is labelled as one. */
+export interface ModelFloor {
+  tier?: string | null
+  prefer?: string | null
+  min_context?: number | null
+  needs: string[]
+}
+
+/** Seed memories a pack ships with a preset — what an agent spawned from it
+ *  knows before its first turn. */
+export interface MemoriesRef {
+  file: string
+  count: number
+  dims?: number | null
+  embed_model?: string | null
+}
+
+/** `GET /agent-presets/{slug}` — the declaration and the resolution together.
+ *  `preset` is absent on a pod too old to return it. */
+export interface PresetDetail {
+  preset?: AgentPresetDetail | null
+  personas: RosterPersona[]
+}
+
+/** An integration with its contents named rather than counted — the list route
+ *  (`Integration`) gives four numbers, this gives four sets of links. */
+export interface IntegrationDetail {
+  id: string
+  name: string
+  description: string
+  version: string
+  enabled: boolean
+  personas: string[]
+  skills: string[]
+  api_tools: string[]
+  flow_templates: string[]
+  requires_env: string[]
+}
+
+/** An automation a pack shipped, before anyone installed it as a flow. */
+export interface FlowTemplateSummary {
+  slug: string
+  name: string
+  pack_id?: string | null
 }

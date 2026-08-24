@@ -57,9 +57,9 @@ describe('App', () => {
   })
 
   it('lets a pod you run in without a Metalcraft account', async () => {
-    // The screen used to be a wall: a self-hosted pod needs no account, but the
-    // app demanded one before showing anything, so a self-hoster could not reach
-    // their own agent.
+    // The screen used to be a wall, then a text link at the bottom of it. A
+    // self-hosted pod needs no account, so on the Launchpad it is a card of its
+    // own beside the account — not a door behind a sign-in gate.
     const calls: string[] = []
     vi.resetModules()
     const transport = await import('@/rpc/transport')
@@ -84,8 +84,8 @@ describe('App', () => {
     const { App } = await import('./App')
     render(<App />)
 
-    await waitFor(() => expect(screen.getByText('Or connect to a pod you run')).toBeTruthy())
-    await userEvent.click(screen.getByText('Or connect to a pod you run'))
+    await waitFor(() => expect(screen.getByText('A pod you run')).toBeTruthy())
+    await userEvent.type(screen.getByLabelText('Pod URL'), 'http://localhost:3999')
     await userEvent.type(screen.getByLabelText('Pod key'), 'devkey')
     await userEvent.click(screen.getByText('Connect'))
 
@@ -251,8 +251,23 @@ describe('App', () => {
     expect(screen.getByText('Metalcraft Inference')).toBeTruthy()
   })
 
-  it('explains itself when the account has no pod', async () => {
+  it('offers a way out when the account has no pod', async () => {
+    // This case used to be the app's one dead end — "No pod on this account"
+    // over a refresh button. Both things that could be done about it were built
+    // or sellable and neither was reachable, which is the whole of
+    // LAUNCHPAD_PLAN §1.
     await mount({ session: { email: 'a@b.com', premium: false }, list_pods: [] })
-    await waitFor(() => expect(screen.getByText('No pod on this account')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('No pod on this account yet.')).toBeTruthy())
+    // The two doors out: run one yourself, or buy one.
+    expect(screen.getByText('A pod you run')).toBeTruthy()
+    expect(screen.getByText('Get a pod')).toBeTruthy()
+  })
+
+  it('does not sell a pod to an account that has already paid for one', async () => {
+    // Premium with no pod is a provisioning problem, not a sales one. An upgrade
+    // button here would be the app failing to notice it had been paid.
+    await mount({ session: { email: 'a@b.com', premium: true }, list_pods: [] })
+    await waitFor(() => expect(screen.getByText('Premium is on this account')).toBeTruthy())
+    expect(screen.queryByText('Get Metalcraft premium')).toBeNull()
   })
 })

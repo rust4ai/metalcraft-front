@@ -1,16 +1,17 @@
 import { create } from 'zustand'
-import { gateway, keys as keysRpc, octaweave } from '@/rpc'
+import { gateway, keys as keysRpc, services } from '@/rpc'
 import type {
+  ConnectionInfo,
+  ConnectionStatus,
   GatewayRegistration,
   GatewayStatus,
   KeyEntry,
-  OctaweaveConnection,
-  OctaweaveStatus,
   OctaweaveWorkspace,
+  ServiceId,
 } from '@/types'
 
 /**
- * The pod's key store, its Octaweave connection, and its gateway channel
+ * The pod's key store, its service connections, and its gateway channel
  * (PLAN §10.6, §9.3).
  *
  * Values are never held here. `KeyEntry` carries a `masked` preview and nothing
@@ -19,19 +20,41 @@ import type {
  * written value in a store "so the form can show it" is how a credential ends up
  * in a devtools snapshot.
  */
+/**
+ * One service connection, whichever service it is (PLAN §9.3).
+ *
+ * Written once rather than twice because Octaweave and buildr.space differ in
+ * one step out of five — Octaweave can ask which workspace — and everything
+ * else, down to the three-minute browser poll and what a half-finished connect
+ * leaves on screen, is the same behaviour. Two copies of it would be two places
+ * for the polling to drift.
+ */
+export interface ServiceConnection {
+  status: ConnectionStatus | null
+  connection: ConnectionInfo | null
+  busy: boolean
+  error: string | null
+  /** The browser is open on the service's link page and we are re-asking. */
+  linking: boolean
+  /** More than one workspace, so the choice is the user's. Octaweave only. */
+  choices: OctaweaveWorkspace[] | null
+}
+
+const blank = (): ServiceConnection => ({
+  status: null,
+  connection: null,
+  busy: false,
+  error: null,
+  linking: false,
+  choices: null,
+})
+
 interface SettingsState {
   keys: KeyEntry[]
   loadingKeys: boolean
   keyError: string | null
 
-  octaweave: OctaweaveStatus | null
-  connection: OctaweaveConnection | null
-  octaweaveBusy: boolean
-  octaweaveError: string | null
-  /** The browser is open on Octaweave's link page and we are re-asking. */
-  octaweaveLinking: boolean
-  /** More than one workspace, so the choice is the user's. */
-  octaweaveChoices: OctaweaveWorkspace[] | null
+  services: Record<ServiceId, ServiceConnection>
 
   /** `null` before the first read *and* on a pod too old to answer — the card
    *  tells those apart with `gatewayUnsupported`. */
@@ -50,23 +73,23 @@ interface SettingsState {
   saveKey: (name: string, value: string) => Promise<string | null>
   deleteKey: (name: string) => Promise<void>
 
-  loadOctaweave: () => Promise<void>
+  loadService: (service: ServiceId) => Promise<void>
   /**
    * The whole connection, from a button press.
    *
    * Returns the *pack* error when the key stored but the tools did not — a
    * halfway state the card names separately. Anything that failed outright sets
-   * `octaweaveError` instead and returns null, so it is never shown twice.
+   * the slice's `error` instead and returns null, so it is never shown twice.
    *
    * `pollMs` exists for tests. The waiting loop is the one part of this that is
    * measured in minutes, and a test should not be.
    */
-  connectOctaweave: (workspace?: string, pollMs?: number) => Promise<string | null>
+  connectService: (service: ServiceId, choice?: string, pollMs?: number) => Promise<string | null>
   /** Stop waiting on the browser. The link itself may still land; the next
    *  Connect will find it. */
-  cancelOctaweaveLink: () => void
-  installOctaweavePack: () => Promise<string | null>
-  disconnectOctaweave: () => Promise<void>
+  cancelLink: (service: ServiceId) => void
+  installServicePack: (service: ServiceId) => Promise<string | null>
+  disconnectService: (service: ServiceId) => Promise<void>
 
   loadGateway: () => Promise<void>
   /** Register a number and keep the code to text back. Answers whether it took,
@@ -99,16 +122,24 @@ const POLL_LIMIT_MS = 180_000
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * Change one service's slice, leaving the other alone.
+ *
+ * Outside the store rather than inside it so the actions below stay at the
+ * indentation they were written at — and because a two-service map has exactly
+ * one way to be updated wrongly (`set({ services: { [id]: … } })`, which drops
+ * the other service), which is worth having one function for.
+ */
+const patch = (service: ServiceId, next: Partial<ServiceConnection>) =>
+  useSettings.setState((s) => ({
+    services: { ...s.services, [service]: { ...s.services[service], ...next } },
+  }))
+
 export const useSettings = create<SettingsState>((set, get) => ({
   keys: [],
   loadingKeys: false,
   keyError: null,
-  octaweave: null,
-  connection: null,
-  octaweaveBusy: false,
-  octaweaveError: null,
-  octaweaveLinking: false,
-  octaweaveChoices: null,
+  services: { octaweave: blank(), buildr: blank() },
   gatewayStatus: null,
   gatewayUnsupported: false,
   gatewayPending: null,
@@ -128,9 +159,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
     try {
       await keysRpc.save(name, value)
       await get().loadKeys()
-      // Writing a key can be what completes an Octaweave connection, so the card
-      // must not keep claiming otherwise.
-      void get().loadOctaweave()
+      // Writing a key by hand can be what completes a connection — and which
+      // service it belongs to is not knowable from the name alone, so both cards
+      // re-read rather than one guessing.
+      void get().loadService('octaweave')
+      void get().loadService('buildr')
       return null
     } catch (e) {
       return String(e)
@@ -141,15 +174,16 @@ export const useSettings = create<SettingsState>((set, get) => ({
     try {
       await keysRpc.remove(name)
       await get().loadKeys()
-      void get().loadOctaweave()
+      void get().loadService('octaweave')
+      void get().loadService('buildr')
     } catch (e) {
       set({ keyError: String(e) })
     }
   },
 
-  loadOctaweave: async () => {
+  loadService: async (service) => {
     try {
-      set({ octaweave: await octaweave.status() })
+      patch(service, { status: await services[service].status() })
     } catch {
       // The card is cosmetic; a pod that will not answer is a connection problem
       // that the rest of the app is already reporting — so this still does not
@@ -162,70 +196,73 @@ export const useSettings = create<SettingsState>((set, get) => ({
     }
   },
 
-  connectOctaweave: async (workspace, pollMs = POLL_MS) => {
-    set({ octaweaveBusy: true, octaweaveError: null, octaweaveChoices: null })
+  connectService: async (service, choice, pollMs = POLL_MS) => {
+    const rpc = services[service]
+    patch(service, { busy: true, error: null, choices: null })
     try {
-      let outcome = await octaweave.connect(workspace)
+      let outcome = await rpc.connect(choice)
 
       if (outcome.kind === 'needs_link') {
         // Opened exactly once. Connect is deliberately browser-free so that the
         // polling below cannot spray a tab per attempt across three minutes.
-        await octaweave.link()
-        set({ octaweaveLinking: true })
+        await rpc.link()
+        patch(service, { linking: true })
         for (let i = 0; i < Math.ceil(POLL_LIMIT_MS / POLL_MS); i++) {
           await sleep(pollMs)
-          if (!get().octaweaveLinking) break
-          outcome = await octaweave.connect(workspace)
+          if (!get().services[service].linking) break
+          outcome = await rpc.connect(choice)
           if (outcome.kind !== 'needs_link') break
         }
-        set({ octaweaveLinking: false })
+        patch(service, { linking: false })
       }
 
       if (outcome.kind === 'needs_link') {
-        set({ octaweaveBusy: false })
+        patch(service, { busy: false })
         return null
       }
 
       if (outcome.kind === 'choose_workspace') {
-        set({ octaweaveBusy: false, octaweaveChoices: outcome.workspaces })
+        patch(service, { busy: false, choices: outcome.workspaces })
         return null
       }
 
       const connection = outcome.connection
-      set({ connection, octaweave: connection.status, octaweaveBusy: false })
+      patch(service, { connection, status: connection.status, busy: false })
       await get().loadKeys()
       // A stored key with a failed pack install is a real halfway state, and the
       // card says so rather than reporting a clean success.
       return connection.pack_error ?? null
     } catch (e) {
-      set({ octaweaveBusy: false, octaweaveLinking: false, octaweaveError: String(e) })
+      patch(service, { busy: false, linking: false, error: String(e) })
       return null
     }
   },
 
-  cancelOctaweaveLink: () => set({ octaweaveLinking: false }),
+  cancelLink: (service) => patch(service, { linking: false }),
 
-  installOctaweavePack: async () => {
-    set({ octaweaveBusy: true, octaweaveError: null })
+  installServicePack: async (service) => {
+    patch(service, { busy: true, error: null })
     try {
-      set({ octaweave: await octaweave.installPack(), octaweaveBusy: false })
+      patch(service, { status: await services[service].installPack(), busy: false })
       return null
     } catch (e) {
-      set({ octaweaveBusy: false, octaweaveError: String(e) })
+      patch(service, { busy: false, error: String(e) })
       return null
     }
   },
 
-  disconnectOctaweave: async () => {
-    set({ octaweaveBusy: true, octaweaveError: null })
+  disconnectService: async (service) => {
+    patch(service, { busy: true, error: null })
     try {
-      // The workspace goes with it so the core can revoke the key it minted.
-      // Forgetting it here would leave a working credential nobody holds.
-      const status = await octaweave.disconnect(get().connection?.workspace_id)
-      set({ octaweave: status, connection: null, octaweaveChoices: null, octaweaveBusy: false })
+      // What the key was pinned to goes with it, so the core can revoke the key
+      // it minted. Forgetting it would leave a working credential nobody holds.
+      const status = await services[service].disconnect(
+        get().services[service].connection?.id,
+      )
+      patch(service, { status, connection: null, choices: null, busy: false })
       await get().loadKeys()
     } catch (e) {
-      set({ octaweaveBusy: false, octaweaveError: String(e) })
+      patch(service, { busy: false, error: String(e) })
     }
   },
 

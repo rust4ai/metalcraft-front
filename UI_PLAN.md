@@ -305,6 +305,70 @@ handler, the deep-link plugin and its capability entry. The callback was built
 against a `redirect_uri` Octaweave never accepted; `ECOSYSTEM_PIVOT_PLAN.md` §3.1
 landed Octaweave-side on 2026-08-23 and made the whole return trip unnecessary.
 
+#### S8b — the same card, for buildr.space
+
+The gap this closes was visible in Settings and nowhere else: the `buildr-space`
+pack installs fine from the registry, and an installed pack with no
+`BUILDR_API_KEY` is 26 tools that all fail on their first call. Octaweave had a
+card. buildr.space had a key store and a name to type into it.
+
+It is the same five steps — prove the Metalcraft PAT, mint a key, verify it,
+store it on the pod, install the pack — so it is the same component. `features/
+settings/ConnectionCard.tsx` is the old `OctaweaveCard` with its words moved into
+`services.ts`, and `stores/settings.ts` keeps one slice per service instead of one
+set of fields. The renderer's `ServiceRpc` is what makes that possible: two cores
+behind one shape, with the Octaweave wrapper renaming `workspace_id` to `id` at
+the boundary rather than either core pretending to be the other.
+
+One branch is Octaweave's alone. A `bsk_` belongs to a buildr.space **account**,
+not to one workspace inside it, so there is nothing to pick — the workspaces the
+agent codes in are the ones it makes for itself. The other three states are
+identical, including the browser trip.
+
+**It needed a change on the other side.** `POST /api/v1/account/tokens` refused
+every scoped credential, which is right for a `bsk_` (a key must not mint another
+that outlives its revocation) and wrong for an `mck_`, which names a person and
+dies with their link row. buildr.space now tests the credential's *kind* rather
+than `scopes.is_some()`, refuses to let a read-only hub token mint a writing key,
+and returns the new key's `id` so a mint made on someone's behalf can be taken
+back. `docs/METALCRAFT_LINK.md` over there carries the reasoning.
+
+**The card asks two questions, not one.** The pod knows a `BUILDR_API_KEY` is
+*present* and nothing else — not whether it still authenticates — so a key
+revoked from buildr.space's own Keys page, or one that lapsed on schedule, used
+to leave the card reading "Connected · 26 tools installed" while every one of
+those tools 401'd inside a conversation. `buildr_status` now also asks
+buildr.space, with the person's `mck_`, whether the key it minted is still
+listed and when it lapses.
+
+Three answers, and the third is the one a boolean would have turned into a lie:
+
+- **Live** — listed. `expires_at` when it has one; `keyHealth.ts` decides whether
+  that date has passed, on the clock the person is reading, and warns inside a
+  fortnight rather than after.
+- **Gone** — the pod holds a key buildr.space no longer lists. The chip stops
+  saying Connected, turns red, and offers **Reconnect** — one button, because
+  Connect already revokes its predecessor.
+- **Unchecked** — signed out, or buildr.space unreachable. Said out loud and
+  quietly: nothing is known to be wrong, and "we could not ask" must not read as
+  "asked, and fine". It never fails the settings page and never reaches the
+  error log — an offline laptop is not an incident.
+
+Deliberately *not* a cached expiry written down beside the key at mint time. A
+date is a prediction: right about the clock, silent about revocation — which is
+the half that happens on purpose, and from somewhere else. Asking the source
+costs one GET and answers both.
+
+The minted key still does not expire (`ttl_days: 0`; buildr.space defaults to
+30 days). With the check in place that is a preference rather than a load-bearing
+choice — the reason to keep it is that nothing forces a working agent to break on
+a schedule, and reconnecting is one click whenever someone decides to.
+
+Octaweave has the same hole and does not get the same fix here: its key list is
+per *workspace*, and the workspace id only exists in a live `connection`, so a
+health check survives a restart there only with somewhere to keep it. Named, not
+built.
+
 ### S9 — the third pill, and where automations live
 
 `app/Sidebar.tsx` nav, `features/automations/*`, `stores/automations.ts`. **Built**:

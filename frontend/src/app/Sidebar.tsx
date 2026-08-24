@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  BookOpen,
   ChevronRight,
   Clock,
   LayoutGrid,
@@ -201,6 +202,21 @@ export function Sidebar() {
           )}
         >
           <Settings className="h-4 w-4" />
+        </button>
+        {/* The library, between the two. All three are "what is this pod
+            actually doing", asked at three depths: how it is configured, what
+            it is made of, and what went wrong. */}
+        <button
+          type="button"
+          aria-label="Library"
+          title="Library — everything installed on this pod"
+          onClick={() => go({ kind: 'library' })}
+          className={cn(
+            'rounded-chip p-1.5 hover:bg-hover hover:text-ink',
+            activeKey === 'library' ? 'text-ink' : 'text-ink-3',
+          )}
+        >
+          <BookOpen className="h-4 w-4" />
         </button>
         <ErrorLogButton />
       </footer>

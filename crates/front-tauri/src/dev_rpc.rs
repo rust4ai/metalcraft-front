@@ -168,6 +168,18 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
                 .and_then(|s| serde_json::to_value(s).map_err(|e| e.to_string()))
         }
 
+        // Its sibling, and mirrored for the same reason: this is the arm that
+        // answers "the pack is installed but nothing said the key was missing",
+        // which is the bug the buildr.space card exists to fix.
+        "buildr_status" => {
+            let conn = app.conn(None)?;
+            // No PAT here: the bridge has no keychain, so the key-health half
+            // reports itself unchecked rather than pretending.
+            crate::rpc::buildr::status_of(&conn, app.diag(), None)
+                .await
+                .and_then(|s| serde_json::to_value(s).map_err(|e| e.to_string()))
+        }
+
         // The error log. Process state, no pod involved — which is exactly why
         // it is mirrored while the remaining octaweave commands are not: this is
         // where a browser-driven run finds out what the core swallowed.
@@ -192,6 +204,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .gateway_disconnect()
             .await
             .map(|_| json!(null))),
+        "gateway_unregister" => j(app.conn(None)?.gateway_unregister().await),
 
         // Keys.
         "list_keys" => j(app.conn(None)?.list_keys().await),
@@ -205,7 +218,6 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .delete_key(need(args, "name")?)
             .await
             .map(|_| json!(null))),
-        "gateway_unregister" => j(app.conn(None)?.gateway_unregister().await),
 
         // Fleet.
         "list_instances" => j(app.conn(None)?.list_instances().await),
@@ -279,6 +291,21 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .conn(None)?
             .resume_flow_run(need(args, "runId")?, need(args, "handle")?)
             .await),
+
+        // The library. Every arm is a plain pod read with no credential of its
+        // own, so the whole surface mirrors — which is what lets the library be
+        // driven from a browser tab against the stub pod, including the pods
+        // that answer 404 to `/snapshot`.
+        "pod_snapshot" => j(app.conn(None)?.snapshot().await),
+        "preset_detail" => j(app.conn(None)?.preset_detail(need(args, "slug")?).await),
+        "persona_detail" => j(app.conn(None)?.persona(need(args, "slug")?).await),
+        "skill_detail" => j(app.conn(None)?.skill(need(args, "slug")?).await),
+        "api_tool_detail" => j(app.conn(None)?.api_tool(need(args, "name")?).await),
+        "list_integrations" => j(app.conn(None)?.list_integrations().await),
+        "integration_detail" => j(app.conn(None)?.integration(need(args, "id")?).await),
+        "agent_pack_detail" => j(app.conn(None)?.agent_pack(need(args, "id")?).await),
+        "list_flow_templates" => j(app.conn(None)?.flow_templates().await),
+        "flow_template_detail" => j(app.conn(None)?.flow_template(need(args, "slug")?).await),
 
         // Packs.
         "list_registries" => j(app.conn(None)?.registries().await),
@@ -380,6 +407,12 @@ mod tests {
             "octaweave_install_pack",
             "octaweave_disconnect",
             "octaweave_link",
+            // Same story for buildr.space: minting a `bsk_` needs the keychain
+            // PAT and linking needs a browser. Its status is mirrored above.
+            "buildr_connect",
+            "buildr_install_pack",
+            "buildr_disconnect",
+            "buildr_link",
             // Connecting a registry mints and stores a credential; that is the
             // one registry action not worth the blast radius in a dev bridge.
             // Search, manifest and install are mirrored — see the install arm.

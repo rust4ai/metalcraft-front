@@ -5,7 +5,9 @@ import { PacksView } from '@/features/packs/PacksView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ErrorLogView } from '@/features/diagnostics/ErrorLogView'
+import { LibraryView } from '@/features/library/LibraryView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
+import { LaunchpadView } from '@/features/onboarding/LaunchpadView'
 import { NewAgentDialog } from '@/features/fleet/NewAgentDialog'
 import { useFleet } from '@/stores/fleet'
 import { useLayout } from '@/stores/layout'
@@ -80,8 +82,15 @@ export function Shell() {
             <SettingsView />
           ) : view.kind === 'errors' ? (
             <ErrorLogView />
+          ) : view.kind === 'library' ? (
+            <LibraryView />
           ) : view.kind === 'source' ? (
             <SourceTab />
+          ) : view.kind === 'pods' ? (
+            // The same component the app opens on with no pod. Inside the frame
+            // it reads as a pod switcher, because that is what it is once one is
+            // connected (LAUNCHPAD_PLAN §4).
+            <LaunchpadView />
           ) : (
             <FleetView />
           )}

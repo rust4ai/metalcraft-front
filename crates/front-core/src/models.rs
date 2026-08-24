@@ -422,8 +422,20 @@ pub struct RosterPersona {
 }
 
 /// `GET /agent-presets/{slug}` — the preset plus its resolved persona roster.
+///
+/// Both halves are needed and they answer different questions: `preset` is what
+/// the file *declares* (its skills, its integrations, the keys it needs, the
+/// model floor it wants), `personas` is what this pod could actually *find*. The
+/// roster alone was enough while this endpoint only fed the persona switcher;
+/// the library's preset page is about the declaration, so `preset` stopped being
+/// discarded.
+///
+/// `Option`, because a pod older than the typed response omits it — a missing
+/// declaration renders as a thinner page, not as a failed load.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PresetDetail {
+    #[serde(default)]
+    pub preset: Option<AgentPresetDetail>,
     #[serde(default)]
     pub personas: Vec<RosterPersona>,
 }
@@ -497,6 +509,258 @@ pub struct Integration {
     /// Keys this pack needs in the pod's key store to actually work.
     #[serde(default)]
     pub requires_env: Vec<String>,
+}
+
+// ── The library: what is actually installed on this pod ─────────────────────
+//
+// Every type below is a *read*. The pod is the authority on what it holds, and
+// this app's job here is to make that legible — an agent pack is a delivery
+// mechanism, but what an agent actually runs on is a preset naming personas
+// naming skills and integrations, and until you can walk that graph the pod is
+// a box you install things into and never see inside.
+//
+// The shapes are the pod's own (`ProjectSnapshot`, `PersonaSummary`, `Skill`,
+// …). Every field past the identifier is `#[serde(default)]`, because these are
+// the surfaces the agent moves most and a library that refuses to list anything
+// because one artifact grew a field is worse than one that renders it plainly.
+
+/// `GET /api/v1/snapshot` — everything installed, in one call.
+///
+/// The reason this is one request rather than six: personas and skills have no
+/// list route of their own (only `/personas/{slug}`), so the snapshot is the
+/// *only* way to enumerate them. Agent packs and integrations are fetched
+/// alongside it because they are the two artifact kinds it leaves out.
+///
+/// Fields the library does not render — `sessions`, `keys`, `flows`,
+/// `agent_instances` — are dropped on the way in rather than carried and
+/// ignored: each already has a surface of its own, and the pod's key summaries
+/// have no business crossing into a webview twice.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PodSnapshot {
+    #[serde(default)]
+    pub agent_presets: Vec<AgentPresetSummary>,
+    #[serde(default)]
+    pub personas: Vec<PersonaSummary>,
+    #[serde(default)]
+    pub skills: Vec<SkillSummary>,
+    #[serde(default)]
+    pub api_tools: Vec<ApiToolSummary>,
+    /// Which preset a pod with nothing selected runs as. Rendered as a badge on
+    /// that preset — "this is what your pod is when nobody said otherwise".
+    #[serde(default)]
+    pub default_agent_preset: String,
+}
+
+/// One persona in the snapshot's roster. `pack_id` is what makes a persona
+/// *sub-linkable*: set means an integration provided it, absent means someone
+/// wrote it on this pod.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonaSummary {
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// A skill without its body — the listing shape. The body is one `/skills/{slug}`
+/// away and is the whole point of the show page, so it is never sent in bulk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillSummary {
+    pub slug: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// An HTTP API tool, as the snapshot lists it. Named `name` rather than `slug`
+/// because that is the string a model calls it by.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiToolSummary {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// `GET /api/v1/personas/{slug}` — the persona itself.
+///
+/// The wire shape carries no slug (it is in the path), so the caller keeps the
+/// one it navigated with. `integrations` is a whole-integration grant: every
+/// HTTP tool that integration provides joins the persona's tool set without
+/// being named, which is why a show page has to render it *beside* `tools`
+/// rather than folded into it — the two lists mean different things.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PersonaDetail {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// Reads `packs` too — the field's name before integrations stopped being
+    /// separately installable. Personas carrying the old name are already on
+    /// people's pods, so both are accepted.
+    #[serde(default, alias = "packs")]
+    pub integrations: Vec<String>,
+    #[serde(default)]
+    pub system_prompt: String,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// `GET /api/v1/skills/{slug}` — frontmatter plus the markdown body the agent
+/// actually loads.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SkillDetail {
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+/// The preset as its own file declares it — the half `PresetDetail` used to
+/// throw away.
+///
+/// This is the richest artifact on the pod and the one worth a real show page:
+/// it names personas, skills and integrations, states what it needs in the key
+/// store, and declares a *capability floor* rather than a model. Every one of
+/// those is a link to another artifact, which is the whole reason the library
+/// exists rather than a flat list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentPresetDetail {
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub tagline: Option<String>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub avatar: Option<String>,
+    #[serde(default)]
+    pub default_persona: String,
+    #[serde(default)]
+    pub personas: Vec<PresetPersona>,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    /// Reads `integration_packs` too — the pre-0.30 name, still in every preset
+    /// authored before the rename.
+    #[serde(default, alias = "integration_packs")]
+    pub integrations: Vec<String>,
+    #[serde(default)]
+    pub requires_env: Vec<String>,
+    #[serde(default)]
+    pub model: Option<ModelFloor>,
+    #[serde(default)]
+    pub memories: Option<MemoriesRef>,
+    #[serde(default)]
+    pub manifest_version: u32,
+}
+
+/// A persona as the *preset* names it, before resolution. Distinct from
+/// [`RosterPersona`], which is the same entry after the pod has tried to find it
+/// — the show page renders them zipped, so a persona the preset wants and the
+/// pod lacks reads as a gap rather than an absence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetPersona {
+    pub slug: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+}
+
+/// **A capability floor, not a model name.** A preset that hard-codes `gpt-5.4`
+/// breaks on a pod without it, so it declares what it needs and the pod maps
+/// that onto what it has. `prefer` is a hint and is labelled as one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelFloor {
+    #[serde(default)]
+    pub tier: Option<String>,
+    #[serde(default)]
+    pub prefer: Option<String>,
+    #[serde(default)]
+    pub min_context: Option<u32>,
+    #[serde(default)]
+    pub needs: Vec<String>,
+}
+
+/// The seed memories an agent pack ships with a preset — what an agent spawned
+/// from it knows before its first turn.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MemoriesRef {
+    #[serde(default)]
+    pub file: String,
+    #[serde(default)]
+    pub count: u32,
+    #[serde(default)]
+    pub dims: Option<u32>,
+    #[serde(default)]
+    pub embed_model: Option<String>,
+}
+
+/// `GET /api/v1/integrations/{id}` — the integration with its contents named
+/// rather than counted.
+///
+/// The list route ([`Integration`]) gives four numbers; this gives four lists,
+/// and each entry is another artifact to open. Same distinction as everywhere
+/// else in this file: a count tells you how big something is, a name lets you go
+/// there.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IntegrationDetail {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub personas: Vec<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
+    #[serde(default)]
+    pub api_tools: Vec<String>,
+    #[serde(default)]
+    pub flow_templates: Vec<String>,
+    #[serde(default)]
+    pub requires_env: Vec<String>,
+}
+
+/// `GET /api/v1/flow-templates` — the automations a pack shipped, before anyone
+/// installed one as a flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowTemplateSummary {
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
 }
 
 // ── Automations (the pod calls them flows) ──────────────────────────────────

@@ -9,12 +9,14 @@
 //! message — a user can act on "session expired", not on "500".
 
 pub mod auth;
+pub mod buildr;
 pub mod chat;
 pub mod diagnostics;
 pub mod fleet;
 pub mod flows;
 pub mod gateway;
 pub mod keys;
+pub mod library;
 pub mod octaweave;
 pub mod packs;
 pub mod pods;

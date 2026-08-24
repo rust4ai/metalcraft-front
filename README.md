@@ -3,13 +3,16 @@
 An Orca-style **Agent Development Environment** for the Metalcraft cloud agent.
 
 Sign in with Metalcraft ID, bind an interface source (Metalcraft Inference · OpenAI ·
-OpenRouter · custom), optionally connect an Octaweave workspace and install agent packs
-from Axoniac Prime — then work a fleet of agent instances running on your pod.
+OpenRouter · custom), optionally connect an Octaweave workspace or a buildr.space
+account, and install agent packs from Axoniac Prime — then work a fleet of agent
+instances running on your pod.
 
 Where Orca is `Electron → node-pty → CLI → git worktree`, this is
 `Tauri → HTTPS + SSE → pod /api/v1/* → agent instances`.
 
 **Plan: [`PLAN.md`](PLAN.md)** — user story in §9, phases in §11, upstream dependencies in §12.
+**[`LAUNCHPAD_PLAN.md`](LAUNCHPAD_PLAN.md)** — the app with no pod: connecting one you run,
+and the funnel to one we host.
 
 ## Layout
 

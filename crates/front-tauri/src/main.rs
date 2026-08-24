@@ -8,6 +8,8 @@ mod diag;
 mod rpc;
 mod state;
 #[cfg(feature = "dev-rpc")]
+mod stub_buildr;
+#[cfg(feature = "dev-rpc")]
 mod stub_octaweave;
 #[cfg(feature = "dev-rpc")]
 mod stub_pod;
@@ -74,9 +76,11 @@ fn main() {
                 // So the real window can be driven against a pod that fails on
                 // command: connect it to http://127.0.0.1:$MC_STUB_POD.
                 stub_pod::spawn();
-                // And a fake Octaweave, for the connect flow's failures. Point
-                // the client at it with OCTAWEAVE_URL.
+                // And fake Octaweave and buildr.space, for the connect flows'
+                // failures. Point the clients at them with OCTAWEAVE_URL and
+                // BUILDR_URL.
                 stub_octaweave::spawn();
+                stub_buildr::spawn();
             }
             Ok(())
         })
@@ -98,6 +102,11 @@ fn main() {
             rpc::octaweave::octaweave_install_pack,
             rpc::octaweave::octaweave_disconnect,
             rpc::octaweave::octaweave_link,
+            rpc::buildr::buildr_status,
+            rpc::buildr::buildr_connect,
+            rpc::buildr::buildr_install_pack,
+            rpc::buildr::buildr_disconnect,
+            rpc::buildr::buildr_link,
             rpc::fleet::set_instance_persona,
             rpc::fleet::list_preset_personas,
             rpc::fleet::instance_memory,
@@ -122,6 +131,16 @@ fn main() {
             rpc::keys::save_key,
             rpc::keys::delete_key,
             rpc::keys::bind_interface_source,
+            rpc::library::pod_snapshot,
+            rpc::library::preset_detail,
+            rpc::library::persona_detail,
+            rpc::library::skill_detail,
+            rpc::library::api_tool_detail,
+            rpc::library::list_integrations,
+            rpc::library::integration_detail,
+            rpc::library::agent_pack_detail,
+            rpc::library::list_flow_templates,
+            rpc::library::flow_template_detail,
             rpc::packs::list_registries,
             rpc::packs::registry_status,
             rpc::packs::registry_connect,

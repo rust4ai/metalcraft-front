@@ -1,4 +1,4 @@
-import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, ScrollText, Settings, Store, X } from 'lucide-react'
+import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, ScrollText, ServerCog, Settings, Store, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
@@ -13,12 +13,18 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
       return 'Fleet'
     case 'packs':
       return 'Agent presets'
+    // Not "Artifacts": the word for what is on the pod has to be the word
+    // someone would reach for, and nobody goes looking for their artifacts.
+    case 'library':
+      return 'Library'
     case 'automations':
       return 'Automations'
     // Not "Interface source": a tab label is a word, not a sentence, and the
     // pane it opens already carries the full title.
     case 'source':
       return 'Source'
+    case 'pods':
+      return 'Pods'
     case 'settings':
       return 'Settings'
     case 'errors':
@@ -35,10 +41,14 @@ function TabIcon({ view }: { view: View }) {
       return <LayoutGrid className={cls} />
     case 'packs':
       return <Store className={cls} />
+    case 'library':
+      return <BookOpen className={cls} />
     case 'automations':
       return <Clock className={cls} />
     case 'source':
       return <KeyRound className={cls} />
+    case 'pods':
+      return <ServerCog className={cls} />
     case 'settings':
       return <Settings className={cls} />
     case 'errors':

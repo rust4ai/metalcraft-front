@@ -73,6 +73,16 @@ pub struct Rule {
     /// and a retry loop tells them apart.
     #[serde(default)]
     pub times: Option<usize>,
+    /// How many matching calls go past *before* this rule starts firing.
+    ///
+    /// For a flow that hits one endpoint more than once with different meanings:
+    /// the buildr.space connect asks `whoami` twice — once to see whether the
+    /// account is linked, then again to prove the key it just minted — and only
+    /// the second one is interesting to break. Without this, programming that
+    /// path fails the link check instead and the test never reaches the case it
+    /// was written for.
+    #[serde(default)]
+    pub after: Option<usize>,
 }
 
 fn ok_status() -> u16 {
@@ -92,6 +102,7 @@ impl Rule {
             status,
             body: None,
             times: None,
+            after: None,
         }
     }
 
@@ -103,12 +114,28 @@ impl Rule {
             status: 200,
             body: Some(body),
             times: None,
+            after: None,
         }
+    }
+
+    /// Answer with this body — for a *failure* that carries one, where the body
+    /// is the thing under test. buildr.space puts a machine-readable code beside
+    /// its 401s, and which of the two 401s it is decides whether the app opens a
+    /// browser or reports an error.
+    pub fn body(mut self, body: Value) -> Self {
+        self.body = Some(body);
+        self
     }
 
     /// Retire after `n` uses — "this call fails", not "this endpoint is broken".
     pub fn times(mut self, n: usize) -> Self {
         self.times = Some(n);
+        self
+    }
+
+    /// Let `n` matching calls through untouched first. See [`Rule::after`].
+    pub fn after(mut self, n: usize) -> Self {
+        self.after = Some(n);
         self
     }
 }
@@ -204,6 +231,14 @@ impl Harness {
         let at = rules
             .iter()
             .rposition(|r| r.path == path && r.method.as_deref().is_none_or(|m| m == method))?;
+        // Armed but not yet firing: count this call off and let the stub answer
+        // it normally.
+        if let Some(n) = rules[at].after.as_mut()
+            && *n > 0
+        {
+            *n -= 1;
+            return None;
+        }
         let rule = rules[at].clone();
         match rules[at].times {
             Some(n) if n <= 1 => {
@@ -233,6 +268,9 @@ impl Harness {
 /// the pod 409s a gateway connect until the number is verified, and a fake that
 /// could only ever say 200 or 404 would leave the one gate on this surface
 /// untestable.
+///
+/// The library is the documented exception to "empty" — see [`library_answer`]
+/// for why a read-only surface cannot start with nothing in it.
 fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, Value)> {
     // The stateful half first: writing a key and then reading the key store has
     // to agree with itself, or every test built on it proves nothing.
@@ -356,21 +394,388 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, 
         ));
     }
 
+    // The registry browser's routes live under `/agent-packs/` too, and they are
+    // the pod's own rather than the library's — so they are answered here,
+    // before the library gets a chance to read the id as a pack name.
+    if path.starts_with("/api/v1/agent-packs/registries") {
+        return (method == "GET").then(|| (StatusCode::OK, json!({ "registries": [] })));
+    }
+    // One integration's contents, for the library's show page. Derived from what
+    // has been installed, like the list beside it: an id nobody installed is a
+    // 404 here exactly as it would be on a real pod.
+    if let Some(id) = path.strip_prefix("/api/v1/integrations/")
+        && method == "GET"
+        && h.installed.lock().iter().any(|i| i == id)
+    {
+        return Some((
+            StatusCode::OK,
+            json!({
+                "id": id, "name": id, "description": "Notes, board, drive and calendar.",
+                "version": "1.0.0", "enabled": true,
+                "personas": [], "skills": [],
+                "api_tools": ["octaweave_create_note", "octaweave_list_notes"],
+                "flow_templates": [], "requires_env": ["OCTAWEAVE_API_KEY"],
+            }),
+        ));
+    }
+    if let Some(answer) = library_answer(method, path) {
+        return Some(answer);
+    }
+
     let body = match (method, path) {
         ("GET", "/api/v1/info") => json!({ "name": "stub-pod", "version": "0.31.0" }),
         ("GET", "/api/v1/inference") => {
             json!({ "ready": true, "credential": "environment", "gateway": true })
         }
         ("GET", "/api/v1/agents/instances") => json!({ "instances": [] }),
-        ("GET", "/api/v1/agent-presets") => json!({ "presets": [] }),
-        ("GET", "/api/v1/agent-packs") => json!({ "agent_packs": [] }),
-        ("GET", "/api/v1/agent-packs/registries") => json!({ "registries": [] }),
         ("GET", "/api/v1/chats") => json!([]),
         ("GET", "/api/v1/flows") => json!({ "flows": [] }),
         ("GET", "/api/v1/flow-runs") => json!([]),
         _ => return None,
     };
     Some((StatusCode::OK, body))
+}
+
+/// The library's half of the fake pod — and the one place this stub is not
+/// empty by default.
+///
+/// The exception is deliberate and narrow. Every other surface can be filled in
+/// through the app: spawn an agent and the fleet has one, save a key and the key
+/// store has one, install a pack and `/integrations` answers. **The library is
+/// read-only** — nothing in this app writes a persona or a skill — so a stub
+/// that started empty would leave the whole surface undrivable, with no show
+/// page reachable and no sub-link to follow.
+///
+/// So it holds one small graph rather than a scatter of rows, because what the
+/// library renders is the *edges*: a pack provides a preset, the preset names
+/// personas and skills, a persona grants an integration, the integration
+/// provides the api tools. One of the preset's personas (`amy-sommelier`) is
+/// deliberately absent from the pod, so the roster's `installed: false` branch
+/// is on screen by default instead of waiting for a broken pod to turn up.
+///
+/// `/integrations` is *not* seeded here — it stays derived from what has been
+/// installed. That leaves the default pod in a state worth being able to look
+/// at: a preset asking for an integration this pod does not have, which
+/// `POST /integrations/install` then resolves.
+fn library_answer(method: &str, path: &str) -> Option<(StatusCode, Value)> {
+    if method != "GET" {
+        return None;
+    }
+
+    // Detail routes first: `/agent-presets/amy` must not be answered by the
+    // list arm for `/agent-presets`.
+    if let Some(slug) = path.strip_prefix("/api/v1/agent-presets/") {
+        return preset_detail(slug).map(|b| (StatusCode::OK, b));
+    }
+    if let Some(slug) = path.strip_prefix("/api/v1/personas/") {
+        return persona_detail(slug).map(|b| (StatusCode::OK, b));
+    }
+    if let Some(slug) = path.strip_prefix("/api/v1/skills/") {
+        return skill_detail(slug).map(|b| (StatusCode::OK, b));
+    }
+    if let Some(name) = path.strip_prefix("/api/v1/api-tools/") {
+        return api_tool_detail(name).map(|b| (StatusCode::OK, b));
+    }
+    if let Some(slug) = path.strip_prefix("/api/v1/flow-templates/") {
+        return (slug == "weekly-menu").then(|| {
+            (
+                StatusCode::OK,
+                json!({
+                    "slug": "weekly-menu",
+                    "name": "Plan next week's menu",
+                    "pack_id": AGENT_PACK,
+                    "flow": {
+                        "id": "weekly-menu",
+                        "nodes": [
+                            { "id": "read-pantry", "type": "tool", "tool": "octaweave_list_notes" },
+                            { "id": "draft", "type": "prompt", "persona": "amy-host" },
+                            { "id": "save", "type": "tool", "tool": "octaweave_create_note" },
+                        ],
+                    },
+                }),
+            )
+        });
+    }
+    if let Some(id) = path.strip_prefix("/api/v1/agent-packs/") {
+        // `/agent-packs/registries…` belongs to the registry browser, not here.
+        if id == AGENT_PACK {
+            return Some((StatusCode::OK, agent_pack_manifest()));
+        }
+        return None;
+    }
+
+    let body = match path {
+        "/api/v1/snapshot" => json!({
+            "agent_presets": preset_summaries(),
+            "personas": persona_summaries(),
+            "skills": skill_summaries(),
+            "api_tools": api_tool_summaries(),
+            "agent_instances": [],
+            "flows": [],
+            "sessions": [],
+            "keys": [],
+            "default_agent_preset": "default",
+            "layout": { "data_dir": "/data" },
+        }),
+        "/api/v1/agent-presets" => json!({ "presets": preset_summaries() }),
+        "/api/v1/api-tools" => api_tool_summaries(),
+        "/api/v1/flow-templates" => json!([
+            { "slug": "weekly-menu", "name": "Plan next week's menu", "pack_id": AGENT_PACK },
+        ]),
+        "/api/v1/agent-packs" => json!({ "agent_packs": [agent_pack_manifest()] }),
+        _ => return None,
+    };
+    Some((StatusCode::OK, body))
+}
+
+/// The seeded pack. Everything below that carries a `pack_id` carries this one,
+/// so the library's "provided by" links all land somewhere real.
+const AGENT_PACK: &str = "amy_kitchen";
+
+fn agent_pack_manifest() -> Value {
+    json!({
+        "id": AGENT_PACK,
+        "name": "Amy's Kitchen",
+        "version": "1.2.0",
+        "description": "A cook who remembers every flavour you have ever liked.",
+        "presets": ["amy"],
+        "provides": {
+            "personas": ["amy-host", "amy-baker"],
+            "skills": ["plan-a-menu", "scale-a-recipe"],
+        },
+    })
+}
+
+fn preset_summaries() -> Value {
+    json!([
+        {
+            "slug": "amy",
+            "name": "Amy",
+            "description": "Plans meals, scales recipes, and keeps the pantry honest.",
+            "tagline": "Knows every flavour you have ever made.",
+            "pack_id": AGENT_PACK,
+            "default_persona": "amy-host",
+            "persona_count": 3,
+            "read_only": true,
+        },
+        {
+            "slug": "default",
+            "name": "Default",
+            "description": "The agent this pod is when nobody said otherwise.",
+            "default_persona": "default",
+            "persona_count": 1,
+            "read_only": false,
+        },
+    ])
+}
+
+fn persona_summaries() -> Value {
+    json!([
+        {
+            "slug": "amy-host",
+            "name": "Amy — host",
+            "description": "Warm, fast, and opinionated about seasoning.",
+            "pack_id": AGENT_PACK,
+            "read_only": true,
+        },
+        {
+            "slug": "amy-baker",
+            "name": "Amy — baker",
+            "description": "Precise. Weighs everything. Will not be rushed.",
+            "pack_id": AGENT_PACK,
+            "read_only": true,
+        },
+        {
+            "slug": "default",
+            "name": "Default",
+            "description": "The pod's own voice.",
+            "read_only": false,
+        },
+    ])
+}
+
+fn skill_summaries() -> Value {
+    json!([
+        {
+            "slug": "plan-a-menu",
+            "description": "Build a menu from what is in the pantry and who is coming.",
+            "pack_id": AGENT_PACK,
+            "read_only": true,
+        },
+        {
+            "slug": "scale-a-recipe",
+            "description": "Rescale a recipe by servings without breaking the ratios.",
+            "pack_id": AGENT_PACK,
+            "read_only": true,
+        },
+        {
+            "slug": "remember-preferences",
+            "description": "Write down what someone liked, so the next menu knows.",
+            "read_only": false,
+        },
+    ])
+}
+
+fn api_tool_summaries() -> Value {
+    json!([
+        {
+            "name": "octaweave_create_note",
+            "description": "Write a note into the connected Octaweave workspace.",
+            "pack_id": "octaweave",
+            "read_only": true,
+        },
+        {
+            "name": "octaweave_list_notes",
+            "description": "List notes in the connected Octaweave workspace.",
+            "pack_id": "octaweave",
+            "read_only": true,
+        },
+    ])
+}
+
+fn preset_detail(slug: &str) -> Option<Value> {
+    match slug {
+        "amy" => Some(json!({
+            "preset": {
+                "slug": "amy",
+                "name": "Amy",
+                "tagline": "Knows every flavour you have ever made.",
+                "description": "Plans meals, scales recipes, and keeps the pantry honest.",
+                "version": "1.2.0",
+                "default_persona": "amy-host",
+                "personas": [
+                    { "slug": "amy-host", "role": "primary", "description": "The everyday voice." },
+                    { "slug": "amy-baker", "role": "specialist", "description": "For anything weighed." },
+                    { "slug": "amy-sommelier", "role": "specialist", "description": "Pairs the wine." },
+                ],
+                "skills": ["plan-a-menu", "scale-a-recipe"],
+                "integrations": ["octaweave"],
+                "requires_env": ["OCTAWEAVE_API_KEY"],
+                "model": { "tier": "reasoning", "prefer": "gpt-5.4", "min_context": 128000, "needs": ["tools"] },
+                "memories": { "file": "memories.jsonl", "count": 412, "dims": 1536, "embed_model": "text-embedding-3-small" },
+                "manifest_version": 2,
+            },
+            // The third persona is not on this pod, and says so rather than
+            // being quietly dropped — see `RosterPersona`.
+            "personas": [
+                {
+                    "slug": "amy-host", "installed": true, "name": "Amy — host",
+                    "description": "Warm, fast, and opinionated about seasoning.",
+                    "tools": ["load_skill", "remember"], "skills": ["plan-a-menu"],
+                },
+                {
+                    "slug": "amy-baker", "installed": true, "name": "Amy — baker",
+                    "description": "Precise. Weighs everything. Will not be rushed.",
+                    "tools": ["load_skill"], "skills": ["scale-a-recipe"],
+                },
+                {
+                    "slug": "amy-sommelier", "installed": false, "name": "amy-sommelier",
+                    "error": "persona 'amy-sommelier' is not installed on this pod",
+                },
+            ],
+        })),
+        "default" => Some(json!({
+            "preset": {
+                "slug": "default",
+                "name": "Default",
+                "description": "The agent this pod is when nobody said otherwise.",
+                "default_persona": "default",
+                "personas": [{ "slug": "default" }],
+                "manifest_version": 2,
+            },
+            "personas": [{
+                "slug": "default", "installed": true, "name": "Default",
+                "description": "The pod's own voice.", "tools": ["load_skill"], "skills": [],
+            }],
+        })),
+        _ => None,
+    }
+}
+
+fn persona_detail(slug: &str) -> Option<Value> {
+    match slug {
+        "amy-host" => Some(json!({
+            "name": "Amy — host",
+            "description": "Warm, fast, and opinionated about seasoning.",
+            "tools": ["load_skill", "remember"],
+            "skills": ["plan-a-menu", "remember-preferences"],
+            "integrations": ["octaweave"],
+            "system_prompt": "You are Amy. You cook for people you like.\n\nAsk what is in the fridge before you suggest anything.",
+            "version": "1.1.0",
+        })),
+        "amy-baker" => Some(json!({
+            "name": "Amy — baker",
+            "description": "Precise. Weighs everything. Will not be rushed.",
+            "tools": ["load_skill"],
+            "skills": ["scale-a-recipe"],
+            "system_prompt": "You are Amy, baking. Grams, never cups.",
+        })),
+        "default" => Some(json!({
+            "name": "Default",
+            "description": "The pod's own voice.",
+            "tools": ["load_skill"],
+            "system_prompt": "You are a helpful agent running on this pod.",
+        })),
+        _ => None,
+    }
+}
+
+fn skill_detail(slug: &str) -> Option<Value> {
+    let (description, body, pack) = match slug {
+        "plan-a-menu" => (
+            "Build a menu from what is in the pantry and who is coming.",
+            "# Plan a menu\n\n1. Ask who is eating and what they will not eat.\n2. Read the pantry before proposing anything.\n3. Propose three courses, then stop and wait.\n",
+            Some(AGENT_PACK),
+        ),
+        "scale-a-recipe" => (
+            "Rescale a recipe by servings without breaking the ratios.",
+            "# Scale a recipe\n\nScale by weight, never by volume. Leavening does not scale linearly — hold it at 80% above 2×.\n",
+            Some(AGENT_PACK),
+        ),
+        "remember-preferences" => (
+            "Write down what someone liked, so the next menu knows.",
+            "# Remember preferences\n\nAfter a meal, record what was eaten and what was left. One memory per person.\n",
+            None,
+        ),
+        _ => return None,
+    };
+    Some(json!({
+        "slug": slug,
+        "description": description,
+        "body": body,
+        "pack_id": pack,
+        "read_only": pack.is_some(),
+    }))
+}
+
+fn api_tool_detail(name: &str) -> Option<Value> {
+    match name {
+        "octaweave_create_note" => Some(json!({
+            "name": "octaweave_create_note",
+            "description": "Write a note into the connected Octaweave workspace.",
+            "method": "POST",
+            "url": "https://octaweave.com/api/v1/notes",
+            "headers": { "Authorization": "Bearer ${OCTAWEAVE_API_KEY}" },
+            "body_mapping": "params",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "The note's title." },
+                    "body": { "type": "string", "description": "Markdown body." },
+                },
+                "required": ["title"],
+            },
+        })),
+        "octaweave_list_notes" => Some(json!({
+            "name": "octaweave_list_notes",
+            "description": "List notes in the connected Octaweave workspace.",
+            "method": "GET",
+            "url": "https://octaweave.com/api/v1/notes",
+            "headers": { "Authorization": "Bearer ${OCTAWEAVE_API_KEY}" },
+            "parameters": { "type": "object", "properties": {} },
+        })),
+        _ => None,
+    }
 }
 
 /// Start the stub if `MC_STUB_POD` names a port. Never returns an error, for the
@@ -507,6 +912,7 @@ mod tests {
             status: 503,
             body: None,
             times: Some(2),
+            after: None,
         });
 
         assert_eq!(
@@ -531,6 +937,7 @@ mod tests {
             status: 500,
             body: None,
             times: None,
+            after: None,
         });
         assert!(h.take("GET", "/api/v1/keys").is_some());
         assert!(h.take("DELETE", "/api/v1/keys/OPENAI_API_KEY").is_none());
@@ -546,12 +953,29 @@ mod tests {
                 status,
                 body: None,
                 times: None,
+                after: None,
             });
         }
         assert_eq!(
             h.take("GET", "/api/v1/integrations").map(|r| r.status),
             Some(200)
         );
+    }
+
+    /// `after` is what makes a rule aimed at the *second* call to an endpoint
+    /// possible. Without it, programming `whoami` breaks the buildr.space link
+    /// check and the test never reaches the mint it was written for.
+    #[test]
+    fn an_armed_rule_lets_the_first_calls_past_before_it_fires() {
+        let h = Harness::default();
+        h.program(Rule::fail("/api/v1/whoami", 401).after(1));
+        assert!(
+            h.take("GET", "/api/v1/whoami").is_none(),
+            "the first goes by"
+        );
+        assert_eq!(h.take("GET", "/api/v1/whoami").map(|r| r.status), Some(401));
+        // And it keeps firing after that, like any other rule without `times`.
+        assert_eq!(h.take("GET", "/api/v1/whoami").map(|r| r.status), Some(401));
     }
 
     #[test]
@@ -563,6 +987,7 @@ mod tests {
             status: 500,
             body: None,
             times: None,
+            after: None,
         });
         assert!(h.take("GET", "/api/v1/integrations").is_none());
         assert!(h.take("POST", "/api/v1/integrations").is_some());
@@ -579,6 +1004,53 @@ mod tests {
             Some((StatusCode::OK, json!([])))
         );
         assert!(default_answer(&h, "GET", "/api/v1/nope").is_none());
+    }
+
+    /// The library's seed is a *graph*, not a scatter of rows. If a preset can
+    /// name a skill the pod cannot serve, every sub-link the show pages are
+    /// built on is decoration — so the edges are asserted rather than assumed.
+    #[test]
+    fn the_seeded_library_resolves_every_link_it_declares() {
+        let h = Harness::default();
+        let (_, preset) = default_answer(&h, "GET", "/api/v1/agent-presets/amy").unwrap();
+
+        for skill in preset["preset"]["skills"].as_array().unwrap() {
+            let path = format!("/api/v1/skills/{}", skill.as_str().unwrap());
+            assert!(
+                default_answer(&h, "GET", &path).is_some(),
+                "preset amy names a skill the pod will not serve: {path}"
+            );
+        }
+        // The roster's two halves disagree on purpose: the preset asks for three
+        // personas and this pod has two, which is the `installed: false` branch.
+        let roster = preset["personas"].as_array().unwrap();
+        assert_eq!(roster.len(), 3);
+        for entry in roster {
+            let path = format!("/api/v1/personas/{}", entry["slug"].as_str().unwrap());
+            assert_eq!(
+                default_answer(&h, "GET", &path).is_some(),
+                entry["installed"].as_bool().unwrap(),
+                "the roster and the persona store disagree about {path}"
+            );
+        }
+
+        // And the snapshot is the only way to enumerate any of it, so it has to
+        // list what the detail routes will answer for.
+        let (_, snap) = default_answer(&h, "GET", "/api/v1/snapshot").unwrap();
+        for persona in snap["personas"].as_array().unwrap() {
+            let path = format!("/api/v1/personas/{}", persona["slug"].as_str().unwrap());
+            assert!(default_answer(&h, "GET", &path).is_some(), "{path}");
+        }
+    }
+
+    /// The registry browser's routes sit under `/agent-packs/` as well, and the
+    /// library must not read `registries` as the name of an installed pack.
+    #[test]
+    fn a_registry_route_is_not_mistaken_for_an_installed_pack() {
+        let h = Harness::default();
+        let (_, body) = default_answer(&h, "GET", "/api/v1/agent-packs/registries").unwrap();
+        assert!(body["registries"].is_array());
+        assert!(default_answer(&h, "GET", "/api/v1/agent-packs/nope").is_none());
     }
 
     /// The key store is the pod's, not the test's: what was written is what

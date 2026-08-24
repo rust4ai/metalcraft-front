@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { GatewayRegistration, GatewayStatus, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
+import type { GatewayRegistration, GatewayStatus, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -25,25 +25,76 @@ export const pods = {
   active: () => call<ActivePod | null>('active_pod'),
 }
 
-export const octaweave = {
-  status: () => call<OctaweaveStatus>('octaweave_status'),
+/**
+ * One service connection, whichever service it is.
+ *
+ * The two differ in exactly one place — Octaweave can ask which workspace, and
+ * that choice comes back as an argument to the next `connect` — so the interface
+ * carries an optional `choice` and buildr.space ignores it. Everything above
+ * this line (the store, the card) is written once against this shape.
+ */
+export interface ServiceRpc {
+  status: () => Promise<ConnectionStatus>
   /**
-   * One step of connecting, in the core: list workspaces with the Metalcraft
-   * PAT, mint an `owk_` key, store it, install the pack. Returns what is still
-   * missing rather than blocking on it, so it is safe to call repeatedly — and
-   * it never opens a browser, which is what makes polling it harmless.
+   * One step of connecting, in the core: prove the Metalcraft PAT, mint a key
+   * scoped to this service, store it on the pod, install the pack. Returns what
+   * is still missing rather than blocking on it, so it is safe to call
+   * repeatedly — and it never opens a browser, which is what makes polling it
+   * harmless.
    */
-  connect: (workspace?: string) =>
-    call<OctaweaveConnectOutcome>('octaweave_connect', { workspace: workspace ?? null }),
-  /** Opens the browser at Octaweave's link page. Returns the URL, so the UI can
-   *  show it as a link when the hand-off fails silently. */
-  link: () => call<string>('octaweave_link'),
-  installPack: () => call<OctaweaveStatus>('octaweave_install_pack'),
-  /** Drops the key from the pod, and revokes it at Octaweave when the workspace
-   *  is still known — otherwise "disconnect" leaves a live credential behind. */
-  disconnect: (workspace?: string) =>
-    call<OctaweaveStatus>('octaweave_disconnect', { workspace: workspace ?? null }),
+  connect: (choice?: string) => Promise<ConnectOutcome>
+  /** Opens the browser at the service's link page. Returns the URL, so the UI
+   *  can show it as a link when the hand-off fails silently. */
+  link: () => Promise<string>
+  installPack: () => Promise<ConnectionStatus>
+  /** Drops the key from the pod, and revokes it at the service. `id` is what the
+   *  connection was pinned to — without it Octaweave has nowhere to revoke, and
+   *  "disconnect" would leave a live credential behind. */
+  disconnect: (id?: string) => Promise<ConnectionStatus>
 }
+
+export const octaweave: ServiceRpc = {
+  status: () => call<ConnectionStatus>('octaweave_status'),
+  // The core calls it a workspace, because that is what it is over there — a
+  // key is pinned to one. Renaming it at the boundary is what lets one card
+  // drive both services without either core module pretending to be the other.
+  connect: async (choice?: string) => {
+    const outcome = await call<OctaweaveConnectOutcome>('octaweave_connect', {
+      workspace: choice ?? null,
+    })
+    return outcome.kind === 'connected'
+      ? { kind: 'connected', connection: { ...outcome.connection, id: outcome.connection.workspace_id } }
+      : outcome
+  },
+  link: () => call<string>('octaweave_link'),
+  installPack: () => call<ConnectionStatus>('octaweave_install_pack'),
+  disconnect: (id?: string) =>
+    call<ConnectionStatus>('octaweave_disconnect', { workspace: id ?? null }),
+}
+
+/**
+ * The core's Octaweave shape, before the rename above. Private on purpose: one
+ * function knows about `workspace_id`, and it is the one that removes it.
+ */
+type OctaweaveConnectOutcome =
+  | { kind: 'needs_link'; url: string }
+  | { kind: 'choose_workspace'; workspaces: OctaweaveWorkspace[] }
+  | { kind: 'connected'; connection: ConnectionInfo & { workspace_id: string } }
+
+/**
+ * buildr.space. Identical but for the missing choice: a `bsk_` belongs to the
+ * account, so there is nothing to pick and the core takes no argument.
+ */
+export const buildr: ServiceRpc = {
+  status: () => call<ConnectionStatus>('buildr_status'),
+  connect: () => call<ConnectOutcome>('buildr_connect'),
+  link: () => call<string>('buildr_link'),
+  installPack: () => call<ConnectionStatus>('buildr_install_pack'),
+  disconnect: () => call<ConnectionStatus>('buildr_disconnect'),
+}
+
+/** Every connectable service, by the name the store and the cards use. */
+export const services: Record<ServiceId, ServiceRpc> = { octaweave, buildr }
 
 /**
  * The core's half of the error log — what commands over there swallowed instead
@@ -132,6 +183,38 @@ export const keys = {
    *  with another's key. */
   bindInterfaceSource: (apiKey: string, baseUrl: string | null) =>
     call<void>('bind_interface_source', { apiKey, baseUrl }),
+}
+
+/**
+ * The library — everything installed on this pod, and what each artifact is
+ * made of.
+ *
+ * Read-only, all of it. `snapshot` carries the whole index because personas and
+ * skills have no list route on the pod: it is not a batching optimisation, it is
+ * the only way to learn those artifacts exist. Every other call here answers a
+ * click on something the snapshot already listed.
+ */
+export const library = {
+  /** `null` = a pod older than `/snapshot`. Not "nothing installed". */
+  snapshot: () => call<PodSnapshot | null>('pod_snapshot'),
+  /** Both halves: what the preset declares, and what this pod resolved. */
+  preset: (slug: string) => call<PresetDetail>('preset_detail', { slug }),
+  persona: (slug: string) => call<PersonaDetail>('persona_detail', { slug }),
+  skill: (slug: string) => call<SkillDetail>('skill_detail', { slug }),
+  /** The tool's config verbatim — a request template the pod owns and this app
+   *  only displays, so it stays untyped rather than becoming a second copy of a
+   *  schema that changes whenever a tool author needs a new body shape. */
+  apiTool: (name: string) => call<Record<string, unknown>>('api_tool_detail', { name }),
+  integrations: () => call<Integration[]>('list_integrations'),
+  integration: (id: string) => call<IntegrationDetail>('integration_detail', { id }),
+  /** An installed pack's own manifest, as the pod filed it. */
+  pack: (id: string) => call<Record<string, unknown>>('agent_pack_detail', { id }),
+  /** What packs shipped, before anyone installed one as a flow — distinct from
+   *  `automations.list`, which is what this pod actually runs. */
+  flowTemplates: () => call<FlowTemplateSummary[]>('list_flow_templates'),
+  /** One template with its graph. Untyped: the graph belongs to the pod's flow
+   *  engine, which publishes it untyped for the same reason. */
+  flowTemplate: (slug: string) => call<Record<string, unknown>>('flow_template_detail', { slug }),
 }
 
 export const packs = {

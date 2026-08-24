@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
-import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, ScrollText, Settings, Sparkles, Store } from 'lucide-react'
+import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, ScrollText, ServerCog, Settings, Sparkles, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useLayout } from '@/stores/layout'
 import { useUi } from '@/stores/ui'
@@ -110,8 +110,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         <Group heading="Go">
           <Item value="go fleet" onSelect={() => run(() => go({ kind: 'fleet' }))} icon={<Bot className="h-3.5 w-3.5" />} label="Fleet" />
           <Item value="go packs browse agent presets registry axoniac" onSelect={() => run(() => go({ kind: 'packs' }))} icon={<Store className="h-3.5 w-3.5" />} label="Browse agent presets" />
+          <Item value="go library artifacts presets personas skills integrations tools installed" onSelect={() => run(() => go({ kind: 'library' }))} icon={<BookOpen className="h-3.5 w-3.5" />} label="Library" hint="what is on this pod" />
           <Item value="go automations flows schedules cron runs" onSelect={() => run(() => go({ kind: 'automations' }))} icon={<Clock className="h-3.5 w-3.5" />} label="Automations" />
           <Item value="go interface source key provider" onSelect={() => run(() => go({ kind: 'source' }))} icon={<KeyRound className="h-3.5 w-3.5" />} label="Interface source" />
+          <Item value="go pods connect switch pod url self hosted vps premium" onSelect={() => run(() => go({ kind: 'pods' }))} icon={<ServerCog className="h-3.5 w-3.5" />} label="Pods" hint="connect · switch" />
           <Item value="go settings keys octaweave connection" onSelect={() => run(() => go({ kind: 'settings' }))} icon={<Settings className="h-3.5 w-3.5" />} label="Settings" hint="keys · Octaweave" />
           <Item value="go errors error log diagnostics failures problems why" onSelect={() => run(() => go({ kind: 'errors' }))} icon={<ScrollText className="h-3.5 w-3.5" />} label="Error log" hint="what failed" />
         </Group>

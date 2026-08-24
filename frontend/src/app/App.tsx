@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useConnection } from '@/stores/connection'
-import { LoginView } from '@/features/onboarding/LoginView'
-import { ConnectView } from '@/features/onboarding/ConnectView'
+import { LaunchpadView } from '@/features/onboarding/LaunchpadView'
 import { useUi } from '@/stores/ui'
 import { Gallery } from '@/dev/Gallery'
 import { Shell } from './Shell'
@@ -10,7 +9,7 @@ import { Shell } from './Shell'
 const showGallery = import.meta.env.DEV && new URLSearchParams(location.search).has('gallery')
 
 export function App() {
-  const { ready, session, info, boot } = useConnection()
+  const { ready, info, boot } = useConnection()
   const checkOwnSource = useUi((s) => s.checkOwnSource)
 
   // Once connected, find out whether this pod has a provider key of its own —
@@ -25,14 +24,15 @@ export function App() {
 
   if (showGallery) return <Gallery />
 
-  // Sign-in and pod connection are full-window takeovers *outside* the shell:
-  // there is no pod yet, so there is nothing to put in a sidebar.
+  // No pod, no shell: there is nothing to put in a sidebar yet, so the Launchpad
+  // is a full-window takeover *outside* the frame — and the same component is a
+  // normal tab inside it once there is (LAUNCHPAD_PLAN §4).
   //
-  // `info` short-circuits the session check on purpose: a pod you connected to
-  // directly is a working pod, and demanding a Metalcraft account before showing
-  // it to you would be asking for an identity that pod never needed.
+  // `info` is the whole condition. It used to check the session first, which made
+  // sign-in a gate: a pod you run yourself needs no Metalcraft account, and the
+  // one screen that could connect it sat behind a demand for an identity that pod
+  // never needed.
   if (!ready) return null
-  if (!session && !info) return <LoginView />
-  if (!info) return <ConnectView />
+  if (!info) return <LaunchpadView />
   return <Shell />
 }

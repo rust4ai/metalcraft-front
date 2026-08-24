@@ -12,7 +12,9 @@ export type View =
   | { kind: 'fleet' }
   | { kind: 'session'; instanceId: string }
   | { kind: 'source' }
+  | { kind: 'pods' }
   | { kind: 'packs' }
+  | { kind: 'library' }
   | { kind: 'automations' }
   | { kind: 'settings' }
   | { kind: 'errors' }

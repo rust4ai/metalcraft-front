@@ -32,6 +32,9 @@ mod rpc;
 // The harness's Rust-facing constructors are used by the tests that live beside
 // the command bodies, not by this binary, which only serves it over HTTP.
 #[allow(dead_code)]
+#[path = "../stub_buildr.rs"]
+mod stub_buildr;
+#[allow(dead_code)]
 #[path = "../stub_octaweave.rs"]
 mod stub_octaweave;
 #[allow(dead_code)]
@@ -63,6 +66,7 @@ async fn main() {
     // MC_STUB_POD names a port — a pod to point it at that can be told to fail.
     stub_pod::spawn();
     stub_octaweave::spawn();
+    stub_buildr::spawn();
     // The bridge owns a spawned task; this process exists to keep it alive.
     std::future::pending::<()>().await;
 }
