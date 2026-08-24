@@ -25,6 +25,10 @@ function stub(responses: Record<string, unknown>): Transport {
   }
 }
 
+const day = 24 * 60 * 60 * 1000
+/** An ISO timestamp `ms` in the past, for dating an agent's last activity. */
+const at = (ms: number) => new Date(Date.now() - ms).toISOString()
+
 async function mount(responses: Record<string, unknown>) {
   // Defaults for the calls every boot makes, so a case only states them when they
   // are its point: the account re-read returns what the cached one did, and a pod
@@ -126,6 +130,56 @@ describe('App', () => {
     })
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
     expect(screen.queryByText('This pod cannot think yet')).toBeNull()
+  })
+
+  it('folds agents nobody has touched in days into Agent History', async () => {
+    // The fleet keeps every agent forever, so without this the list someone
+    // reads dozens of times a day grows into an archive of everything they ever
+    // spawned and buries the two they actually use.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.30.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [
+        {
+          id: 'i1',
+          name: 'Briefer',
+          agent_preset: 'kitchen',
+          persona: 'chef',
+          origin: { kind: 'workshop' },
+          persistent: true,
+          created_at: at(20 * day),
+          last_active_at: at(2 * day),
+        },
+        {
+          id: 'i2',
+          name: 'Dusty',
+          agent_preset: 'garage',
+          persona: 'mechanic',
+          origin: { kind: 'workshop' },
+          persistent: true,
+          created_at: at(30 * day),
+          last_active_at: at(9 * day),
+        },
+      ],
+      list_presets: [],
+      list_keys: [],
+      inference_status: { ready: true, credential: 'environment', gateway: true },
+    })
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    // The recent one is in both the tree and the grid; the old one is in
+    // neither until its shelf is opened.
+    expect(screen.getAllByText('Briefer').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Dusty')).toBeNull()
+
+    // Both surfaces offer the shelf — the sidebar tree and the fleet grid.
+    const shelves = screen.getAllByRole('button', { name: /Agent History/ })
+    expect(shelves.length).toBe(2)
+
+    await userEvent.click(shelves[0]!)
+    await waitFor(() => expect(screen.getByText('Dusty')).toBeTruthy())
   })
 
   it('offers the error log beside the gear, and opens it', async () => {

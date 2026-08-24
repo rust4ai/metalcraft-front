@@ -83,6 +83,16 @@ This is the change that makes the fleet **ambient**. The grid in `FleetView`
 stays as the fleet tab's body — an overview you can open — but it stops being the
 only way to reach an agent.
 
+The tree is in two parts. `features/fleet/activity.ts` splits the fleet on one
+rule — no chat or update in three days (falling back to `created_at`, so a
+freshly spawned agent is never shelved) — and everything past it drops into a
+folded **Agent History** section beneath the live rows, in the sidebar and under
+the grid alike. Nothing is deleted or hidden from search: a query opens the fold,
+and one message puts an agent back in the live list on the next load. The pod
+mints an agent per chat, so without this the index someone reads dozens of times
+a day becomes an archive of everything they ever started. metalcraft-mobile's
+`AgentActivity` is the same rule, deliberately — the two read the same fleet.
+
 ### S3 — tabs *(closes PLAN §11 P2's outstanding "tabs/panes")*
 `stores/ui.ts` grows from `view: View` to `tabs: Tab[]` + `activeKey`.
 

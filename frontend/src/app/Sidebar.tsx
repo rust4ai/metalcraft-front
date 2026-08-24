@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Clock, LayoutGrid, PanelLeft, Plus, ScrollText, Search, Settings, Store } from 'lucide-react'
+import {
+  ChevronRight,
+  Clock,
+  LayoutGrid,
+  PanelLeft,
+  Plus,
+  ScrollText,
+  Search,
+  Settings,
+  Store,
+} from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
 import { useConnection } from '@/stores/connection'
 import { DIAG_POLL_MS, unseen, useDiagnostics } from '@/stores/diagnostics'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
+import { partitionByActivity } from '@/features/fleet/activity'
 import { Nudges } from './Nudges'
 import { Resizer } from './Resizer'
 import { cn } from '@/lib/cn'
@@ -17,6 +28,12 @@ import { cn } from '@/lib/cn'
  * fleet" focuses the pinned fleet tab (the grid view of every agent), while the
  * tree below is the fleet itself, one row per agent. The row and the tree open
  * the same room, but only one of them scales with the number of agents.
+ *
+ * The tree is in two parts: the agents that have been chatted with or updated
+ * recently, and — folded away beneath them — everything that has gone quiet for
+ * longer than the window in `activity.ts`. This is the list someone reads
+ * dozens of times a day, so the ones they are actually working with are worth
+ * keeping at the top of it.
  */
 export function Sidebar() {
   const { sidebarWidth, setSidebarWidth, toggleSidebar } = useLayout()
@@ -24,6 +41,7 @@ export function Sidebar() {
   const { go, setNewAgentOpen, activeKey } = useUi()
   const info = useConnection((s) => s.info)
   const [query, setQuery] = useState('')
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     void load()
@@ -36,6 +54,12 @@ export function Sidebar() {
       `${i.name} ${i.agent_preset} ${i.persona}`.toLowerCase().includes(q),
     )
   }, [instances, query])
+
+  const { active, history } = useMemo(() => partitionByActivity(matches), [matches])
+  // A search reaches the whole fleet, so it opens the shelf: a query whose only
+  // hits are old agents must not come back looking like nothing was found.
+  const searching = query.trim().length > 0
+  const showHistory = historyOpen || searching
 
   return (
     <aside
@@ -105,7 +129,7 @@ export function Sidebar() {
 
       <div className="flex items-center gap-2 px-4 pb-1">
         <span className="text-[11.5px] font-medium text-ink-2">Agents</span>
-        <span className="tnum text-[11.5px] text-ink-3">{instances.length}</span>
+        <span className="tnum text-[11.5px] text-ink-3">{active.length}</span>
         <button
           type="button"
           aria-label="New agent"
@@ -116,14 +140,52 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-px overflow-y-auto px-2 pb-2">
-        {matches.map((i) => (
-          <InstanceRow key={i.id} instance={i} />
-        ))}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="space-y-px">
+          {active.map((i) => (
+            <InstanceRow key={i.id} instance={i} />
+          ))}
+        </div>
         {matches.length === 0 && (
           <p className="px-2.5 py-2 text-[12px] text-ink-3">
             {instances.length === 0 ? 'No agents yet' : 'No agent matches that'}
           </p>
+        )}
+        {/* Not while searching: there the empty half means "no recent match",
+            and the hits are right below in the fold the search opened. */}
+        {!searching && active.length === 0 && history.length > 0 && (
+          <p className="px-2.5 py-2 text-[12px] text-ink-3">Nothing active in the last few days</p>
+        )}
+
+        {history.length > 0 && (
+          <div className="mt-2 border-t border-line pt-2">
+            {/* A heading rather than a toggle while a search is running: the
+                fold is forced open there, and a control that does nothing when
+                clicked is worse than no control. */}
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(!historyOpen)}
+              aria-expanded={showHistory}
+              disabled={searching}
+              className="flex w-full items-center gap-1.5 rounded-control px-2.5 py-1.5 text-left text-[11.5px] font-medium text-ink-2 enabled:hover:bg-hover enabled:hover:text-ink"
+            >
+              <ChevronRight
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0 text-ink-3 transition-transform duration-150',
+                  showHistory && 'rotate-90',
+                )}
+              />
+              <span className="truncate">Agent History</span>
+              <span className="tnum ml-auto text-ink-3">{history.length}</span>
+            </button>
+            {showHistory && (
+              <div className="mt-px space-y-px">
+                {history.map((i) => (
+                  <InstanceRow key={i.id} instance={i} />
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
