@@ -41,8 +41,9 @@ export function RightRail() {
 
   return (
     <aside
-      className="relative flex min-w-0 flex-col border-l border-line bg-canvas"
-      style={{ width: railWidth }}
+      className="relative flex min-h-0 min-w-0 flex-col border-l border-line bg-canvas"
+      // Capped against the window for the same reason as the sidebar's width.
+      style={{ width: railWidth, maxWidth: '34vw' }}
     >
       <Resizer side="left" width={railWidth} onResize={setRailWidth} />
 

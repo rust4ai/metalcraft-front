@@ -154,11 +154,18 @@ export function ArmDialog({
 
           {consent && consent.mutating_tools.length > 0 && (
             <Line label="Will">
+              {/* A real agent carries dozens of tools — the default preset alone
+                  has 26 mutating ones — so the full list is a wall of text
+                  nobody reads. Lead with the ones that can reach outside this
+                  pod, cap the rest, and keep the count honest. */}
               <span className="text-[13px]">
-                change things: {consent.mutating_tools.join(', ')}
+                change things: {rank(consent.mutating_tools).slice(0, 4).join(', ')}
+                {consent.mutating_tools.length > 4 &&
+                  ` and ${consent.mutating_tools.length - 4} more`}
               </span>
               <p className="mt-0.5 text-[12px] text-ink-3">
-                of {consent.tool_count} tool{consent.tool_count === 1 ? '' : 's'} it can call
+                {consent.mutating_tools.length} of {consent.tool_count} tool
+                {consent.tool_count === 1 ? '' : 's'} it can call change something
               </p>
             </Line>
           )}
@@ -185,6 +192,18 @@ export function ArmDialog({
       </div>
     </Modal>
   )
+}
+
+/** Loudest first. `bash` and `write_file` are what someone needs to see in the
+ *  four names that fit; `mem_remember` is not. */
+const LOUD = ['bash', 'write_file', 'edit_file', 'web_fetch', 'key_set', 'key_delete']
+function rank(tools: string[]): string[] {
+  // oxlint-disable-next-line unicorn/no-array-sort
+  return [...tools].sort((a, b) => {
+    const ai = LOUD.indexOf(a)
+    const bi = LOUD.indexOf(b)
+    return (ai < 0 ? LOUD.length : ai) - (bi < 0 ? LOUD.length : bi) || a.localeCompare(b)
+  })
 }
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {

@@ -1,23 +1,25 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, ExternalLink, Loader2, Unplug } from 'lucide-react'
-import { octaweave } from '@/rpc'
 import { useSettings } from '@/stores/settings'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 
 /**
- * Connect an Octaweave workspace (PLAN §9.3, P7).
+ * Connect an Octaweave workspace (PLAN §9.3, P7) — one button.
  *
- * "One click" is as close as the design allows, and the remaining step is a
- * security property rather than a gap: an `owk_` key cannot mint another and
- * Octaweave refuses key-auth for key creation, so producing one is necessarily a
- * signed-in human in a browser. What this card removes is everything *after*
- * that — pressing Connect verifies the key, writes it into the pod's key store
- * and installs the 32-tool integration pack in a single action.
+ * The card used to walk the user through creating an API key and pasting it
+ * back. It no longer asks for anything they hold: the core connects with the
+ * Metalcraft account already signed in here, mints the workspace key itself and
+ * installs the 32-tool pack.
  *
- * The key never reaches this component's store. It is handed to the core, which
- * proves it against `GET /api/v1/whoami` before writing it anywhere, and returns
- * a workspace and a scope list — never the credential.
+ * Two things can interrupt that, and both are clicks rather than typing. The
+ * first time, Octaweave has never seen this Metalcraft account, so a browser
+ * opens on its link page and this card waits. And an account with several
+ * workspaces gets a picker, because which workspace an agent lives in is not a
+ * choice to make on someone's behalf.
+ *
+ * No credential passes through this component. It renders a workspace name and
+ * a scope list; the key exists only between Octaweave and the pod.
  */
 export function OctaweaveCard() {
   const {
@@ -25,35 +27,19 @@ export function OctaweaveCard() {
     connection,
     octaweaveBusy,
     octaweaveError,
+    octaweaveLinking,
+    octaweaveChoices,
     loadOctaweave,
     connectOctaweave,
+    cancelOctaweaveLink,
     installOctaweavePack,
     disconnectOctaweave,
   } = useSettings()
-  const [token, setToken] = useState('')
   const [note, setNote] = useState<string | null>(null)
 
   useEffect(() => {
     void loadOctaweave()
   }, [loadOctaweave])
-
-  // A key returned by the browser goes through the same Connect path as one
-  // pasted by hand — one flow, one place verification happens.
-  useEffect(() => {
-    let stop: (() => void) | undefined
-    void octaweave.onToken((t) => {
-      setToken(t)
-      void connectOctaweave(t).then(setNote)
-    }).then((off) => {
-      stop = off
-    })
-    return () => stop?.()
-  }, [connectOctaweave])
-
-  const connect = async () => {
-    setNote(await connectOctaweave(token))
-    setToken('')
-  }
 
   const connected = status?.key_present ?? false
 
@@ -71,7 +57,7 @@ export function OctaweaveCard() {
 
       {connection && (
         <dl className="mt-4 rounded-chip bg-inset px-3 py-2 text-[11.5px]">
-          <Row label="Workspace" value={connection.label || connection.workspace_id} mono />
+          <Row label="Workspace" value={connection.label || connection.workspace_id} />
           <Row label="Scopes" value={connection.scopes.join(' ') || 'none reported'} mono />
         </dl>
       )}
@@ -86,6 +72,16 @@ export function OctaweaveCard() {
         </p>
       )}
 
+      {/* Silence here would read as "it left the old key working", which is the
+          one thing a reconnect must not be ambiguous about. */}
+      {connection && connection.replaced > 0 && (
+        <p className="mt-2 text-[11.5px] text-ink-3">
+          {connection.replaced === 1
+            ? 'The key this app made before was revoked.'
+            : `${connection.replaced} keys this app made before were revoked.`}
+        </p>
+      )}
+
       {note && <Note tone="warn" text={note} />}
       {octaweaveError && <Note tone="bad" text={octaweaveError} />}
 
@@ -95,6 +91,11 @@ export function OctaweaveCard() {
             <Button size="sm" onClick={() => void installOctaweavePack().then(setNote)} disabled={octaweaveBusy}>
               {octaweaveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Install the tools
+            </Button>
+          )}
+          {connection?.url && (
+            <Button size="sm" variant="outline" onClick={() => window.open(connection.url, '_blank')}>
+              Open workspace <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           )}
           <Button
@@ -108,38 +109,39 @@ export function OctaweaveCard() {
             Disconnect
           </Button>
         </div>
+      ) : octaweaveLinking ? (
+        <Waiting onCancel={cancelOctaweaveLink} />
+      ) : octaweaveChoices ? (
+        <div className="mt-4">
+          <p className="text-[12.5px] text-ink-2">
+            Which workspace should your agent work in?
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {octaweaveChoices.map((w) => (
+              <li key={w.id}>
+                <button
+                  onClick={() => void connectOctaweave(w.id).then(setNote)}
+                  disabled={octaweaveBusy}
+                  className="flex w-full items-baseline gap-2 rounded-chip bg-inset px-3 py-2 text-left text-[12.5px] hover:bg-field disabled:opacity-50"
+                >
+                  <span className="min-w-0 truncate">{w.name}</span>
+                  <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-3">
+                    {w.org_slug}/{w.slug}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
         <div className="mt-4">
-          <ol className="space-y-3">
-            <Step n={1} text="Open your Octaweave workspace, then Settings → Keys. The key is shown once, at creation.">
-              <Button size="sm" variant="outline" onClick={() => void octaweave.openKeys()}>
-                Open Octaweave <ExternalLink className="h-3.5 w-3.5" />
-              </Button>
-            </Step>
-            <Step n={2} text="Paste it here. Everything after this is automatic.">
-              <div className="flex gap-2">
-                <input
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && token.trim()) void connect()
-                  }}
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="owk_live_…"
-                  aria-label="Octaweave key"
-                  className="h-8 min-w-0 flex-1 rounded-control bg-field px-2.5 font-mono text-[12px] text-ink placeholder:text-ink-3"
-                />
-                <Button size="sm" onClick={() => void connect()} disabled={octaweaveBusy || !token.trim()}>
-                  {octaweaveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Connect
-                </Button>
-              </div>
-            </Step>
-          </ol>
+          <Button size="sm" onClick={() => void connectOctaweave().then(setNote)} disabled={octaweaveBusy}>
+            {octaweaveBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Connect Octaweave
+          </Button>
           <p className="mt-3 text-[11px] text-ink-3">
-            The key is verified against Octaweave and stored on your pod. It never enters this window.
+            Connects with the Metalcraft account you are signed in to. The key is created for one
+            workspace and stored on your pod — it never enters this window.
           </p>
         </div>
       )}
@@ -147,17 +149,24 @@ export function OctaweaveCard() {
   )
 }
 
-function Step({ n, text, children }: { n: number; text: string; children: React.ReactNode }) {
+/**
+ * The browser is open on Octaweave's link page.
+ *
+ * Cancel is offered because the alternative is a spinner with no way out, and
+ * cancelling costs nothing: it stops the asking, not the linking, so a link that
+ * lands anyway is picked up by the next Connect.
+ */
+function Waiting({ onCancel }: { onCancel: () => void }) {
   return (
-    <li className="flex gap-3">
-      <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-inset text-[11px] text-ink-2">
-        {n}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="mb-1.5 text-[12.5px] text-ink-2">{text}</p>
-        {children}
-      </div>
-    </li>
+    <div className="mt-4 flex items-center gap-2.5 rounded-chip bg-inset px-3 py-2.5">
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-ink-3" />
+      <p className="min-w-0 flex-1 text-[12.5px] text-ink-2">
+        Approve the connection in your browser — this finishes on its own.
+      </p>
+      <Button size="sm" variant="outline" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
   )
 }
 

@@ -6,12 +6,27 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "metalcraft-front desktop shell"
+# The app is what `cargo run -p front-tauri` means. Without this, adding the
+# second binary (`dev_core`, the windowless dev bridge) made a bare `cargo run`
+# ambiguous and broke `run.sh` — the dev tool must not cost the app its default.
+default-run = "metalcraft-front"
 
 [[bin]]
 name = "metalcraft-front"
 path = "src/main.rs"
 
+# The dev bridge without a window — see `src/bin/dev_core.rs`. Requires the
+# `dev-rpc` feature; `required-features` keeps a default build from trying.
+[[bin]]
+name = "dev_core"
+path = "src/bin/dev_core.rs"
+required-features = ["dev-rpc"]
+
 [features]
+# Compile the local RPC bridge (`dev_rpc.rs`) in. It still does nothing unless
+# MC_DEV_RPC names a port — two gates, because it is unauthenticated by design.
+dev-rpc = ["dep:axum", "dep:tower-http", "dep:tokio-stream", "dep:futures-util"]
+
 # Tauri decides dev-vs-production from this one feature: the `tauri` crate's build
 # script computes `dev = !custom_protocol`. With it off the webview loads
 # `build.devUrl` (a dev server); with it on it serves the embedded `frontendDist`.
@@ -24,7 +39,6 @@ custom-protocol = ["tauri/custom-protocol"]
 front-core = { path = "../front-core" }
 front-cloud = { path = "../front-cloud" }
 tauri = { version = "2", features = ["devtools"] }
-tauri-plugin-deep-link = "2"
 tauri-plugin-store = "2"
 anyhow.workspace = true
 serde.workspace = true
@@ -33,6 +47,12 @@ tokio.workspace = true
 log.workspace = true
 env_logger.workspace = true
 parking_lot = "0.12"
+# Dev-only: the local RPC bridge (`dev_rpc.rs`). Optional so a release build
+# carries no HTTP server at all.
+axum = { version = "0.8", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+futures-util = { version = "0.3", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -77,8 +77,8 @@ const BINDING = {
     domains: ['api.instacart.com'],
     requires_env: ['METALCRAFT_TOKEN', 'INSTACART_TOKEN'],
     missing_env: ['INSTACART_TOKEN'],
-    mutating_tools: ['instacart_order'],
-    tool_count: 7,
+    mutating_tools: ['instacart_order', 'bash', 'mem_remember', 'write_file', 'edit_file', 'sub_agent'],
+    tool_count: 49,
     base_memories: 214,
   },
 }
@@ -173,7 +173,10 @@ describe('AutomationsView', () => {
     await waitFor(() => expect(screen.getByText(/Arm "Evening recap"/)).toBeTruthy())
     // The two lines that matter most: what it can change, and the credential
     // whose absence would otherwise surface at 3am.
-    expect(screen.getByText(/change things: instacart_order/)).toBeTruthy()
+    // Loudest first, capped, with an honest count — a real preset has dozens of
+    // mutating tools and the full list is a wall nobody reads.
+    expect(screen.getByText(/change things: bash, write_file, edit_file, web_fetch|change things: bash, write_file, edit_file/)).toBeTruthy()
+    expect(screen.getByText(/6 of 49 tools it can call change something/)).toBeTruthy()
     expect(screen.getByText(/does not have INSTACART_TOKEN/)).toBeTruthy()
     expect(screen.getByText(/starts from 214 entries/)).toBeTruthy()
   })
@@ -192,9 +195,14 @@ describe('AutomationsView', () => {
     expect(armed?.args).toMatchObject({ flowId: 'brief', scheduleId: 'evening' })
     expect(calls.filter((c) => c.method === 'list_flows').length).toBeGreaterThan(1)
 
-    // The new agent is the point of arming, so the app goes there.
+    // The new agent is the point of arming, so the app goes there — and the
+    // fleet must be re-read on the way, because that is where the session view
+    // looks the agent up. Skipping it navigates to an agent the app has never
+    // heard of, which is what a live pod showed.
     const { useUi } = await import('@/stores/ui')
     await waitFor(() => expect(useUi.getState().activeKey).toBe('session:inst_new'))
+    const armedAt = calls.findIndex((c) => c.method === 'arm_schedule')
+    expect(calls.slice(armedAt).some((c) => c.method === 'list_instances')).toBe(true)
   })
 
   it('lands you in the conversation a hand-run just wrote', async () => {

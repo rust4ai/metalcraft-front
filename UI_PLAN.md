@@ -209,7 +209,7 @@ dismissal is forgotten the moment its condition resolves.
 and an empty list mid-fetch is indistinguishable from an empty pod — nudging on
 that would flash a wrong card on every launch.
 
-Nothing nudges toward Octaweave (PLAN §9.3 / P7). It is not built, and a card
+Nothing nudges toward Octaweave (PLAN §9.3 / P7). It is optional, and a card
 offering a button that goes nowhere is worse than silence.
 
 *Correction to the original plan:* this section claimed S6 was what would stop
@@ -265,26 +265,35 @@ while the pod happily holds any number, which made every credential-needing pack
 unreachable from the desktop. Names are upper-cased on entry, because packs match
 `requires_env` by name and a lower-case entry silently never matches.
 
-**Octaweave is one action, and the key never enters the webview.** The core takes
-it, proves it against `GET /api/v1/whoami` (real, deployed, 401 for anonymous),
-*then* writes it to the pod and installs the integration pack. Verify-before-store
-is the whole ordering: a mistyped or revoked key fails in the card rather than
-sitting in a pod waiting to fail mid-conversation.
+**Octaweave is one button, and asks for nothing the user is holding.** The card used
+to walk someone through creating an API key on octaweave.com and pasting it back.
+That field is gone. The core lists the person's workspaces with the Metalcraft PAT
+already in the keychain, mints an `owk_` key itself, proves it against
+`GET /api/v1/whoami`, writes it to the pod and installs the integration pack.
+Mint-before-verify-before-store is the whole ordering: a key that will not
+authenticate fails in the card rather than sitting in a pod waiting to fail
+mid-conversation, and is revoked on the way out rather than left live.
 
-Three states the card refuses to collapse:
+Four states the card refuses to collapse:
+- **Waiting on the browser** — the first connect opens Octaweave's
+  `/link/metalcraft` page, because an `mck_` token resolves only against a link row.
+  The card says so and finishes on its own; Cancel stops the asking, not the linking.
+- **Pick a workspace** — offered only when the account administers more than one.
+  Which workspace an agent lives in is not a choice to make on someone's behalf.
 - **Key only** — stored, but the pack did not install. Reachable today, because
   the pack is unpublished. Reporting success would leave an agent holding a
   credential and no tools.
 - **Installed but disabled** — from inside a conversation this is identical to
   not installed, so it is called out in orange rather than counted as connected.
-- **Rejected** — surfaced from Octaweave's own answer, and nothing is written.
 
-The deep-link handler is implemented (`metalcraft-front://octaweave/callback`) and
-routes a returned key through the *same* `connect` path as a pasted one, so there
-is one place verification happens. It is **inert for a known reason**: Octaweave's
-`POST /w/{ws}/keys` accepts no `redirect_uri`, so nothing will call it until
-Octaweave learns to. Zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 (`mck_` in
-`auth/extract.rs`), which is Octaweave-side and unbuilt.
+`octaweave_connect` returns what is missing instead of blocking on it, and never
+opens a browser itself. That is what makes it safe to poll while the user is away —
+a connect that opened a tab per attempt would spray tabs across three minutes.
+
+**Deleted here:** the paste field, the `metalcraft-front://octaweave/callback`
+handler, the deep-link plugin and its capability entry. The callback was built
+against a `redirect_uri` Octaweave never accepted; `ECOSYSTEM_PIVOT_PLAN.md` §3.1
+landed Octaweave-side on 2026-08-23 and made the whole return trip unnecessary.
 
 ### S9 — the third pill, and where automations live
 
@@ -345,6 +354,14 @@ either the API vague or the UI jargon.
 Keys: the palette gains `go automations`; no new global shortcut — three pills do not
 need one each.
 
+## 4a. Driving it
+
+`./run_dev.sh` runs the real renderer in a browser against the real core and a
+throwaway pod — see PLAN §12.14 and `crates/front-tauri/src/dev_rpc.rs`. Every
+stage below was walked that way before being called done, which is how the
+stale-fleet-after-arming bug was caught: it is invisible to a test that stubs the
+fleet, and obvious the moment a real one is on screen.
+
 ## 5. What the shell still doesn't have
 
 Honest gaps, so nobody rediscovers them as bugs:
@@ -356,11 +373,15 @@ Honest gaps, so nobody rediscovers them as bugs:
   columns are built, splitting the centre is not.
 - **No transcript virtualization.** `@tanstack/react-virtual` is a dependency and
   unused; long sessions will get slow before they get unusable.
-- **No auto-return from Octaweave.** Confirmed, not assumed: key creation takes
-  no `redirect_uri`. Ours is built and waiting.
+- **Linking Octaweave is still a browser trip.** Not a paste, and not avoidable
+  from here: an `mck_` token resolves only against a `user_identities` row that
+  `GET /link/metalcraft` writes, which is what makes unlinking instant.
 - **No published `octaweave` pack.** The connection card works; the install step
   fails with *no version of 'octaweave' matches* until the pack is pushed to
   packs.metalcraftai.com. The card names that state rather than hiding it.
+- **Two agents can share a name.** Arming a flow twice (disarm keeps the old agent) gives
+  you two `General Agent — Every morning` rows, distinguishable only by their history.
+  Seen against a live pod; the fix is probably a suffix at mint time, in the pod.
 - **A long run blocks its button.** `POST /flows/{id}/run` is synchronous on the pod,
   so "Run now" spins until the whole graph finishes. Fine for a briefer, wrong for a
   flow with an `approval` in it — that one returns *paused* and the run shows up in

@@ -6,11 +6,18 @@ import { Button } from '@/components/ui/Button'
 import type { DeviceLogin } from '@/types'
 
 /**
- * PLAN §9.1 — sign in with Metalcraft ID.
+ * PLAN §9.1 — sign in with Metalcraft ID, **or don't**.
  *
  * Device flow: the browser does the authenticating, we poll. The verify URL is
  * always shown as copyable text, because a failed `open` must not dead-end the
  * only way into the app.
+ *
+ * The second path exists because this screen used to be a wall: a pod you run
+ * yourself needs no Metalcraft account, but the app demanded one before it would
+ * show you anything — so a self-hoster (and anyone developing against a local
+ * pod) could not reach their own agent. A URL and the pod's `WORKSHOP_API_KEY`
+ * are enough, and what you lose by skipping the account is stated rather than
+ * discovered: no credits, no registry identity, no pod list.
  */
 export function LoginView() {
   const setSession = useConnection((s) => s.setSession)
@@ -100,7 +107,65 @@ export function LoginView() {
         )}
 
         {error && <p className="mt-4 text-sm text-red">{error}</p>}
+
+        <DirectConnect />
       </div>
+    </div>
+  )
+}
+
+/** Connect to a pod you run, with no account in the loop. */
+function DirectConnect() {
+  const connectDirect = useConnection((s) => s.connectDirect)
+  const connecting = useConnection((s) => s.connecting)
+  const [open, setOpen] = useState(false)
+  const [url, setUrl] = useState('http://localhost:3002')
+  const [key, setKey] = useState('')
+  const [failed, setFailed] = useState<string | null>(null)
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-6 text-[12.5px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+      >
+        Or connect to a pod you run
+      </button>
+    )
+  }
+
+  async function submit() {
+    setFailed(null)
+    const message = await connectDirect(url, key)
+    if (message) setFailed(message)
+  }
+
+  return (
+    <div className="mt-6 space-y-2 text-left">
+      <input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="http://localhost:3002"
+        aria-label="Pod URL"
+        className="h-9 w-full rounded-control bg-field px-3 text-[13px] text-ink placeholder:text-ink-3 focus-visible:outline-accent"
+      />
+      <input
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        type="password"
+        placeholder="WORKSHOP_API_KEY"
+        aria-label="Pod key"
+        className="h-9 w-full rounded-control bg-field px-3 text-[13px] text-ink placeholder:text-ink-3 focus-visible:outline-accent"
+      />
+      <Button className="w-full" disabled={connecting || !url.trim()} onClick={() => void submit()}>
+        {connecting ? 'Connecting…' : 'Connect'}
+      </Button>
+      {failed && <p className="text-[12.5px] text-red">{failed}</p>}
+      <p className="text-[11.5px] text-ink-3">
+        No Metalcraft account: no credits meter, no registry identity, and this pod pays for
+        its own inference with its own key.
+      </p>
     </div>
   )
 }

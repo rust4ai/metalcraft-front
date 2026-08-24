@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnection, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
+import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -18,22 +18,31 @@ export const auth = {
 export const pods = {
   list: () => call<Pod[]>('list_pods'),
   connect: (podId: string) => call<AgentInfo>('connect_pod', { podId }),
+  /** Connect to a pod you run yourself: its URL and its `WORKSHOP_API_KEY`. No
+   *  hub, no account, no minted token. */
+  connectUrl: (url: string, key: string) => call<AgentInfo>('connect_pod_url', { url, key }),
   info: () => call<AgentInfo>('agent_info'),
   active: () => call<ActivePod | null>('active_pod'),
 }
 
 export const octaweave = {
   status: () => call<OctaweaveStatus>('octaweave_status'),
-  /** Verify → store → install → confirm, in the core. The key is passed in and
-   *  never comes back. */
-  connect: (token: string) => call<OctaweaveConnection>('octaweave_connect', { token }),
+  /**
+   * One step of connecting, in the core: list workspaces with the Metalcraft
+   * PAT, mint an `owk_` key, store it, install the pack. Returns what is still
+   * missing rather than blocking on it, so it is safe to call repeatedly — and
+   * it never opens a browser, which is what makes polling it harmless.
+   */
+  connect: (workspace?: string) =>
+    call<OctaweaveConnectOutcome>('octaweave_connect', { workspace: workspace ?? null }),
+  /** Opens the browser at Octaweave's link page. Returns the URL, so the UI can
+   *  show it as a link when the hand-off fails silently. */
+  link: () => call<string>('octaweave_link'),
   installPack: () => call<OctaweaveStatus>('octaweave_install_pack'),
-  disconnect: () => call<OctaweaveStatus>('octaweave_disconnect'),
-  /** Opens the browser; returns the URL so the UI can show it as copyable text
-   *  when the hand-off fails silently. */
-  openKeys: () => call<string>('octaweave_open_keys'),
-  /** The core forwards a key returned by the browser callback. */
-  onToken: (cb: (token: string) => void) => listen<string>('octaweave://token', cb),
+  /** Drops the key from the pod, and revokes it at Octaweave when the workspace
+   *  is still known — otherwise "disconnect" leaves a live credential behind. */
+  disconnect: (workspace?: string) =>
+    call<OctaweaveStatus>('octaweave_disconnect', { workspace: workspace ?? null }),
 }
 
 export const account = {

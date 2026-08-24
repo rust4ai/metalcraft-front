@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 afterEach(() => {
   cleanup()
@@ -31,6 +32,9 @@ async function mount(responses: Record<string, unknown>) {
   const withDefaults = {
     refresh_session: responses.session ?? null,
     inference_status: null,
+    // Boot asks the core what it is already connected to before asking who we
+    // are, so a window reload does not drop a live pod.
+    active_pod: null,
     ...responses,
   }
   // Reset the module graph so each case gets its own zustand stores; they are
@@ -46,6 +50,45 @@ describe('App', () => {
   it('shows the sign-in screen when there is no session', async () => {
     await mount({ session: null })
     await waitFor(() => expect(screen.getByText('Sign in with Metalcraft ID')).toBeTruthy())
+  })
+
+  it('lets a pod you run in without a Metalcraft account', async () => {
+    // The screen used to be a wall: a self-hosted pod needs no account, but the
+    // app demanded one before showing anything, so a self-hoster could not reach
+    // their own agent.
+    const calls: string[] = []
+    vi.resetModules()
+    const transport = await import('@/rpc/transport')
+    const responses: Record<string, unknown> = {
+      session: null,
+      refresh_session: null,
+      inference_status: null,
+      connect_pod_url: { name: 'metalcraft-agent', version: '0.31.0' },
+      active_pod: { slug: 'localhost:3999', url: 'http://localhost:3999' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [{ name: 'OPENAI_API_KEY', masked: 'sk-…1234', scope: 'global', managed: false }],
+    }
+    transport.setTransport({
+      call: vi.fn(async (method: string) => {
+        calls.push(method)
+        if (!(method in responses)) throw new Error(`unstubbed command: ${method}`)
+        return responses[method] as never
+      }),
+      listen: vi.fn(async () => () => {}),
+    })
+    const { App } = await import('./App')
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByText('Or connect to a pod you run')).toBeTruthy())
+    await userEvent.click(screen.getByText('Or connect to a pod you run'))
+    await userEvent.type(screen.getByLabelText('Pod key'), 'devkey')
+    await userEvent.click(screen.getByText('Connect'))
+
+    // Straight into the shell, with no session and no pod list.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    expect(calls).toContain('connect_pod_url')
+    expect(calls).not.toContain('list_pods')
   })
 
   it('goes to pod connection once signed in', async () => {

@@ -2,7 +2,9 @@
 
 **Status:** P0 and P6 done, P1–P5 partial (2026-08-22) — sign-in → connect → interface source
 → fleet → session with a live SSE transcript → registry browser, on the Beautiful UI token
-layer. 6 commits on local `main`, no remote. **Nothing verified against a live pod yet.**
+layer. 6 commits on local `main`, no remote. **The pod client is now verified against a live pod**
+(`crates/front-core/tests/live_pod.rs`, gated on `MC_LIVE_POD`); the **UI still has not been
+driven against one**.
 **Repo:** `~/ai/metalcraft-front` → `git@github.com:rust4ai/metalcraft-front.git`
 **Stack:** Tauri 2 (Rust core) + React 19 / Vite / Tailwind 4 / shadcn-Radix (Orca's renderer aesthetic)
 
@@ -246,18 +248,19 @@ constant — §12.2), with a free-text override.
 studio — the workspace a person lives in, that their agent can work in too via the
 `octaweave` agent pack (32 typed tools, `octaweave-agent-skills/metalcraft-agent/`).
 
-One click, four things:
-1. Browser hand-off to octaweave.com to create/pick a workspace (an `owk_` key **cannot mint
-   another key**, and key creation refuses key-auth outright — so this step is a signed-in
-   human in a browser, by design, not something the app can do headlessly).
-   *Confirmed in source:* `controllers/keys.rs::create` returns `Forbidden` when
-   `principal.is_api_key()`. The app opens `/dashboard`, because the key UI is at
-   `/:org/:ws/settings/keys` and the org/workspace are unknowable without a key.
-2. Return via `metalcraft-front://octaweave/callback` with the `owk_live_…` token, which is
-   shown exactly once at creation.
-3. Store it as `OCTAWEAVE_API_KEY` in the pod's key store (global scope).
-4. Install the `octaweave` **integration** pack, then verify with `GET /api/v1/whoami` and
-   show `actor.workspace_id` + granted scopes as confirmation.
+One click, and the app does all of it:
+1. List the person's workspaces — `GET /api/v1/workspaces` with the **Metalcraft PAT**
+   already in the desktop keychain. Octaweave accepts an `mck_` hub token as a first-class
+   credential (`auth/extract.rs` tries `mck_` before `owk_`).
+2. Mint a workspace key — `POST /api/v1/w/{ws}/keys`, again with the PAT. This is allowed
+   for exactly the reason the old flow was not: `keys::create` refuses only
+   `principal.is_api_key()`, so a *key* may never mint another key but a *person's* token
+   may. That single asymmetry is what turned four manual steps into a button.
+3. Verify the minted `owk_live_…` against `GET /api/v1/whoami`, then store it as
+   `OCTAWEAVE_API_KEY` in the pod's key store (global scope). Order is
+   **mint → verify → store**: a key is proven before it is written anywhere.
+4. Install the `octaweave` **integration** pack, and show workspace + granted scopes as
+   confirmation.
 
    ⚠️ **Corrected 2026-08-22:** this step said *agent pack*, and it is not one. Integration
    packs and agent packs are separate systems — different registry
@@ -265,20 +268,34 @@ One click, four things:
    (`POST /api/v1/integrations/install` vs `/agent-packs/install`), different manifest.
    The registry browser (§9.4) speaks only the agent-pack contract, so it does not and
    cannot cover this step; `front-core` grew `list_integrations`/`install_integration`
-   for it. The order is also now **verify → store → install**: the key is proven against
-   `whoami` before being written anywhere.
+   for it.
 
-Scope defaults to the **narrowest set that works** — `notes:write board:write calendar:write
-drive:write` — with `studio:write` off by default and flagged in the UI as "spends money".
-`blog:publish` is off by default: publishing is a public act.
+**The pod gets the narrow key, never the PAT.** Both would authenticate — the pack sends
+whatever `OCTAWEAVE_API_KEY` holds as a bearer token — which is why the choice is made
+deliberately. An `mck_` names a *person* and reaches every workspace they have plus every
+other Metalcraft subapp; an `owk_` names one workspace and cannot reach sideways
+(`authz::require` checks `pinned_workspace` first). Minting through the PAT gets the
+one-click flow *and* the smaller blast radius, so §3.2's warning is answered rather than
+accepted.
 
-*Resolved:* there is no provisioning endpoint and no `redirect_uri` on key creation, so the
-browser hand-off is the whole of step 1 today. The route to genuine zero-paste is not a
-provisioning API — it is `ECOSYSTEM_PIVOT_PLAN.md` §3.1, accepting `mck_` hub tokens in
-`auth/extract.rs`. That is Octaweave-side work, and §3.2 is the reason to weigh it rather
-than assume it: an `mck_` token names a **person** and reaches every workspace they have,
-where an `owk_` key is pinned to one. Giving a pod agent the wider credential to save a
-paste should be a decision, not a convenience.
+Scopes are the modules the pack's 32 tools touch and nothing more — `notes:write
+board:write drive:write calendar:write blog:write blog:publish studio:write search:read` —
+rather than the coarse `write`, which by Octaweave's own definition covers actions invented
+after the key was minted. `blog:publish` is granted here and gated where this app gates
+consequence: arming and approval in the conversation (§12), not a 403 mid-sentence.
+
+**The one remaining browser trip is a click, not a paste.** An `mck_` resolves only if a
+`user_identities` row exists on Octaweave's side, written by `GET /link/metalcraft` — no
+row, no access, which is also what makes unlinking instant. So the first connect opens that
+page and the card *polls* while the user is away. `octaweave_connect` is therefore
+resumable rather than interactive: it returns `needs_link` or `choose_workspace` instead of
+blocking, and never opens a browser itself, which is what makes polling it safe.
+
+*Superseded 2026-08-23:* steps 1–2 used to be "open `/dashboard`, create a key by hand,
+paste it back", returning through a `metalcraft-front://octaweave/callback` deep link that
+Octaweave was never going to call (`POST /w/{ws}/keys` accepts no `redirect_uri`). That
+handler, the deep-link plugin and the paste field are all deleted. `ECOSYSTEM_PIVOT_PLAN.md`
+§3.1 landed Octaweave-side on 2026-08-23, and it is what this section now stands on.
 
 ### 9.4 Browse Axoniac Prime and install agent packs *(optional)*
 [Axoniac Prime](https://github.com/…/axoniac-prime) is "Instagram, where every profile is an
@@ -355,13 +372,13 @@ step is also a standalone settings surface.
 | P | Deliverable | Done when |
 |---|---|---|
 | **P0** ✅ | Repo skeleton: Tauri 2 + Vite/React 19/Tailwind 4, oxlint/vitest, CI | done — lint + 10 vitest + 14 cargo tests + clippy clean; window opens |
-| **P1** 🟡 | `front-core` (pod client, remote-only) + `front-cloud` (device flow, pods, mint+refresh, keychain) | written and unit-tested; **unverified against a live pod** |
+| **P1** 🟢 | `front-core` (pod client, remote-only) + `front-cloud` (device flow, pods, mint+refresh, keychain) | `front-core` now runs against a real pod — `cargo test -p front-core --test live_pod` with `MC_LIVE_POD` set — covering info, presets, instances, chats, keys, flows, binding, arm/disarm and run. Every shape matched first try. **`front-cloud` is still unverified**: device login needs the hub, and the app has no way to reach a pod that is not in the hub's list (see §12.13) |
 | **P2** ✅ | Shell: sidebar, tabs/panes/splits, `cmdk` palette, theme, session restore — see **`UI_PLAN.md`** | Orca three-column frame, sidebar agent tree, tabs + restore, right rail, status bar, setup nudges and the `⌘K` palette all done (UI_PLAN S1–S7). **Centre-pane splits and a theme toggle are not built** — UI_PLAN §5 |
 | **P3** 🟡 | **Fleet view** — list instances, live status via multiplexed SSE, create/rename/delete from presets | grid, cards, origin/orphan notices, spawn dialog, and per-instance live status from the session subscription done; fleet-wide status without an open session needs §12.5 |
 | **P4** 🟡 | **Session view** — transcript reducer over all `ChatEvent` variants, tool cards, composer, drafts, error/402 rendering, diagnostics deep-link | transcript + tool cards + composer + error rendering done and tested against stubbed frames; **live-pod round trip outstanding**; markdown, drafts, virtualization, deep-link outstanding |
 | **P5** 🟡 | **Onboarding wizard** (§9) + **interface source** binding: the four providers, key/base-URL write via Keys API, verify-turn, model picker, resumable state | source picker + atomic key/base-URL write + honest restart/`/responses` warnings done, and a keyless pod routes here instead of to a dead fleet; **verify-turn and model picker outstanding** |
 | **P6** ✅ | **Axoniac Prime pack browser**: registry list from the pod's allowlist, browse/search, profile view (presets · personas · skills · what-it-knows · requirements checklist), install/update/uninstall, orphaned-preset + persona-fallback warnings | built against the pod's own registry proxy (status/connect/search/manifest, agent `3a6ab9a`); the **pre-install detail sheet** now reads `/manifest` and checks `requires_env` against this pod's key store, so an unmet requirement is a checklist item rather than a runtime failure. axoniac.com is **live and answers the contract** (`/agent-packs/search` → 200) but **publishes zero public packs**, so a real end-to-end install is still unproven |
-| **P7** 🟡 | **Octaweave one-click**: browser hand-off + deep-link callback, key stored at narrowest scopes, pack install, `whoami` confirmation, connection card in Settings | Settings surface, connection card, verify→store→install in one action, deep-link handler, disconnect and a general **key store UI** done. **Two known blockers, both outside this repo** (source read at `~/ai/octaweave`, formerly `agent-cloud-spaces`): the `octaweave` integration pack is unpublished on packs.metalcraftai.com, and key creation accepts **no `redirect_uri`** (`POST /w/{ws}/keys`), so nothing can call our callback yet. True zero-paste is `ECOSYSTEM_PIVOT_PLAN.md` §3.1 — accept `mck_` in `auth/extract.rs` — which is unimplemented, and §3.2 notes an `mck_` names a *person* across every workspace where an `owk_` is pinned to one |
+| **P7** 🟢 | **Octaweave one-click**: connect with the Metalcraft account, key minted at module scopes, pack install, `whoami` verification, connection card in Settings | Done, and genuinely zero-paste since `ECOSYSTEM_PIVOT_PLAN.md` §3.1 landed Octaweave-side (2026-08-23). The core lists workspaces and mints an `owk_` key with the desktop's `mck_` PAT, then verifies, stores and installs; reconnecting revokes the key it made before, and disconnect revokes rather than orphaning. The paste field, the `metalcraft-front://` callback and the deep-link plugin are deleted. **One blocker remains, outside this repo:** the `octaweave` integration pack is still unpublished on packs.metalcraftai.com, so step 4 reports a named halfway state ("Key only") rather than failing the connection |
 | **P8** | **Workspaces** (metalcraft-code): list/create/clone, file tree + Monaco, git diff, exec/build/test with run output, attach-to-instance (client-side map first, server field when it lands — §12.8) | agent edits a repo while the diff updates in-app |
 | **P9** 🟡 | **Automations** (§10.7): third sidebar pill, flow list + schedules + arm/disarm dialog + run inspector, flow-born agents in the fleet. Then the xyflow graph editor port; keys/gateway/channels settings | third pill, flow list, run-now, arm/disarm behind a consent dialog, click-through to the agent each armed schedule runs as, and a paused-runs section with in-place approvals are **done** (UI_PLAN S9). The pod half landed with it: `GET /flows`, a conversation per firing, and run-as-the-armed-agent (`metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` A/B/C). **Outstanding:** the xyflow editor |
 | **P10** | Release: signed macOS (notarized) / Windows / Linux bundles, `tauri-plugin-updater`, Homebrew cask | `metalcraft-front` installs and self-updates |
@@ -448,10 +465,65 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     `instance_id`/`instance_name`. Our arm dialog is a client-side render of a payload that
     exists today.
 
+13. ~~**No way to reach a pod that the hub does not list.**~~ **BUILT**: `connect_pod_url`
+    plus "Or connect to a pod you run" on the sign-in screen, and `App` no longer demands a
+    Metalcraft account when a pod is already connected — a self-hosted pod needs no account
+    and the app used to insist on one. Boot also asks the core what it is connected to
+    before asking who we are, so a window reload keeps a live pod. Original diagnosis: `ConnectView` renders
+    `list_pods` from `pods.metalcraftai.com`, so a locally-run pod — the thing every
+    contributor and self-hoster has — is unreachable from the app even though
+    `PodConnection::new(url, key)` would talk to it happily. A "connect to a URL" escape
+    hatch is one dialog and it is what unblocks driving the UI at all. *(front, small)*
+14. ~~**The UI has never been driven against a live pod.**~~ **BUILT and DONE**:
+    `crates/front-tauri/src/dev_rpc.rs` (behind the `dev-rpc` feature *and* `MC_DEV_RPC`)
+    mirrors the renderer's RPC over HTTP, `frontend/src/rpc/transport/http.ts` consumes it,
+    and `src/bin/dev_core.rs` runs the core without a window — the GUI binary aborts in a
+    headless shell, which is exactly where scripting is needed. The UI was then driven
+    against a live pod end to end and found three bugs (§14a). Original diagnosis: The renderer only reaches the
+    core through `Transport`, and the only implementation is Tauri IPC — so there is no
+    way to script the app. The fix doubles as P11 groundwork: a dev-mode HTTP bridge in
+    `front-tauri` (behind an env var) exposing `POST /rpc/{method}` plus SSE, and an
+    `http` transport in the renderer. Then `npm run dev` in a browser is the real UI on
+    the real core. *(front, medium)*
+
+14a. **What driving it found.** Five things, none of which any stubbed test caught.
+    The loudest: **`install_pack` never worked**. This client sent `?reference=`
+    while the pod's query field is `#[serde(rename = "ref")]`, so the pod saw no
+    source at all and answered *"provide ?url=, ?path=, or upload the .agentpack as
+    the request body"* — three things the caller never meant, and no mention of the
+    one it did. A whole registry browser (P6) was built and shipped on a call that
+    could not succeed. Fixed on both sides: the client sends `ref`, and the pod's
+    error now names `?ref=` first. Pinned by `live_pod`, which asserts a bogus
+    reference fails at *resolution* — proof the pod read the parameter. Also:
+    a stale fleet after arming, so the app navigated to an agent it had never heard of and
+    the rail said "no longer on the pod"; a window reload dropping a live connection; an
+    arm consent summary that reported *zero tools* for an agent that can run `bash`
+    (fixed in the pod — `metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` §6); and a
+    five-field cron being rejected at `PUT /flows` rather than rendering as broken. The
+    the first three are fixed and regression-tested; the cron one is recorded.
+
+    The lesson is the same each time: a mismatch between two correct-looking sides
+    is invisible to tests that stub either side. `live_pod` is the only test here
+    that can see them, and it is cheap to run.
+
+    The harness is **`./run_dev.sh`** — a throwaway pod (temp data dir), the core
+    with its bridge, and Vite on :5174, connected and ready. `--pod <url>` points at
+    a pod you already have; `--no-open` skips the browser. The core is also curl-able
+    directly, which is how the `?ref=` bug was isolated:
+    ```sh
+    curl -sXPOST -d '{}' http://127.0.0.1:1421/rpc/list_flows | jq
+    ```
+
 ## 13. Testing & release
 
 - **Rust:** unit tests on `front-core` models + a mock pod (`axum` test server) for the SSE
   reducer; `front-cloud` device-flow/mint tested against stubbed hub responses.
+- **Live pod:** `crates/front-core/tests/live_pod.rs` skips unless `MC_LIVE_POD` is set, and
+  **writes** to the pod it points at, so point it at a scratch one:
+  `METALCRAFT_DATA_DIR=$(mktemp -d) metalcraft-agent --api --api-port 3999`, then
+  `MC_LIVE_POD=http://localhost:3999 MC_LIVE_POD_KEY=devkey cargo test -p front-core --test live_pod`.
+  This is the test that catches a shape we guessed wrong; fixtures only prove we are
+  self-consistent.
 - **Renderer:** vitest + Testing Library for the transcript reducer (feed recorded SSE
   fixtures — capture real ones from a pod into `tests/fixtures/`), stores, and palette.
 - **E2E:** Playwright against `tauri driver` for launch → login (stubbed) → fleet → send turn.

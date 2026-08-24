@@ -27,8 +27,12 @@ export function App() {
 
   // Sign-in and pod connection are full-window takeovers *outside* the shell:
   // there is no pod yet, so there is nothing to put in a sidebar.
+  //
+  // `info` short-circuits the session check on purpose: a pod you connected to
+  // directly is a working pod, and demanding a Metalcraft account before showing
+  // it to you would be asking for an identity that pod never needed.
   if (!ready) return null
-  if (!session) return <LoginView />
+  if (!session && !info) return <LoginView />
   if (!info) return <ConnectView />
   return <Shell />
 }

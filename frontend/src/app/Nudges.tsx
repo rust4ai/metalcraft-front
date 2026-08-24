@@ -28,8 +28,9 @@ interface Nudge {
  * corner of a working app is noise, and the second-most-urgent thing can wait
  * until the first is handled or dismissed.
  *
- * Nothing here nudges toward Octaweave (PLAN §9.3 / P7): it is not built, and a
- * card offering a button that goes nowhere is worse than silence.
+ * Nothing here nudges toward Octaweave (PLAN §9.3 / P7): it is optional, and the
+ * connection is one button in Settings — a nudge would be pushing an add-on, not
+ * clearing a blocker, which is the only thing this strip is for.
  */
 export function Nudges() {
   const info = useConnection((s) => s.info)

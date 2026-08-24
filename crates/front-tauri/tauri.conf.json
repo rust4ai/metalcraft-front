@@ -34,11 +34,5 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "deep-link": {
-      "desktop": {
-        "schemes": ["metalcraft-front"]
-      }
-    }
-  }
+  "plugins": {}
 }

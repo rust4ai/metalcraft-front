@@ -38,8 +38,12 @@ export function Sidebar() {
 
   return (
     <aside
-      className="relative flex min-w-0 flex-col border-r border-line bg-canvas"
-      style={{ width: sidebarWidth }}
+      className="relative flex min-h-0 min-w-0 flex-col border-r border-line bg-canvas"
+      // The cap is on the *window*, not on the stored width: the grid gives this
+      // column whatever it asks for and the centre takes the remainder, so a
+      // sidebar and a rail sized on a large display could together be wider than
+      // a small one and squeeze the conversation down to nothing.
+      style={{ width: sidebarWidth, maxWidth: '30vw' }}
     >
       {/* The window is frameless: this header is the drag region, inset past the
           traffic lights, and there is no full-width title bar above it. */}

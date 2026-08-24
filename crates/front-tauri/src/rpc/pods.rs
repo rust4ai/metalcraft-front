@@ -19,6 +19,51 @@ pub async fn list_pods(state: State<'_>) -> Result<Vec<Pod>, String> {
     state.plane().pods(&pat()?).await.map_err(|e| e.to_string())
 }
 
+/// Connect straight to a pod by URL and key, with no hub in the loop.
+///
+/// The hub path (`connect_pod`) resolves a slug, mints an audience-scoped token
+/// and keeps it fresh. None of that applies to a pod somebody runs themselves:
+/// it authenticates with a static `WORKSHOP_API_KEY`, it has no slug anywhere but
+/// here, and there is nothing to refresh. `AppState`'s map was built for exactly
+/// this — its own doc calls "a manually-keyed agent" a peer entry — so a direct
+/// pod is a normal member of the fleet once connected, not a second mode.
+///
+/// **No readiness polling.** `connect_pod` waits ten intervals because a
+/// scheduled pod may still be starting and the user can do nothing but wait. A
+/// pod you typed the address of is either answering or it is not, and a
+/// two-minute spinner would hide the typo.
+///
+/// The key crosses renderer → core, which is the safe direction: it is entered
+/// here and never sent back (the same shape as the interface-source step).
+#[tauri::command]
+pub async fn connect_pod_url(
+    url: String,
+    key: String,
+    state: State<'_>,
+) -> Result<AgentInfo, String> {
+    let conn = PodConnection::new(url.trim(), key.trim()).map_err(|e| e.to_string())?;
+    let info = conn.info().await.map_err(|e| e.to_string())?;
+    // The host is the slug: stable, unique per pod, and recognisable in a title
+    // bar. Unlike the hub's slug this is user-supplied — fine as *identity*,
+    // since the user typed it, but it is not a claim the pod made about itself.
+    let slug = url
+        .trim()
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("pod")
+        .to_string();
+    state.insert(ConnectedPod {
+        slug,
+        url: url.trim().trim_end_matches('/').to_string(),
+        conn,
+        // A static key does not expire, so there is nothing to refresh.
+        refresher: None,
+    });
+    Ok(info)
+}
+
 /// A pod that was just (re)started — waking from suspend, or freshly scheduled —
 /// needs time before its HTTP API answers; until a healthy backend exists the
 /// ingress returns 503 immediately. Poll patiently rather than reporting a

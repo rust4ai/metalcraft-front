@@ -334,16 +334,41 @@ export interface OctaweaveStatus {
   api_tools: number
 }
 
-/** The result of connecting. Carries no key — that never leaves the core. */
+/** One Octaweave workspace this account administers, as the picker lists them. */
+export interface OctaweaveWorkspace {
+  id: string
+  org_slug: string
+  slug: string
+  name: string
+  /** Always `admin` in a picker — the core filters out what it could not mint in. */
+  role: string
+}
+
+/** A finished connection. Carries no key — that never leaves the core. */
 export interface OctaweaveConnection {
   workspace_id: string
+  /** The workspace's own name, which is what the user recognises. */
   label: string
+  url: string
   scopes: string[]
-  is_admin: boolean
   status: OctaweaveStatus
   /** The key stored but the pack did not install — a real halfway state. */
   pack_error?: string | null
+  /** Keys this app had minted here before, now revoked. */
+  replaced: number
 }
+
+/**
+ * One step of connecting: done, or the single thing still missing.
+ *
+ * Both unfinished cases resolve by calling connect again — which is what lets
+ * the app poll while the user is away in the browser instead of holding a
+ * request open.
+ */
+export type OctaweaveConnectOutcome =
+  | { kind: 'needs_link'; url: string }
+  | { kind: 'choose_workspace'; workspaces: OctaweaveWorkspace[] }
+  | { kind: 'connected'; connection: OctaweaveConnection }
 
 // ── Automations ────────────────────────────────────────────────────────────
 //

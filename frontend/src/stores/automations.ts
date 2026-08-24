@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { automations } from '@/rpc'
+import { useFleet } from './fleet'
 import type { AgentInstance, Flow, FlowBinding, FlowRun, FlowRunSummary } from '@/types'
 
 /**
@@ -85,7 +86,14 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
       // Reload rather than patch: arming can mint an agent *or* attach to an
       // existing one, and it also flips the flow's `armed`. Re-reading is one
       // call and cannot disagree with the pod.
-      await get().load()
+      //
+      // **And reload the fleet**, which is where that new agent lives. Arming
+      // ends by opening the agent it created, and `SessionView` resolves it from
+      // the fleet store — so without this the app navigates to an agent it has
+      // never heard of and the rail reports it "no longer on the pod". Found by
+      // clicking Arm against a real pod; no stubbed test caught it, because the
+      // stub had no fleet to be stale.
+      await Promise.all([get().load(), useFleet.getState().load()])
       return agent
     } catch (e) {
       set({ error: String(e) })

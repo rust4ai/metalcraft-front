@@ -51,10 +51,16 @@ export function Shell() {
     <div
       // `relative` so the nudge card can sit over the bottom-left corner the way
       // Orca's does, without taking a column in the grid.
-      className="relative grid h-full min-h-0"
+      className="relative grid h-full min-h-0 overflow-hidden"
       style={{
-        gridTemplateColumns: `${sidebarOpen ? 'auto ' : ''}1fr${railOpen ? ' auto' : ''}`,
-        gridTemplateRows: '1fr auto',
+        gridTemplateColumns: `${sidebarOpen ? 'auto ' : ''}minmax(0, 1fr)${railOpen ? ' auto' : ''}`,
+        // `minmax(0, 1fr)`, not `1fr`: a bare `1fr` row takes its *minimum* from
+        // its content, so a sidebar holding thirty agents made the row taller
+        // than the window — which pushed the composer and the status bar below
+        // the bottom edge, and left an agent chat looking like it had no input
+        // field at all. A zero minimum lets the panes' own scrollers do their
+        // job instead.
+        gridTemplateRows: 'minmax(0, 1fr) auto',
       }}
     >
       {sidebarOpen && <Sidebar />}

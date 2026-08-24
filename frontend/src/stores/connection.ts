@@ -24,6 +24,9 @@ interface ConnectionState {
   boot: () => Promise<void>
   refreshPods: () => Promise<void>
   connect: (podId?: string) => Promise<void>
+  /** Connect to a self-run pod by URL + key. Returns an error string, or null
+   *  on success — the form shows it inline rather than as a global banner. */
+  connectDirect: (url: string, key: string) => Promise<string | null>
   signOut: () => Promise<void>
   setSession: (s: Session) => void
 }
@@ -42,6 +45,16 @@ export const useConnection = create<ConnectionState>((set, get) => ({
     // `ready` flips either way: a core that cannot answer should show the login
     // screen with an error, never an empty window.
     try {
+      // Ask the core what it is already connected to, before asking who we are.
+      // The renderer's `info` is per-window state and the core's connection is
+      // not: reloading the window (or opening a second one) used to land on the
+      // sign-in screen while the core still held a live pod. It also means a
+      // directly-connected pod survives a refresh without retyping its key.
+      const active = await pods.active().catch(() => null)
+      if (active) {
+        const info = await pods.info().catch(() => null)
+        if (info) set({ info, pod: active })
+      }
       const session = await auth.session()
       set({ session, ready: true })
       if (session) {
@@ -81,6 +94,20 @@ export const useConnection = create<ConnectionState>((set, get) => ({
       set({ info, pod: await pods.active(), connecting: false, waking: false })
     } catch (e) {
       set({ connecting: false, waking: false, error: String(e) })
+    }
+  },
+
+  connectDirect: async (url, key) => {
+    set({ connecting: true, error: null })
+    try {
+      const info = await pods.connectUrl(url, key)
+      set({ info, pod: await pods.active(), connecting: false })
+      return null
+    } catch (e) {
+      set({ connecting: false })
+      // Returned rather than stored: a typo in a URL belongs next to the field
+      // that has the typo.
+      return String(e)
     }
   },
 

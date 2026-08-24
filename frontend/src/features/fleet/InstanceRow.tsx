@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { StatusDot } from '@/components/ui/StatusDot'
@@ -33,8 +34,16 @@ export function InstanceRow({ instance }: { instance: AgentInstance }) {
         <span className={cn('truncate text-[13px]', selected ? 'font-medium text-ink' : 'text-ink')}>
           {instance.name}
         </span>
-        {instance.persistent && (
-          <span className="ml-auto shrink-0 rounded-chip bg-inset px-1.5 py-px text-[10px] text-ink-3">kept</span>
+        {/* A flow-born agent is persistent by construction, so "kept" tells you
+            nothing about it. What is worth knowing at a glance is that it works
+            on a timer — that it may be doing something while you are not
+            looking. */}
+        {instance.origin.kind === 'flow' ? (
+          <Clock className="ml-auto h-3 w-3 shrink-0 text-ink-3" aria-label="Runs on a schedule" />
+        ) : (
+          instance.persistent && (
+            <span className="ml-auto shrink-0 rounded-chip bg-inset px-1.5 py-px text-[10px] text-ink-3">kept</span>
+          )
         )}
       </div>
       <div className="truncate pl-4 font-mono text-[11px] text-ink-3">{instance.agent_preset}</div>
