@@ -2,11 +2,15 @@
 // stray terminal behind the app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod diag;
 #[cfg(feature = "dev-rpc")]
 mod dev_rpc;
+mod diag;
 mod rpc;
 mod state;
+#[cfg(feature = "dev-rpc")]
+mod stub_octaweave;
+#[cfg(feature = "dev-rpc")]
+mod stub_pod;
 
 use std::sync::Arc;
 
@@ -65,7 +69,15 @@ fn main() {
                 log::warn!("could not install the boot probe: {e}");
             }
             #[cfg(feature = "dev-rpc")]
-            dev_rpc::spawn(state.clone());
+            {
+                dev_rpc::spawn(state.clone());
+                // So the real window can be driven against a pod that fails on
+                // command: connect it to http://127.0.0.1:$MC_STUB_POD.
+                stub_pod::spawn();
+                // And a fake Octaweave, for the connect flow's failures. Point
+                // the client at it with OCTAWEAVE_URL.
+                stub_octaweave::spawn();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -157,8 +157,19 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "agent_info" => j(app.conn(None)?.info().await),
         "inference_status" => j(app.conn(None)?.inference_status().await),
 
+        // The one octaweave command that needs nothing but a pod. It calls the
+        // command's own body rather than restating it, so the bridge cannot
+        // drift from the app on the exact question this was built to answer:
+        // what the card shows when the pod will not list its integrations.
+        "octaweave_status" => {
+            let conn = app.conn(None)?;
+            crate::rpc::octaweave::status_of(&conn, app.diag())
+                .await
+                .and_then(|s| serde_json::to_value(s).map_err(|e| e.to_string()))
+        }
+
         // The error log. Process state, no pod involved — which is exactly why
-        // it is mirrored while the octaweave commands beside it are not: this is
+        // it is mirrored while the remaining octaweave commands are not: this is
         // where a browser-driven run finds out what the core swallowed.
         "list_diagnostics" => ok(serde_json::to_value(app.diag().entries()).unwrap_or(json!([]))),
         "clear_diagnostics" => {
@@ -345,9 +356,9 @@ mod tests {
             // bridge exists to drive a pod directly and reports signed-out.
             "login_start",
             "login_poll",
-            // Octaweave connects with the desktop's keychain PAT and opens a
-            // browser to link — neither of which a dev browser tab has.
-            "octaweave_status",
+            // Octaweave *connecting* needs the desktop's keychain PAT and a
+            // browser to link — neither of which a dev browser tab has. Reading
+            // the status needs only a pod, so that one is mirrored above.
             "octaweave_connect",
             "octaweave_install_pack",
             "octaweave_disconnect",
