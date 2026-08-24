@@ -92,6 +92,33 @@ describe('PackDetail', () => {
     await waitFor(() => expect(store.getState().manifestError[hit.reference]).toBeTruthy())
   })
 
+  it('says Installed for a pack the pod filed under the archive\u2019s own id', async () => {
+    // buildr.space: `@buildrspace` on the host, `buildr-space` in its manifest.
+    // The sheet used to compare the handle with the pod's id and offer Install to
+    // someone who had already installed it three times.
+    const store = await mount({ registry_manifest: manifest, list_keys: [] })
+    store.setState({
+      installed: [{ id: 'buildr-space', version: '0.1.1', presets: ['buildr-space'] }],
+      packIds: { 'axoniac:@buildrspace': 'buildr-space' },
+      viewing: { ...hit, id: 'buildrspace', reference: 'axoniac:@buildrspace' } as never,
+    })
+    await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Install$/ })).toBeNull()
+  })
+
+  it('shows a failed install instead of going quiet', async () => {
+    // The list's error line is behind this sheet's overlay, so a sheet that says
+    // nothing is a press that looks like it did nothing.
+    const store = await mount({
+      registry_manifest: manifest,
+      list_keys: [],
+      install_pack: new Error('403 Forbidden: this pod takes verified packs only'),
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /Install/ }))
+    await waitFor(() => expect(screen.getByText(/takes verified packs only/)).toBeTruthy())
+    expect(store.getState().installed).toEqual([])
+  })
+
   it('closes without installing', async () => {
     const store = await mount({ registry_manifest: manifest, list_keys: [] })
     await userEvent.click(await screen.findByRole('button', { name: 'Close' }))

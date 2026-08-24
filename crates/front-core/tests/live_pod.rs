@@ -169,6 +169,45 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
         "the pod did not see our reference at all — check the query parameter name: {message}"
     );
 
+    // A pack the registry names differently from the pack itself. Axoniac lists
+    // buildr.space under the handle `@buildrspace`; the archive calls itself
+    // `buildr-space`, and that second name is the one the pod files it under and
+    // lists it by. A client that compares the handle with the listed id concludes
+    // the pack is not installed no matter how many times it installs it — which is
+    // what the packs view did, silently, with no error to show for it.
+    //
+    // Needs the network, so it is skipped unless the caller asks for it.
+    if std::env::var("MC_LIVE_REGISTRY").is_ok() {
+        let hit = pod
+            .registry_search("axoniac", Some("buildr"), 5)
+            .await
+            .expect("GET …/search")
+            .into_iter()
+            .find(|h| h.name.to_lowercase().contains("buildr"))
+            .expect("axoniac publishes buildr.space");
+
+        pod.install_agent_pack(&hit.reference, true)
+            .await
+            .expect("installing by the reference the listing handed us");
+
+        let installed = pod.list_agent_packs().await.expect("GET /agent-packs");
+        let mine = installed
+            .iter()
+            .find(|p| p.presets.iter().any(|s| s.contains("buildr")))
+            .expect("the pack the pod just installed is in its own list");
+        // The two names, and the reason the UI needs more than string equality.
+        assert_ne!(
+            mine.id, hit.id,
+            "this pack is only interesting while its handle and its id differ"
+        );
+        // Nested under `manifest` in the pod's answer; a version that does not
+        // arrive is an update that can never be offered.
+        assert!(
+            mine.version.is_some(),
+            "an installed pack must carry its version: {mine:?}"
+        );
+    }
+
     // Disarm keeps the agent; that is the promise the UI makes when it offers a
     // one-click disarm with no confirmation.
     pod.disarm_schedule("live-probe", "hourly")

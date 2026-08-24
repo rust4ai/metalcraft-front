@@ -253,6 +253,13 @@ pub struct Registries {
 }
 
 /// An agent pack installed on the pod.
+///
+/// Flat, deliberately. The pod answers `GET /agent-packs` with `{"id", "root",
+/// "manifest": {...}}` and every field worth showing — the version, the name, the
+/// presets — is one level down. Left alone, `version` was `None` for every pack
+/// ever listed, which is not a cosmetic loss: it is what a UI compares against a
+/// registry's version to know an update exists, so the comparison silently could
+/// not happen.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledAgentPack {
     pub id: String,
@@ -264,11 +271,73 @@ pub struct InstalledAgentPack {
     pub description: Option<String>,
     #[serde(default)]
     pub presets: Vec<String>,
+    /// The nested form, read on the way in and folded into the fields above by
+    /// [`InstalledAgentPack::flattened`]. Never sent onward — callers get one
+    /// shape, not two.
+    #[serde(default, skip_serializing)]
+    pub manifest: Option<AgentPackFields>,
+}
+
+/// The subset of a pack's manifest the desktop reads.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentPackFields {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub presets: Vec<String>,
+}
+
+impl InstalledAgentPack {
+    /// Fold the nested manifest up into the flat fields, keeping anything the pod
+    /// already answered at the top level — a pod that flattens these itself later
+    /// must not be overwritten by this.
+    pub fn flattened(mut self) -> Self {
+        if let Some(m) = self.manifest.take() {
+            self.name = self.name.or(m.name);
+            self.version = self.version.or(m.version);
+            self.description = self.description.or(m.description);
+            if self.presets.is_empty() {
+                self.presets = m.presets;
+            }
+        }
+        self
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The real answer from `GET /api/v1/agent-packs`, which keeps the version and
+    /// the presets one level down. A pack whose version does not survive the trip
+    /// can never be shown as out of date.
+    #[test]
+    fn an_installed_pack_takes_its_version_from_the_nested_manifest() {
+        let json = r#"{"agent_packs":[{"id":"buildr-space","root":"/data/agent_packs/buildr-space",
+            "manifest":{"id":"buildr-space","handle":"buildr_space","name":"buildr.space",
+            "version":"0.1.1","presets":["buildr-space"]}}]}"#;
+        let list: AgentPackList = serde_json::from_str(json).unwrap();
+        let pack = list.agent_packs.into_iter().next().unwrap().flattened();
+        assert_eq!(pack.id, "buildr-space");
+        assert_eq!(pack.version.as_deref(), Some("0.1.1"));
+        assert_eq!(pack.name.as_deref(), Some("buildr.space"));
+        assert_eq!(pack.presets, ["buildr-space"]);
+    }
+
+    /// A pod that answers flat is answering for itself. Folding must not clobber it.
+    #[test]
+    fn a_flat_answer_wins_over_the_nested_one() {
+        let json = r#"{"id":"p","version":"2.0.0","presets":["a"],
+            "manifest":{"version":"1.0.0","presets":["b"]}}"#;
+        let pack: InstalledAgentPack = serde_json::from_str(json).unwrap();
+        let pack = pack.flattened();
+        assert_eq!(pack.version.as_deref(), Some("2.0.0"));
+        assert_eq!(pack.presets, ["a"]);
+    }
 
     /// Shapes copied from the agent's handlers. If the pod changes one of these,
     /// this is where it should break — not in a panel that silently shows zero

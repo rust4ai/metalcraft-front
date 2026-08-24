@@ -47,21 +47,64 @@ export function blockedByTrust(trust: string | null | undefined, verified: boole
 }
 
 /**
- * Is this hit already on the pod?
+ * The pack the pod has for this hit, if any.
  *
- * Matched on the bare id, not the qualified reference: the pod records where the
- * bytes came from, which may be a peer host serving the same pack, and showing
- * "Install" for something already installed is worse than the rare false match.
+ * Harder than it looks, because a hit and an installed pack are named by two
+ * different things. The registry lists a pack by its **handle** — the pod builds
+ * the reference from `handle`, then `slug`, then the host's `id` — while the pod
+ * records what it installed under the id in the pack's own `agent_pack.json`.
+ * Those agree for most packs and diverge for real ones: Axoniac lists buildr.space
+ * as `@buildrspace`, and the archive calls itself `buildr-space`, so a strict
+ * comparison said "not installed" no matter how many times it was installed.
+ *
+ * Three ways to match, in descending order of authority:
+ *
+ *  1. `aliases` — the pack's own id, learned from its manifest or from the install
+ *     report. The pod's own word, so it is exact.
+ *  2. the hit's id or reference, for the packs whose two names do agree.
+ *  3. ids that differ only in `-` and `_`, which is what makes the card right
+ *     before anyone opens the sheet that would fetch the manifest.
+ *
+ * (3) can in principle match two packs that really are distinct. That trade was
+ * already made here and is still the right way round: offering "Install" for
+ * something already installed is the failure people actually hit.
  */
-export function isInstalled(hit: SearchHit, installed: InstalledPack[]): boolean {
-  return installed.some((p) => p.id === hit.id || p.id === hit.reference)
+export function findInstalled(
+  hit: SearchHit,
+  installed: InstalledPack[],
+  aliases?: Record<string, string>,
+): InstalledPack | undefined {
+  const own = aliases?.[hit.reference]
+  const loose = squash(hit.id)
+  return installed.find(
+    (p) => p.id === own || p.id === hit.id || p.id === hit.reference || squash(p.id) === loose,
+  )
+}
+
+/** Is this hit already on the pod? */
+export function isInstalled(
+  hit: SearchHit,
+  installed: InstalledPack[],
+  aliases?: Record<string, string>,
+): boolean {
+  return !!findInstalled(hit, installed, aliases)
 }
 
 /** Version on the pod, when it differs from what the host is offering. */
-export function updateAvailable(hit: SearchHit, installed: InstalledPack[]): string | null {
-  const mine = installed.find((p) => p.id === hit.id)
+export function updateAvailable(
+  hit: SearchHit,
+  installed: InstalledPack[],
+  aliases?: Record<string, string>,
+): string | null {
+  const mine = findInstalled(hit, installed, aliases)
   if (!mine?.version || !hit.version) return null
   return mine.version === hit.version ? null : mine.version
+}
+
+/** An id with its separators removed: `buildr-space`, `buildr_space` and
+ *  `buildrspace` are one pack wearing three names. */
+function squash(id: string): string {
+  return id.replace(/[-_]/g, '')
 }
 
 /**

@@ -1,5 +1,6 @@
 import { AlertTriangle, BadgeCheck, Check, Download, ExternalLink, Loader2, X } from 'lucide-react'
 import { usePacks } from '@/stores/packs'
+import { isInstalled } from './registryState'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import type { PackManifest, SearchHit } from '@/types'
@@ -20,13 +21,18 @@ import type { PackManifest, SearchHit } from '@/types'
  * service it was built around.
  */
 export function PackDetail() {
-  const { viewing, manifests, manifestError, podKeys, installing, installed, view, install } = usePacks()
+  const { viewing, manifests, manifestError, packIds, podKeys, installing, installed, error: installError, view, install } =
+    usePacks()
   if (!viewing) return null
 
   const manifest = manifests[viewing.reference]
   const error = manifestError[viewing.reference]
   const busy = !!installing[viewing.reference]
-  const already = installed.some((p) => p.id === viewing.id)
+  // The same judgement the card behind this sheet makes. Comparing `p.id` to the
+  // hit's id alone was wrong for any pack whose handle on the host differs from
+  // the id in its own manifest — this sheet would offer Install forever, and each
+  // press would quietly reinstall a pack that was already there.
+  const already = isInstalled(viewing, installed, packIds)
 
   return (
     <>
@@ -81,6 +87,15 @@ export function PackDetail() {
             <Body manifest={manifest} podKeys={podKeys} />
           )}
         </div>
+
+        {/* An install that failed while this sheet is open has nowhere else to be
+            seen: the list's error line is behind the overlay. Silence here reads
+            as "nothing happened", which is the one thing that did not happen. */}
+        {installError && !busy && (
+          <div className="border-t border-line px-5 pt-3">
+            <Note tone="bad" text={installError} />
+          </div>
+        )}
 
         <footer className="flex items-center gap-3 border-t border-line px-5 py-3">
           <span className="tnum text-[11.5px] text-ink-3">

@@ -477,7 +477,13 @@ impl PodConnection {
 
     pub async fn list_agent_packs(&self) -> anyhow::Result<Vec<InstalledAgentPack>> {
         let wrapped: AgentPackList = self.get("/agent-packs").await?;
-        Ok(wrapped.agent_packs)
+        // The pod nests each pack's own fields under `manifest`; callers want one
+        // flat pack. See `InstalledAgentPack::flattened`.
+        Ok(wrapped
+            .agent_packs
+            .into_iter()
+            .map(InstalledAgentPack::flattened)
+            .collect())
     }
 
     /// Integration packs installed on this pod — the HTTP-tool packs, a

@@ -81,11 +81,35 @@ describe('installed state', () => {
     expect(isInstalled(hit({ id: 'other', reference: 'axoniac:@other' }), installed)).toBe(false)
   })
 
+  it('recognises a pack whose handle on the host is not its own id', () => {
+    // The real case: Axoniac lists buildr.space as `@buildrspace`, its archive
+    // calls itself `buildr-space`, and the pod files it under the archive's id.
+    // Before this, the card offered Install forever and every press reinstalled.
+    const podHas: InstalledPack[] = [{ id: 'buildr-space', version: '0.1.1', presets: ['buildr-space'] }]
+    const listed = hit({ id: 'buildrspace', reference: 'axoniac:@buildrspace', version: '0.1.1' })
+
+    // From the manifest or the install report, which is the pod's own word.
+    expect(isInstalled(listed, podHas, { 'axoniac:@buildrspace': 'buildr-space' })).toBe(true)
+    // And without one, so the card is right before anyone opens the sheet.
+    expect(isInstalled(listed, podHas)).toBe(true)
+  })
+
+  it('does not call two genuinely different packs the same one', () => {
+    const podHas: InstalledPack[] = [{ id: 'amy_kitchen', presets: [] }]
+    expect(isInstalled(hit({ id: 'amy_garden', reference: 'axoniac:@amy_garden' }), podHas)).toBe(false)
+  })
+
   it('reports the installed version only when it differs', () => {
     expect(updateAvailable(hit({ version: '1.1.0' }), installed)).toBe('1.0.0')
     expect(updateAvailable(hit({ version: '1.0.0' }), installed)).toBeNull()
     // Nothing to compare is not an update.
     expect(updateAvailable(hit(), installed)).toBeNull()
+  })
+
+  it('offers an update for a pack matched through its alias', () => {
+    const podHas: InstalledPack[] = [{ id: 'buildr-space', version: '0.1.0', presets: [] }]
+    const listed = hit({ id: 'buildrspace', reference: 'axoniac:@buildrspace', version: '0.1.1' })
+    expect(updateAvailable(listed, podHas, { 'axoniac:@buildrspace': 'buildr-space' })).toBe('0.1.0')
   })
 })
 

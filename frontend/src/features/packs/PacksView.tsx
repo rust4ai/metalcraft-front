@@ -17,7 +17,7 @@ import type { SearchHit } from '@/types'
  * social discovery host; packs.metalcraftai.com is a peer, not an upstream.
  */
 export function PacksView() {
-  const { registries, active, connection, results, installed, query, loading, installing, error, load, select, search, connect, install, view } =
+  const { registries, active, connection, results, installed, packIds, query, loading, installing, error, load, select, search, connect, install, view } =
     usePacks()
   const loadFleet = useFleet((s) => s.load)
 
@@ -111,8 +111,8 @@ export function PacksView() {
                 hit={hit}
                 index={i}
                 onOpen={() => void view(hit)}
-                installed={isInstalled(hit, installed)}
-                previousVersion={updateAvailable(hit, installed)}
+                installed={isInstalled(hit, installed, packIds)}
+                previousVersion={updateAvailable(hit, installed, packIds)}
                 blocked={blockedByTrust(connection?.trust, hit.verified)}
                 busy={!!installing[hit.reference]}
                 onInstall={async (allowUnverified) => {

@@ -30,6 +30,12 @@ interface PacksState {
   /** The pack the detail sheet is showing, if any. */
   viewing: SearchHit | null
   manifests: Record<string, PackManifest>
+  /** `reference` → the id the pack calls itself, which is the id the pod files it
+   *  under. Not the same string as the reference's handle for every pack, and
+   *  where they differ nothing else can tell that a pack is installed — see
+   *  `findInstalled`. Learned from a manifest or an install report; both are the
+   *  pod quoting the pack rather than the host naming it. */
+  packIds: Record<string, string>
   manifestError: Record<string, string>
   /** The pod's key names, for the requirements checklist. Names only — a value
    *  never crosses into the webview (PLAN §2). */
@@ -50,6 +56,7 @@ export const usePacks = create<PacksState>((set, get) => ({
   viewing: null,
   manifests: {},
   manifestError: {},
+  packIds: {},
   podKeys: [],
 
   /**
@@ -72,6 +79,7 @@ export const usePacks = create<PacksState>((set, get) => ({
       ])
       set({
         manifests: { ...get().manifests, [hit.reference]: manifest },
+        packIds: manifest.id ? { ...get().packIds, [hit.reference]: manifest.id } : get().packIds,
         podKeys: stored.map((k) => k.name),
       })
     } catch (e) {
@@ -138,10 +146,18 @@ export const usePacks = create<PacksState>((set, get) => ({
   install: async (hit, allowUnverified = false) => {
     set({ installing: { ...get().installing, [hit.reference]: true }, error: null })
     try {
-      await packs.install(hit.reference, allowUnverified)
+      // The pod's install report names the id it filed the pack under. Keeping it
+      // is what lets the button flip to "Installed" for a pack whose handle on the
+      // host is not the id in its own manifest.
+      const report = await packs.install(hit.reference, allowUnverified)
+      const id = (report as { id?: unknown } | null)?.id
       // Re-read rather than assume: the pod is the authority on what it now has,
       // and an install can resolve to a different version than the hit showed.
-      set({ installed: await packs.installed() })
+      const installed = await packs.installed()
+      set({
+        installed,
+        packIds: typeof id === 'string' && id ? { ...get().packIds, [hit.reference]: id } : get().packIds,
+      })
       return true
     } catch (e) {
       set({ error: String(e) })
