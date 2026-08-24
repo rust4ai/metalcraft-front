@@ -172,6 +172,22 @@ impl PodConnection {
         Self::decode(resp, path).await
     }
 
+    async fn put<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> anyhow::Result<T> {
+        let resp = self
+            .client
+            .put(self.url(path))
+            .bearer_auth(self.bearer())
+            .json(body)
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        Self::decode(resp, path).await
+    }
+
     async fn delete_path(&self, path: &str) -> anyhow::Result<()> {
         let resp = self
             .client
@@ -379,6 +395,20 @@ impl PodConnection {
         self.get("/flow-runs").await
     }
 
+    /// Create or replace a flow.
+    ///
+    /// Takes the graph as raw JSON rather than a typed `SavedFlow`: the shape is
+    /// the `metalcraft-flows` crate's, this client does not own it, and an editor
+    /// round-trips what the pod sent it. The pod validates — a bad cron is a 400
+    /// with its own message, which is the one worth showing.
+    pub async fn put_flow(
+        &self,
+        flow_id: &str,
+        flow: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.put(&format!("/flows/{flow_id}"), flow).await
+    }
+
     /// Run a flow now.
     ///
     /// Omitting `instance_id` lets the pod resolve the flow's armed agent, so
@@ -413,7 +443,8 @@ impl PodConnection {
         handle: &str,
     ) -> anyhow::Result<FlowRunSummary> {
         let body = serde_json::json!({ "handle": handle });
-        self.post(&format!("/flow-runs/{run_id}/resume"), &body).await
+        self.post(&format!("/flow-runs/{run_id}/resume"), &body)
+            .await
     }
 
     /// Arm a schedule — **the act that creates the agent**. The pod mints a
@@ -531,7 +562,13 @@ impl PodConnection {
         self.post_query(
             "/agent-packs/install",
             &[
-                ("reference", reference.to_string()),
+                // `ref`, not `reference`: the pod's query field is
+                // `#[serde(rename = "ref")]`. Sending the long name meant the pod
+                // saw *no* source and answered "provide ?url=, ?path=, or upload
+                // the .agentpack as the request body" — a message that never
+                // mentions the parameter the caller actually meant, which is why
+                // this survived a whole registry browser being built on it.
+                ("ref", reference.to_string()),
                 ("allow_unverified", allow_unverified.to_string()),
             ],
         )
