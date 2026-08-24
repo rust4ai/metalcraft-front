@@ -538,6 +538,28 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     and an SSE frame (or reusing the chat bus, since inbound already flows
     through the pod) would remove it. *(agent, small — cosmetic)*
 
+17. **A channel's agent cannot be set from anywhere.** `Channel` carries
+    `agent_preset`, `persona` and `model`, and inbound *routing honours them* —
+    `route_gateway_inbound` resolves the channel's preset and binds a persistent
+    instance to it (`workshop_api.rs:6588`), with a comment explaining that
+    hard-wiring `DEFAULT_PRESET` made "installing an agent pack and pointing a
+    number at it" inexpressible. But **nothing writes those three fields.**
+    `CreateChannelRequest` is `{name, url, secret, slug}` and
+    `UpdateChannelRequest` is `{name, url, enabled, secret}`; the only writer is
+    `channels::set_link`, and all three of its callers in
+    `metalcraft_gateway.rs` pass `agent_preset: None` on purpose — a gateway
+    connect does not choose the agent. So the only way to point a number at a
+    specific agent today is hand-editing `<data>/channels.json` on the pod, and
+    the reason that *survives* a reconnect is that `set_link` overwrites only
+    when the value is `Some`. The field is built to be set by something that was
+    never written. **Fix: accept the three on `PUT /channels/{slug}`** (and the
+    built-in `metalcraft` channel has to become editable in that one respect, or
+    the only channel most people have is the only one that cannot choose its
+    agent). This is the difference between "my pod has a phone number" and
+    "texting *this* number reaches *that* agent, with its own persona and its own
+    memory" — and it is the one item on the per-channel list that is not simply
+    missing UI. *(agent, small — then a channels surface here)*
+
 ## 13. Testing & release
 
 - **Rust:** unit tests on `front-core` models + a mock pod (`axum` test server) for the SSE
