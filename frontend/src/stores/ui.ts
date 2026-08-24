@@ -15,6 +15,7 @@ export type View =
   | { kind: 'packs' }
   | { kind: 'automations' }
   | { kind: 'settings' }
+  | { kind: 'errors' }
 
 export interface Tab {
   /** Derived from the view, never generated — see `keyFor`. */

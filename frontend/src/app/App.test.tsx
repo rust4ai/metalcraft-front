@@ -128,6 +128,58 @@ describe('App', () => {
     expect(screen.queryByText('This pod cannot think yet')).toBeNull()
   })
 
+  it('offers the error log beside the gear, and opens it', async () => {
+    // The pair is the point: both answer "why is the app behaving like this",
+    // and the log is only findable because it sits where someone already goes
+    // looking. A degradation changes nothing else on screen.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.30.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [],
+      inference_status: { ready: true, credential: 'environment', gateway: true },
+      list_diagnostics: [
+        {
+          id: 1,
+          at: Date.now(),
+          level: 'warn',
+          source: 'octaweave_status',
+          message: 'the pod would not list its integrations',
+          detail: 'connection refused',
+          count: 1,
+        },
+      ],
+    })
+
+    const log = await screen.findByRole('button', { name: /^Error log/ })
+    const gear = screen.getByRole('button', { name: 'Settings' })
+    expect(gear.parentElement).toBe(log.parentElement)
+
+    await userEvent.click(log)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Error log' })).toBeTruthy())
+    expect(screen.getByText(/would not list its integrations/)).toBeTruthy()
+  })
+
+  it('survives a core that cannot answer the error log at all', async () => {
+    // `list_diagnostics` is unstubbed here, so it throws. A log that takes the
+    // shell down with it would be worse than no log.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.30.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [],
+      inference_status: { ready: true, credential: 'environment', gateway: true },
+    })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    expect(screen.getByRole('button', { name: /^Error log/ })).toBeTruthy()
+  })
+
   it('sends a pod to setup when nothing can pay for a turn', async () => {
     // No key of its own and no premium to bill the gateway to: the turn would
     // fail with `not_premium`, so a fleet view really is a dead end.

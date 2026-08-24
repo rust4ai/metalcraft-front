@@ -1,4 +1,4 @@
-import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, Settings, Store, X } from 'lucide-react'
+import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, ScrollText, Settings, Store, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
@@ -21,6 +21,8 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
       return 'Source'
     case 'settings':
       return 'Settings'
+    case 'errors':
+      return 'Error log'
     case 'session':
       return nameOf(view.instanceId) ?? 'Agent'
   }
@@ -39,6 +41,8 @@ function TabIcon({ view }: { view: View }) {
       return <KeyRound className={cls} />
     case 'settings':
       return <Settings className={cls} />
+    case 'errors':
+      return <ScrollText className={cls} />
     case 'session':
       return <Bot className={cls} />
   }

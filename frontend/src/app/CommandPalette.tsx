@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
-import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, Settings, Sparkles, Store } from 'lucide-react'
+import { Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, ScrollText, Settings, Sparkles, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useLayout } from '@/stores/layout'
 import { useUi } from '@/stores/ui'
@@ -113,6 +113,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
           <Item value="go automations flows schedules cron runs" onSelect={() => run(() => go({ kind: 'automations' }))} icon={<Clock className="h-3.5 w-3.5" />} label="Automations" />
           <Item value="go interface source key provider" onSelect={() => run(() => go({ kind: 'source' }))} icon={<KeyRound className="h-3.5 w-3.5" />} label="Interface source" />
           <Item value="go settings keys octaweave connection" onSelect={() => run(() => go({ kind: 'settings' }))} icon={<Settings className="h-3.5 w-3.5" />} label="Settings" hint="keys · Octaweave" />
+          <Item value="go errors error log diagnostics failures problems why" onSelect={() => run(() => go({ kind: 'errors' }))} icon={<ScrollText className="h-3.5 w-3.5" />} label="Error log" hint="what failed" />
         </Group>
 
         <Group heading="View">

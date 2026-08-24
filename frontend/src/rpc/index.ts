@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
+import type { Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, OctaweaveConnectOutcome, OctaweaveStatus, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -43,6 +43,17 @@ export const octaweave = {
    *  is still known — otherwise "disconnect" leaves a live credential behind. */
   disconnect: (workspace?: string) =>
     call<OctaweaveStatus>('octaweave_disconnect', { workspace: workspace ?? null }),
+}
+
+/**
+ * The core's half of the error log — what commands over there swallowed instead
+ * of returning. Deliberately the one surface that never touches a pod: a log you
+ * can only read while the connection is healthy is a log you cannot read when
+ * you need it.
+ */
+export const diagnostics = {
+  list: () => call<Diagnostic[]>('list_diagnostics'),
+  clear: () => call<void>('clear_diagnostics'),
 }
 
 export const account = {

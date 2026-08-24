@@ -10,6 +10,7 @@
 
 pub mod auth;
 pub mod chat;
+pub mod diagnostics;
 pub mod fleet;
 pub mod flows;
 pub mod keys;

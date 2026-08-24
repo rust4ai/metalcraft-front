@@ -114,7 +114,13 @@ export const useSettings = create<SettingsState>((set, get) => ({
       set({ octaweave: await octaweave.status() })
     } catch {
       // The card is cosmetic; a pod that will not answer is a connection problem
-      // that the rest of the app is already reporting.
+      // that the rest of the app is already reporting — so this still does not
+      // interrupt anyone. It is not silent any more, though: the card keeps
+      // whatever it last knew and goes on rendering it as current, and the error
+      // log is where that shows up as a stale readout rather than a fresh one.
+      //
+      // Nothing is reported here by hand: the transport's sink already saw the
+      // rejection on its way past.
     }
   },
 

@@ -2,6 +2,7 @@
 // stray terminal behind the app.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod diag;
 #[cfg(feature = "dev-rpc")]
 mod dev_rpc;
 mod rpc;
@@ -120,6 +121,8 @@ fn main() {
             rpc::chat::compact_chat,
             rpc::chat::clear_chat,
             rpc::chat::watch_chat,
+            rpc::diagnostics::list_diagnostics,
+            rpc::diagnostics::clear_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running metalcraft-front");

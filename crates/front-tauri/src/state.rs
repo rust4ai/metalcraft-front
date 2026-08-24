@@ -15,6 +15,8 @@ use front_core::PodConnection;
 use parking_lot::Mutex;
 use serde::Serialize;
 
+use crate::diag::DiagLog;
+
 /// What the renderer is allowed to know about the connection: a name and a URL,
 /// never the Bearer.
 #[derive(Debug, Clone, Serialize)]
@@ -45,9 +47,18 @@ pub struct AppState {
     /// simply "the one"; it exists so the renderer never has to pass a slug it
     /// does not care about.
     active: Mutex<Option<String>>,
+    /// What commands swallowed rather than returned. Lives here, next to the
+    /// connection, because the degradations worth recording are the ones that
+    /// happen when the connection is the thing misbehaving.
+    diag: DiagLog,
 }
 
 impl AppState {
+    /// Where a command reports something it decided not to fail over.
+    pub fn diag(&self) -> &DiagLog {
+        &self.diag
+    }
+
     pub fn plane(&self) -> ControlPlane {
         ControlPlane::default()
     }

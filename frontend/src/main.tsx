@@ -4,6 +4,7 @@ import { App } from '@/app/App'
 import { setTransport } from '@/rpc/transport'
 import { tauriTransport } from '@/rpc/transport/tauri'
 import { httpTransport } from '@/rpc/transport/http'
+import { captureDiagnostics } from '@/stores/diagnostics'
 import '@/index.css'
 
 // The entry point — not App — chooses the transport, so the component tree is
@@ -15,6 +16,12 @@ import '@/index.css'
 // inlines `import.meta.env` at build time and nothing sets this in a release.
 const devRpc = import.meta.env.VITE_DEV_RPC
 setTransport(devRpc ? httpTransport(devRpc) : tauriTransport)
+
+// After the transport, before the tree: the error log's sink hangs off the
+// transport, and a failure during the first render is exactly the kind this is
+// meant to catch. The Rust-side boot probe still writes to the terminal — this
+// is the same information somewhere a user can reach it.
+captureDiagnostics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

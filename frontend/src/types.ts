@@ -325,6 +325,32 @@ export interface Integration {
   requires_env: string[]
 }
 
+/**
+ * One line in the error log.
+ *
+ * The same shape whichever half produced it — the core's `list_diagnostics` or
+ * the renderer's own capture — because the person reading it does not care
+ * which side of the IPC boundary a failure happened on, only what broke.
+ */
+export interface Diagnostic {
+  id: string
+  /** Milliseconds since the epoch. */
+  at: number
+  level: 'warn' | 'error'
+  /** Where it happened: a command name, or a renderer surface. */
+  source: string
+  /** What it means, in a sentence. */
+  message: string
+  /** The underlying error, kept apart so `message` stays readable. */
+  detail?: string | null
+  /** Occurrences collapsed into this line. 1 is the common case. */
+  count: number
+  /** Which half recorded it. The log labels core entries, because "the app
+   *  never heard about this" and "the core decided not to tell you" are
+   *  different problems with the same symptom. */
+  origin: 'core' | 'app'
+}
+
 /** Where the Octaweave connection stands, as the settings card renders it. */
 export interface OctaweaveStatus {
   key_present: boolean

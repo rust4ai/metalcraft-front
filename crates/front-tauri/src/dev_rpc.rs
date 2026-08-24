@@ -157,6 +157,15 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "agent_info" => j(app.conn(None)?.info().await),
         "inference_status" => j(app.conn(None)?.inference_status().await),
 
+        // The error log. Process state, no pod involved — which is exactly why
+        // it is mirrored while the octaweave commands beside it are not: this is
+        // where a browser-driven run finds out what the core swallowed.
+        "list_diagnostics" => ok(serde_json::to_value(app.diag().entries()).unwrap_or(json!([]))),
+        "clear_diagnostics" => {
+            app.diag().clear();
+            ok(Value::Null)
+        }
+
         // Keys.
         "list_keys" => j(app.conn(None)?.list_keys().await),
         "save_key" => j(app

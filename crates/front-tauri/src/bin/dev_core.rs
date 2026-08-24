@@ -21,6 +21,11 @@
 
 #[path = "../dev_rpc.rs"]
 mod dev_rpc;
+// Same story as `state` below: this binary records nothing itself, it only
+// serves what a full app would have recorded.
+#[allow(dead_code)]
+#[path = "../diag.rs"]
+mod diag;
 // The GUI binary uses all of `AppState`; this one holds a pod connection and
 // nothing else, so the hub-facing helpers read as dead here. Allowed rather than
 // trimmed — they are not dead in the binary that ships.

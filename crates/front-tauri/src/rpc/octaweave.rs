@@ -51,7 +51,24 @@ pub async fn octaweave_status(state: State<'_>) -> Result<OctaweaveStatus, Strin
     // A pod that cannot list integrations is a connection problem, not an
     // "Octaweave is not installed" answer — but the card is cosmetic, so it
     // degrades to "not installed" rather than failing the whole settings page.
-    let integrations: Vec<Integration> = integrations.unwrap_or_default();
+    //
+    // That degradation is invisible on screen: an unanswered pod and a genuinely
+    // missing pack render the same "Key only" chip and the same Install button,
+    // and someone whose pack is already installed is invited to install it
+    // again. Dropping the error is the right call for the page and the wrong
+    // call for the person, so it goes to the log instead of nowhere.
+    let integrations: Vec<Integration> = match integrations {
+        Ok(list) => list,
+        Err(e) => {
+            state.diag().warn(
+                "octaweave_status",
+                "the pod would not list its integrations, so Octaweave shows as \
+                 'not installed' whether or not the pack is actually there",
+                Some(e.to_string()),
+            );
+            Vec::new()
+        }
+    };
     let pack = integrations.into_iter().find(|i| i.id == PACK_SLUG);
 
     Ok(OctaweaveStatus {
@@ -175,7 +192,22 @@ pub async fn octaweave_connect(
     if let Err(e) = octaweave::whoami(&minted.token).await {
         // The key exists on Octaweave and is about to be unreachable from here,
         // so take it back out rather than leaving a live one behind.
-        let _ = octaweave::revoke_key(&pat, &chosen.id, &minted.id).await;
+        //
+        // When even that fails, the credential is live in someone's workspace
+        // and no part of this app holds it — the failure the user most needs to
+        // hear about, and the one the returned error is not about.
+        if let Err(cleanup) = octaweave::revoke_key(&pat, &chosen.id, &minted.id).await {
+            state.diag().error(
+                "octaweave_connect",
+                format!(
+                    "a key was created in '{}' and could not be taken back — it is live \
+                     at Octaweave and nothing here holds it; delete it from that \
+                     workspace's Keys page",
+                    chosen.name
+                ),
+                Some(cleanup.to_string()),
+            );
+        }
         return Err(format!(
             "Octaweave issued a key that will not authenticate: {e}"
         ));
@@ -244,8 +276,29 @@ pub async fn octaweave_disconnect(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let (Some(ws), Some(pat)) = (workspace, SessionStore::pat()) {
-        octaweave::revoke_ours(&pat, &ws).await;
+    // Revocation needs both halves, and when either is missing "disconnect" has
+    // done only the local half: the key is gone from the pod and still live in
+    // the workspace. Nothing on screen distinguishes that from a clean
+    // disconnect, so the log is the only place it can be said.
+    match (workspace, SessionStore::pat()) {
+        (Some(ws), Some(pat)) => {
+            octaweave::revoke_ours(&pat, &ws).await;
+        }
+        (ws, pat) => state.diag().warn(
+            "octaweave_disconnect",
+            "the key was dropped from this pod but not revoked at Octaweave — it is \
+             still live there and has to be deleted from the workspace's Keys page",
+            Some(
+                if pat.is_none() {
+                    "not signed in to Metalcraft, so there was nothing to revoke it with"
+                } else if ws.is_none() {
+                    "the workspace this key belongs to is not known to this window"
+                } else {
+                    "unreachable"
+                }
+                .to_string(),
+            ),
+        ),
     }
 
     octaweave_status(state).await

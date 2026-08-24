@@ -4,6 +4,7 @@ import { SessionView } from '@/features/session/SessionView'
 import { PacksView } from '@/features/packs/PacksView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
 import { SettingsView } from '@/features/settings/SettingsView'
+import { ErrorLogView } from '@/features/diagnostics/ErrorLogView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
 import { NewAgentDialog } from '@/features/fleet/NewAgentDialog'
 import { useFleet } from '@/stores/fleet'
@@ -77,6 +78,8 @@ export function Shell() {
             <AutomationsView />
           ) : view.kind === 'settings' ? (
             <SettingsView />
+          ) : view.kind === 'errors' ? (
+            <ErrorLogView />
           ) : view.kind === 'source' ? (
             <SourceTab />
           ) : (

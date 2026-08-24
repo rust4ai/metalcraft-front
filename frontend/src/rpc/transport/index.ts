@@ -25,8 +25,41 @@ export function transport(): Transport {
   return active
 }
 
-export const call = <T,>(method: string, args?: Record<string, unknown>) =>
-  transport().call<T>(method, args)
+/**
+ * Every failed command, in one place.
+ *
+ * The error log needs to see failures the callers already handled — a store that
+ * catches and shows "could not load" has told the user *that* it broke and
+ * thrown away *what* broke. Wrapping here catches all of them without asking
+ * sixty call sites to remember, and rethrows unchanged so no existing handling
+ * changes behaviour.
+ *
+ * A registration hook rather than an import so this file keeps depending on
+ * nothing: `stores/diagnostics` imports the transport, never the other way
+ * round, and the boundary stays a boundary.
+ */
+type CallErrorSink = (method: string, error: unknown) => void
+
+let sink: CallErrorSink | null = null
+
+export function onCallError(fn: CallErrorSink | null) {
+  sink = fn
+}
+
+export const call = async <T,>(method: string, args?: Record<string, unknown>): Promise<T> => {
+  try {
+    return await transport().call<T>(method, args)
+  } catch (e) {
+    // A throwing sink must not turn a reported failure into a second, worse
+    // one — the caller is owed its own error, not the logger's.
+    try {
+      sink?.(method, e)
+    } catch {
+      // Nothing to report it to; reporting is what just failed.
+    }
+    throw e
+  }
+}
 
 export const listen = <T,>(channel: string, onEvent: (payload: T) => void) =>
   transport().listen<T>(channel, onEvent)
