@@ -75,3 +75,17 @@ pub async fn gateway_disconnect(state: State<'_>) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())
 }
+
+/// Give the number back — unregister at the gateway *and* disconnect here.
+///
+/// `false` means the pod predates the endpoint. There is nothing to fall back
+/// to: doing this from the desktop without the pod would mean holding the
+/// account PAT, which is the thing this surface exists not to do.
+#[tauri::command]
+pub async fn gateway_unregister(state: State<'_>) -> Result<bool, String> {
+    state
+        .conn(None)?
+        .gateway_unregister()
+        .await
+        .map_err(|e| e.to_string())
+}

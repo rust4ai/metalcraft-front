@@ -80,6 +80,10 @@ interface SettingsState {
   clearGatewayPending: () => void
   connectGateway: () => Promise<void>
   disconnectGateway: () => Promise<void>
+  /** Give the number back. Answers `false` when the pod is too old to have the
+   *  endpoint, which the card has to say out loud — there is no fallback from
+   *  here, and a silent no-op would read as success. */
+  unregisterGatewayNumber: () => Promise<boolean>
 }
 
 /**
@@ -278,6 +282,21 @@ export const useSettings = create<SettingsState>((set, get) => ({
       await get().loadGateway()
     } catch (e) {
       set({ gatewayBusy: false, gatewayError: String(e) })
+    }
+  },
+
+  unregisterGatewayNumber: async () => {
+    set({ gatewayBusy: true, gatewayError: null })
+    try {
+      const supported = await gateway.unregister()
+      // The pending code goes with it: the registration it belonged to is gone,
+      // so texting it would do nothing.
+      set({ gatewayBusy: false, gatewayPending: supported ? null : get().gatewayPending })
+      await get().loadGateway()
+      return supported
+    } catch (e) {
+      set({ gatewayBusy: false, gatewayError: String(e) })
+      return true
     }
   },
 }))

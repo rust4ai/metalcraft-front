@@ -202,6 +202,56 @@ describe('GatewayCard', () => {
     expect(screen.getByLabelText('Your phone number')).toBeTruthy()
   })
 
+  it('offers to give the number back, asks first, and takes the pending code with it', async () => {
+    // Distinct from Disconnect: this one ends the account's registration, and
+    // nothing here undoes it.
+    const { calls } = await mount({
+      gateway_status: [connected, base],
+      gateway_unregister: true,
+    })
+    await waitFor(() => expect(screen.getByText('Connected')).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: 'Give the number back' }))
+
+    // Asked, not done.
+    expect(screen.getByText(/Release \+15550199 at the gateway\?/)).toBeTruthy()
+    expect(calls.some((c) => c.method === 'gateway_unregister')).toBe(false)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Release it' }))
+    await waitFor(() => expect(screen.getByText('Not set up')).toBeTruthy())
+    expect(calls.some((c) => c.method === 'gateway_unregister')).toBe(true)
+    // And it is the *other* call — disconnect leaves the registration standing.
+    expect(calls.some((c) => c.method === 'gateway_disconnect')).toBe(false)
+  })
+
+  it('offers it while merely registered too, not only while connected', async () => {
+    // The state where somebody believes they have already left: this pod is not
+    // connected, and the account still holds their number.
+    await mount({ gateway_status: verified })
+    await waitFor(() => expect(screen.getByText('Not connected')).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Give the number back' })).toBeTruthy()
+  })
+
+  it('says so when the pod is too old to release the number', async () => {
+    // `false` is not success. Silence here would leave someone believing they
+    // had given a number back that the gateway still holds.
+    await mount({ gateway_status: connected, gateway_unregister: false })
+    await waitFor(() => expect(screen.getByText('Connected')).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: 'Give the number back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Release it' }))
+
+    await waitFor(() => expect(screen.getByText(/too old to release the number/)).toBeTruthy())
+  })
+
+  it('keeps the number when the confirmation is declined', async () => {
+    const { calls } = await mount({ gateway_status: connected })
+    await waitFor(() => expect(screen.getByText('Connected')).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: 'Give the number back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+
+    expect(calls.some((c) => c.method === 'gateway_unregister')).toBe(false)
+    expect(screen.getByText('Connected')).toBeTruthy()
+  })
+
   it('warns that a pod with no public URL will receive by long-poll', async () => {
     await mount({ gateway_status: { ...verified, has_public_url: false } })
     await waitFor(() => expect(screen.getByText(/receive by long-poll/)).toBeTruthy())

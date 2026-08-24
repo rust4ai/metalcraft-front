@@ -399,6 +399,33 @@ impl PodConnection {
         Ok(())
     }
 
+    /// Give the number back: unregister at the gateway, and disconnect locally.
+    ///
+    /// The exit [`Self::gateway_disconnect`] deliberately is not. Disconnecting
+    /// stops this pod receiving; the account keeps the number, bound and
+    /// verified, which is what makes reconnecting free — and what makes leaving
+    /// impossible. A verified registration cannot be claimed by another account,
+    /// so a number nobody unregisters is a number nobody else can ever use.
+    ///
+    /// `Ok(false)` when the pod is too old to have the endpoint. The desktop has
+    /// no fallback to offer — it holds no account credential by design — so the
+    /// honest move is to say so rather than to leave a button that 404s.
+    pub async fn gateway_unregister(&self) -> anyhow::Result<bool> {
+        let resp = self
+            .client
+            .post(self.url("/gateway/metalcraft/unregister"))
+            .bearer_auth(self.bearer())
+            .json(&serde_json::json!({}))
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        let _: serde_json::Value = Self::decode(resp, "/gateway/metalcraft/unregister").await?;
+        Ok(true)
+    }
+
     pub async fn list_keys(&self) -> anyhow::Result<Vec<KeyEntry>> {
         self.get("/keys").await
     }

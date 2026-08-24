@@ -318,6 +318,13 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, 
                 gw.connected = false;
                 Some((StatusCode::OK, json!({ "connected": false })))
             }
+            // Unregister takes the registration with it — that is the whole
+            // difference from disconnect, and a fake that forgot it would let a
+            // test "leave" and still be registered.
+            ("POST", "unregister") => {
+                *gw = GatewayState::default();
+                Some((StatusCode::OK, json!({ "unregistered": true })))
+            }
             _ => None,
         };
     }

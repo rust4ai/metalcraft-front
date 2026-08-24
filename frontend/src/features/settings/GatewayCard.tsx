@@ -49,6 +49,7 @@ export function GatewayCard({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
     clearGatewayPending,
     connectGateway,
     disconnectGateway,
+    unregisterGatewayNumber,
   } = useSettings()
   const [number, setNumber] = useState('')
   /**
@@ -61,6 +62,10 @@ export function GatewayCard({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
    * nothing visible.
    */
   const [changingNumber, setChangingNumber] = useState(false)
+  /** Confirming the destructive one. Unregistering is not undoable by a click. */
+  const [confirmingExit, setConfirmingExit] = useState(false)
+  /** The pod is too old for `unregister`, and there is nothing else to offer. */
+  const [exitUnsupported, setExitUnsupported] = useState(false)
 
   useEffect(() => {
     void loadGateway()
@@ -222,9 +227,99 @@ export function GatewayCard({ pollMs = POLL_MS }: { pollMs?: number } = {}) {
               </p>
             </div>
           )}
+
+          {/* Leaving, as distinct from stopping. Offered whenever the gateway
+              holds a registration — including when this pod is disconnected,
+              which is exactly the state where somebody thinks they have already
+              left and the account still holds their number. */}
+          {status.registered && (
+            <Exit
+              busy={gatewayBusy}
+              confirming={confirmingExit}
+              unsupported={exitUnsupported}
+              number={status.active_number ?? null}
+              onAsk={() => setConfirmingExit(true)}
+              onCancel={() => setConfirmingExit(false)}
+              onConfirm={async () => {
+                const supported = await unregisterGatewayNumber()
+                setExitUnsupported(!supported)
+                setConfirmingExit(false)
+                setChangingNumber(false)
+              }}
+            />
+          )}
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * Give the number back.
+ *
+ * Deliberately separate from Disconnect, and deliberately quieter. Disconnect is
+ * "not this pod"; this is "not this account" — it releases the registration, a
+ * dedicated number back to the pool, and the managed integration with it. Both
+ * are worth having, and conflating them would make the reversible one feel as
+ * heavy as the permanent one.
+ *
+ * It asks first, because nothing here undoes it: getting the number back means
+ * registering and verifying by text again.
+ */
+function Exit({
+  busy,
+  confirming,
+  unsupported,
+  number,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean
+  confirming: boolean
+  unsupported: boolean
+  number: string | null
+  onAsk: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (unsupported) {
+    return (
+      <p className="mt-4 border-t border-line pt-3 text-[11.5px] text-ink-3">
+        This pod is too old to release the number. Upgrade the agent, or unregister from the iOS
+        app, which asks the gateway directly.
+      </p>
+    )
+  }
+  if (!confirming) {
+    return (
+      <div className="mt-4 border-t border-line pt-3">
+        <button
+          type="button"
+          onClick={onAsk}
+          className="text-[11.5px] text-ink-3 underline-offset-2 hover:text-ink-2 hover:underline"
+        >
+          Give the number back
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <p className="text-[12.5px] text-ink-2">
+        Release {number ?? 'your number'} at the gateway? Your account stops holding it, and
+        getting it back means registering and verifying by text again.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <Button size="sm" variant="danger" onClick={onConfirm} disabled={busy}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Release it
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Keep it
+        </Button>
+      </div>
+    </div>
   )
 }
 

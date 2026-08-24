@@ -205,6 +205,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .delete_key(need(args, "name")?)
             .await
             .map(|_| json!(null))),
+        "gateway_unregister" => j(app.conn(None)?.gateway_unregister().await),
 
         // Fleet.
         "list_instances" => j(app.conn(None)?.list_instances().await),

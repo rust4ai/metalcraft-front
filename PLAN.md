@@ -217,6 +217,15 @@ Device flow (§7) → PAT in keychain → pod list → auto-connect the single p
 "waking" state while the readiness poll runs. No pod → the *get a pod* hand-off (premium
 upsell / trial code), mirroring Axoniac's §10.2 "visitor with no pod" funnel.
 
+*Expanded 2026-08-24 into **[`LAUNCHPAD_PLAN.md`](LAUNCHPAD_PLAN.md)**, which owns that
+hand-off.* Sign-in is no longer a screen but a card on the Launchpad, because the door beside
+it — a pod you run yourself — needs no account and must not sit behind a demand for one. The
+no-pod case was this app's one dead end ("No pod on this account · Check again") while both
+things that could be done about it were a screen away: connecting a self-hosted pod, which
+was built but unreachable once you had signed in, and buying one, which was never built. A
+pod is **always something at a URL** — hub-minted token or static key, no local runtime,
+ever.
+
 ### 9.2 Bind an interface source  ← *the step that makes the agent able to think*
 An **interface source** is where completions come from. The wizard offers:
 
@@ -522,15 +531,23 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
     curl -sXPOST -d '{}' http://127.0.0.1:1421/rpc/list_flows | jq
     ```
 
-15. **The pod cannot un-register a phone number.** `metalcraft-agent` proxies
-    `status`, `register`, `connect` and `disconnect` — but not the gateway's
-    `POST /api/v1/phone/unregister`, so a desktop that reaches only the pod can
-    disconnect a channel and cannot give a number back. It is a small gap in
-    practice: registering upserts on the account, so *changing* a number works,
-    and disconnect stops delivery. What is missing is the clean exit — leaving
-    the ecosystem without the gateway still holding a number the user
-    registered. Add `POST /api/v1/gateway/metalcraft/unregister` alongside the
-    four that exist. *(agent, small)*
+15. ~~**The pod cannot un-register a phone number.**~~ **BUILT** (agent working
+    tree): `POST /api/v1/gateway/metalcraft/unregister` now sits alongside the
+    four that existed, and the card offers **Give the number back** wherever the
+    gateway holds a registration — including while this pod is *disconnected*,
+    which is exactly the state where somebody believes they have already left.
+    It proxies the gateway's `phone/unregister` with the pod's token and then
+    disconnects locally, and the local half is not optional: deleting the
+    registration while the channel stays enabled would leave the pod claiming a
+    connection whose account-side half no longer exists. Original diagnosis kept
+    because it explains why the two buttons are different: disconnect is local
+    and reversible, so the account went on holding the number — bound and
+    verified, therefore unclaimable by anyone else — with a dedicated number out
+    of the pool and a managed integration still routing to a consumer that left.
+    The desktop had no way to end that, because ending it needs the account PAT
+    and this surface deliberately holds none. `false` from the command means the
+    pod predates the endpoint, and the card says so rather than reporting a
+    release that did not happen.
 16. **Verification is only observable by polling.** A number goes verified when a
     person texts a code back to Twilio; nothing pushes that anywhere, so both
     clients sit in a loop asking `/gateway/metalcraft/status`. It is 5s for

@@ -116,6 +116,9 @@ export const gateway = {
   /** Stop receiving. The number stays registered, so reconnecting needs no
    *  second verification. */
   disconnect: () => call<void>('gateway_disconnect'),
+  /** Give the number back: unregister at the gateway *and* disconnect here.
+   *  `false` = the pod is too old to have the endpoint. */
+  unregister: () => call<boolean>('gateway_unregister'),
 }
 
 export const keys = {
