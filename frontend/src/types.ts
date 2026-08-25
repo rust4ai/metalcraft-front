@@ -443,6 +443,29 @@ export type ConnectOutcome =
   | { kind: 'connected'; connection: ConnectionInfo }
 
 /**
+ * What premium costs, as the hub reports it (`GET /billing/plan`).
+ *
+ * Minor units, because that is Stripe's unit and rounding on the way through is
+ * how a price becomes a different price. Priced by the hub from Stripe rather
+ * than written here — a desktop that quoted its own number would be a fourth
+ * place for the price to be wrong, and the one a customer checks against their
+ * invoice.
+ */
+export interface Plan {
+  amount: number
+  currency: string
+  interval: string | null
+  promo: {
+    /** A discount is configured and switched on. */
+    offered: boolean
+    /** Whether *this* account may still take it. `null` = the hub could not tell
+     *  who was asking; the offer is per email, so it is unanswerable, not false. */
+    eligible: boolean | null
+    first_month_amount: number | null
+  }
+}
+
+/**
  * The Metalcraft Gateway — WhatsApp and SMS (PLAN §10.6).
  *
  * The pod's shape, not the gateway's: the channel and its webhook live on the

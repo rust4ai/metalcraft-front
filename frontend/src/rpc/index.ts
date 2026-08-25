@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { GatewayRegistration, GatewayStatus, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary } from '@/types'
+import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -23,6 +23,19 @@ export const pods = {
   connectUrl: (url: string, key: string) => call<AgentInfo>('connect_pod_url', { url, key }),
   info: () => call<AgentInfo>('agent_info'),
   active: () => call<ActivePod | null>('active_pod'),
+  /** Ask the control plane for a pod. Idempotent — safe to press twice. */
+  provision: () => call<Pod>('provision_pod'),
+}
+
+/** The upgrade path. Checkout is a hosted Stripe page, so the app's whole part
+ *  in it is opening a browser and watching for the result. */
+export const billing = {
+  /** `null` = the hub cannot say (too old, or billing unconfigured). Show
+   *  "Upgrade" with no figure rather than one you cannot stand behind. */
+  plan: () => call<Plan | null>('billing_plan'),
+  /** Opens the browser and returns the URL, so a failed hand-off degrades to a
+   *  link instead of a dead button. */
+  checkout: () => call<string>('open_checkout'),
 }
 
 /**

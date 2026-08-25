@@ -138,6 +138,14 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "session" | "refresh_session" | "logout" | "account_credits" | "report_boot" => {
             ok(Value::Null)
         }
+        // The funnel's hub half. The bridge has no keychain PAT and no browser,
+        // so it reports "nothing to sell you" rather than pretending: a null
+        // plan is the same answer a hub with billing unconfigured gives, and the
+        // card already renders it.
+        "billing_plan" => ok(Value::Null),
+        "open_checkout" | "provision_pod" => {
+            Err("the dev bridge has no account to upgrade or provision for".into())
+        }
         "list_pods" => ok(json!([])),
         "connect_pod_url" => {
             let url = need(args, "url")?.trim().trim_end_matches('/').to_string();

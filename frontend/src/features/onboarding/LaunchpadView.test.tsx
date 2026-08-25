@@ -121,10 +121,61 @@ describe('LaunchpadView', () => {
 
   it('sells a pod to an account without one, and not to one that has it', async () => {
     await mount({ session: { email: 'a@b.com', premium: false } })
-    expect(screen.getByText('Get Metalcraft premium')).toBeTruthy()
+    // No price from the hub yet, so the button says what it does and no more.
+    expect(await screen.findByText(/Get Metalcraft premium/)).toBeTruthy()
 
     cleanup()
     await mount({ session: { email: 'a@b.com', premium: false }, pods: [pod('amy'), pod('bo')] })
-    expect(screen.queryByText('Get Metalcraft premium')).toBeNull()
+    expect(screen.queryByText(/Get Metalcraft premium/)).toBeNull()
+  })
+
+  it('quotes the hub price, and the first month only to an account that can have it', async () => {
+    // The figure on this button is the figure on the invoice: it comes from the
+    // hub, which reads it from Stripe. Nothing here remembers a price.
+    const plan = {
+      amount: 800,
+      currency: 'usd',
+      interval: 'month',
+      promo: { offered: true, eligible: true, first_month_amount: 100 },
+    }
+    await mount({
+      session: { email: 'a@b.com', premium: false },
+      overrides: { billing_plan: plan },
+    })
+    expect(await screen.findByText(/\$1 first month, then \$8\/month/)).toBeTruthy()
+
+    // Same offer running, but this email has taken it before.
+    cleanup()
+    await mount({
+      session: { email: 'a@b.com', premium: false },
+      overrides: { billing_plan: { ...plan, promo: { ...plan.promo, eligible: false } } },
+    })
+    expect(await screen.findByText(/Get premium — \$8\/month/)).toBeTruthy()
+    expect(screen.queryByText(/first month/)).toBeNull()
+  })
+
+  it('watches for the upgrade instead of asking the user to come back', async () => {
+    const { calls } = await mount({
+      session: { email: 'a@b.com', premium: false },
+      overrides: { open_checkout: 'https://id.metalcraftai.com/billing/checkout' },
+    })
+    await userEvent.click(await screen.findByText(/Get Metalcraft premium/))
+
+    await waitFor(() => expect(screen.getByText(/Finish in your browser/)).toBeTruthy())
+    expect(calls).toContain('open_checkout')
+    // The URL is shown as well as opened, so a hand-off that silently failed is
+    // still a link rather than a spinner over nothing.
+    expect(screen.getByText('https://id.metalcraftai.com/billing/checkout')).toBeTruthy()
+  })
+
+  it('tells a paid account with no pod that one is coming, and offers to ask', async () => {
+    // Not a sale. Offering an upgrade here would be the app failing to notice it
+    // had already been paid.
+    const { calls } = await mount({ session: { email: 'a@b.com', premium: true }, pods: [] })
+    expect(screen.getByText('Premium is on this account')).toBeTruthy()
+    expect(screen.queryByText(/Get Metalcraft premium/)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: /Provision my pod/ }))
+    await waitFor(() => expect(calls).toContain('provision_pod'))
   })
 })

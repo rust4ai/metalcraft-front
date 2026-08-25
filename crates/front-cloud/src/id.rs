@@ -60,6 +60,36 @@ pub struct Credits {
     pub micro_credits: i64,
 }
 
+/// What premium costs, as the hub reports it.
+///
+/// Minor units, because that is what Stripe deals in and rounding on the way
+/// through is how a price becomes a different price. `promo.eligible` is `None`
+/// when the hub could not tell who was asking — the first month at the promo
+/// price is *per email*, so it is unanswerable rather than false.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Plan {
+    pub amount: i64,
+    #[serde(default)]
+    pub currency: String,
+    #[serde(default)]
+    pub interval: Option<String>,
+    #[serde(default)]
+    pub promo: PlanPromo,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct PlanPromo {
+    /// A discount is configured and switched on.
+    #[serde(default)]
+    pub offered: bool,
+    /// Whether *this* account may still take it.
+    #[serde(default)]
+    pub eligible: Option<bool>,
+    /// What the first invoice would come to.
+    #[serde(default)]
+    pub first_month_amount: Option<i64>,
+}
+
 pub struct IdClient {
     base: String,
 }
@@ -144,6 +174,44 @@ impl IdClient {
             anyhow::bail!("Metalcraft ID returned {}", resp.status());
         }
         Ok(Some(resp.json().await?))
+    }
+
+    /// What premium costs, and what it costs *this account* — `GET /billing/plan`.
+    ///
+    /// Priced by the hub from Stripe, never typed into this app. A desktop that
+    /// quoted its own number would be a fourth place for the price to be wrong,
+    /// and the one a customer checks against their invoice.
+    ///
+    /// `Ok(None)` on 404 or 503 — an older hub, or one with billing
+    /// unconfigured. The caller then offers a plain "Upgrade" rather than a
+    /// figure it cannot stand behind.
+    pub async fn plan(&self, pat: &str) -> anyhow::Result<Option<Plan>> {
+        let resp = http()
+            .get(format!("{}/billing/plan", self.base))
+            .bearer_auth(pat)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("could not reach Metalcraft ID: {e}"))?;
+        if matches!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::SERVICE_UNAVAILABLE
+        ) {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            anyhow::bail!("Metalcraft ID returned {}", resp.status());
+        }
+        Ok(Some(resp.json().await?))
+    }
+
+    /// Where this account upgrades. A browser trip, not an API call: checkout is
+    /// a hosted Stripe page and payment details must never pass through here.
+    ///
+    /// The hub's `/billing/checkout` is cookie-gated, so a browser that is not
+    /// signed in bounces through sign-in and resumes — which is correct, and the
+    /// reason this is a URL rather than something the app tries to do itself.
+    pub fn checkout_url(&self) -> String {
+        format!("{}/billing/checkout", self.base)
     }
 
     pub async fn me(&self, pat: &str) -> anyhow::Result<serde_json::Value> {

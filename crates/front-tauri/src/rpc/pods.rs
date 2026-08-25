@@ -3,7 +3,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use front_cloud::{Credits, IdClient, Pod, SessionStore, spawn_token_refresher};
+use front_cloud::{Credits, IdClient, Plan, Pod, SessionStore, spawn_token_refresher};
 use front_core::{AgentInfo, PodConnection};
 
 use crate::state::{AppState, ConnectedPod};
@@ -17,6 +17,48 @@ fn pat() -> Result<String, String> {
 #[tauri::command]
 pub async fn list_pods(state: State<'_>) -> Result<Vec<Pod>, String> {
     state.plane().pods(&pat()?).await.map_err(|e| e.to_string())
+}
+
+/// What premium costs, and what it costs this account.
+///
+/// `None` = the hub cannot say (too old, or billing unconfigured). The card then
+/// says "Upgrade" and no number, which is the only honest thing to do with a
+/// price you cannot stand behind.
+#[tauri::command]
+pub async fn billing_plan() -> Result<Option<Plan>, String> {
+    IdClient::default()
+        .plan(&pat()?)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Open the hub's checkout in a browser and hand back the URL.
+///
+/// A browser trip because checkout is a hosted Stripe page: card details must
+/// never touch this window, and the hub gates it on the shared session, so an
+/// unsigned-in browser bounces through sign-in and resumes. The URL is returned
+/// as well as opened, so a failed hand-off degrades to a link rather than a dead
+/// button — the same shape the Octaweave link trip settled on.
+#[tauri::command]
+pub async fn open_checkout() -> Result<String, String> {
+    let url = IdClient::default().checkout_url();
+    front_cloud::id::open_in_browser(&url);
+    Ok(url)
+}
+
+/// Ask the control plane for a pod.
+///
+/// Upgrading provisions one on its own now (the hub kicks it off from Stripe's
+/// webhook), so this is the fallback rather than the path: it covers a webhook
+/// that lost its race, retries that ran out, and anyone whose pod was deleted
+/// and who therefore has no upgrade left to trigger.
+#[tauri::command]
+pub async fn provision_pod(state: State<'_>) -> Result<Pod, String> {
+    state
+        .plane()
+        .provision(&pat()?)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Connect straight to a pod by URL and key, with no hub in the loop.

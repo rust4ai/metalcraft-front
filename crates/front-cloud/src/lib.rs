@@ -18,7 +18,7 @@ pub mod session;
 
 pub use buildr::buildr_base;
 pub use control_plane::{ControlPlane, Pod, spawn_token_refresher};
-pub use id::{Credits, DeviceLogin, IdClient, LoginStatus};
+pub use id::{Credits, DeviceLogin, IdClient, LoginStatus, Plan, PlanPromo};
 pub use octaweave::{WhoAmI, octaweave_base};
 pub use session::{Session, SessionStore};
 

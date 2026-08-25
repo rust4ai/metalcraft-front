@@ -66,6 +66,37 @@ impl ControlPlane {
         Ok(pods)
     }
 
+    /// Ask for a pod. Idempotent on the control plane's side — an existing pod is
+    /// re-affirmed rather than duplicated — so this is safe to press twice.
+    ///
+    /// Kept even though upgrading now provisions on its own: that path runs from
+    /// a Stripe webhook and can lose a race with an impatient user, the hub's
+    /// retries can run out, and somebody whose pod was deleted has no upgrade
+    /// left to trigger. A funnel whose last step can only be reached by paying
+    /// again is not a funnel.
+    ///
+    /// A 402 is the honest "this account has no premium", and is passed through
+    /// as its own message rather than a status code, because it is the one
+    /// failure here with a fix the user can act on.
+    pub async fn provision(&self, pat: &str) -> anyhow::Result<Pod> {
+        let resp = http()
+            .post(format!("{}/api/pods", self.base))
+            .bearer_auth(pat)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("could not reach the control plane: {e}"))?;
+        if resp.status() == reqwest::StatusCode::PAYMENT_REQUIRED {
+            anyhow::bail!("a premium membership is required to provision a pod");
+        }
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            anyhow::bail!("session expired — sign in to Metalcraft again");
+        }
+        if !resp.status().is_success() {
+            anyhow::bail!("control plane returned {}", resp.status());
+        }
+        Ok(resp.json().await?)
+    }
+
     pub async fn resolve(&self, pat: &str, pod_id: &str) -> anyhow::Result<Pod> {
         let pod = self
             .pods(pat)

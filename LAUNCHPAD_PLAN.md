@@ -91,7 +91,7 @@ Verification cannot be the pod's throwaway turn (PLAN §9.2) when there is no po
 the difference between the "custom" source being a hope and being a check, and it is the one
 compatibility question this product cannot answer from the client's side by reading docs.
 
-### 3.3 Get a Metalcraft pod — *the funnel, unbuilt*
+### 3.3 Get a Metalcraft pod — *built (L4)*
 Sign up → upgrade → a pod appears → connect, without leaving the app except for the browser
 trip that payment requires. The poll-while-the-user-is-in-the-browser shape is one this repo
 already trusts twice (device login, `ConnectionCard`'s link trip), so it is a pattern to
@@ -131,7 +131,7 @@ in front of someone whose single pod was going to connect anyway.
 | **L1** ✅ | `LaunchpadView` — pods list, connect-your-own, account/upsell cards; `App.tsx` routes `!info` here; `LoginView`/`ConnectView` fold in; reachable after onboarding as a tab | done — one component for both situations, gated on `info`: it takes the window when there is no pod and is the `{kind:'pods'}` tab when there is, reached from Settings and `⌘K`. Auto-connect stayed narrow (one hub pod, nothing connected) and cannot fire in the tab. The upsell is computed from state — a premium account with no pod is told it is a provisioning problem, not sold what it already bought. **`UPGRADE_URL` is a guess** (§6.14) and is the one line L4 replaces |
 | **L2** | Saved endpoints: named, keychain-stored keys, last-connected, reachability check, reconnect from the Launchpad | quit and reopen reconnects a self-hosted pod without retyping a key |
 | **L3** | Pre-staged interface source + `verify_source` in the core (`POST {base}/responses` probe) | a key entered with no pod is applied on connect, and a custom base URL is checked before it is trusted |
-| **L4** | The funnel: upgrade hand-off, post-upgrade poll → auto-connect, state-computed comparison, the self-hoster nudge | upgrading in the browser lands in the fleet without a manual re-check |
+| **L4** 🟢 | The funnel: upgrade hand-off, post-upgrade poll → auto-connect, state-computed comparison, the self-hoster nudge | **done, except the nudge.** The button is priced by the hub (`billing_plan` → Stripe), and quotes the first month at the promo price only to an account that can still take it — the offer is per email and the hub is the only thing that knows. Checkout opens in a browser and the card watches for five minutes: premium lands, the pod the webhook provisioned appears, auto-connect fires. A paid account with no pod is told one is coming and offered `provision_pod` when patience runs out. **Outstanding:** the self-hoster nudge in `Nudges.tsx` |
 | **L5** | Copy and docs: a copyable `docker run` for standing up your own pod, linked to the agent repo | someone with a VPS and no account is running in one paste |
 
 L1 is the whole dead-end fix. L2–L3 make the self-hosted path livable. L4 is the sales
@@ -141,14 +141,19 @@ funnel proper and is the one with upstream dependencies.
 
 L4 is guesswork without these. Numbered from §12's end.
 
-14. **No checkout hand-off.** `IdClient` has `start`, `poll`, `credits`, `me` — nothing that
-    upgrades an account or returns a URL that does. Either metalcraft-id grows one, or the
-    app hardcodes `https://metalcraftai.com/upgrade?from=desktop`, which works and tells us
-    nothing about attribution. *(id, small)*
-15. **Does premium provision a pod?** `ControlPlane` has `pods`/`resolve`/`mint` and no
-    create. If upgrading does not auto-provision, the post-upgrade poll has no end
-    condition and the funnel's last step is a shrug at a still-empty list. *(control
-    plane — answer before building L4)*
+14. ~~**No checkout hand-off.**~~ **WRONG, and it was already there.** metalcraft-id
+    serves `GET /billing/checkout?return=…` (hosted Stripe Checkout) and now
+    `GET /billing/plan` beside it. The hardcoded `UPGRADE_URL` guess is deleted;
+    `IdClient::plan` and `checkout_url` replace it. The lesson is the one this
+    repo keeps relearning: the gap was in what we had read, not in what existed.
+15. ~~**Does premium provision a pod?**~~ **It does now.** metalcraft-id's Stripe
+    webhook spawns a provisioning call to k3's new
+    `POST /internal/pods/provision` (service-secret authed, idempotent) with
+    bounded retries. So the post-upgrade poll has a real end condition: premium
+    lands, a pod follows, auto-connect takes it from there. `ControlPlane` also
+    grew `provision` — the button is the fallback for a webhook that lost a race
+    or a pod that was deleted, since a funnel whose last step can only be reached
+    by paying again is not a funnel.
 16. **`premium` is a boolean.** Never-subscribed, lapsed and mid-trial want different words
     and different buttons. A `plan` field on `/me` (`free|trial|premium` + renewal) makes
     the upsell truthful. *(id, small)*

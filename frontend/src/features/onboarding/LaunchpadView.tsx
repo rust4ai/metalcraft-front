@@ -1,6 +1,8 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, ExternalLink, Loader2, ServerCog, Sparkles } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
+import { billing, pods as podsRpc } from '@/rpc'
+import type { Plan } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { OwnPodCard } from './OwnPodCard'
@@ -173,48 +175,129 @@ function PodsCard({
   )
 }
 
-/**
- * Where the upgrade hand-off will live (LAUNCHPAD_PLAN §3.3, L4).
- *
- * Unverified, and deliberately in one place so L4 has one line to fix: nothing
- * in metalcraft-id returns a checkout URL today (LAUNCHPAD_PLAN §6.14), so this
- * is a guess at the website's own page rather than something the account service
- * told us.
- */
-const UPGRADE_URL = 'https://metalcraftai.com/upgrade?from=desktop'
+/** `800` → `$8`, `150` → `$1.50`. Whole amounts lose the decimals, because
+ *  "$8/mo" is what a person says and "$8.00/mo" is what a form says. */
+function money(minor: number, currency = 'usd'): string {
+  const major = minor / 100
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: Number.isInteger(major) ? 0 : 2,
+  }).format(major)
+}
 
 /**
- * The upsell — computed from state, not written as marketing.
+ * The upsell — computed from state, and now priced by the hub.
  *
- * The two readers want opposite things. Someone without premium is being sold
- * something. Someone *with* premium and no pod has already bought it and is
- * looking at a provisioning problem; offering them an upgrade button would be
- * the app failing to notice it had already been paid.
+ * Three readers, three different things to say. Someone without premium is being
+ * sold something, at a price this app asks for rather than remembers: the hub
+ * reads it from Stripe, so the figure on this button is the figure on the
+ * invoice, and the first month at a promo price is only offered to an account
+ * that can still take it — the offer is per email and the hub is the only thing
+ * that knows.
+ *
+ * Someone *with* premium and no pod has already bought it and is looking at a
+ * provisioning problem. Upgrading now provisions on its own — the hub kicks it
+ * off from Stripe's webhook — so what they need is patience and, if that runs
+ * out, a button that asks directly rather than an invitation to pay again.
+ *
+ * And after checkout, this window has one job: watch. Payment happens in a
+ * browser, so the only honest thing here is to keep asking whether premium
+ * landed and whether a pod followed, and to stop asking after a few minutes
+ * rather than spin forever.
  */
 function GetAPodCard({ premium, hasPod }: { premium: boolean; hasPod: boolean }) {
-  if (hasPod) return null
+  const [plan, setPlan] = useState<Plan | null>(null)
+  useEffect(() => {
+    void billing.plan().then(setPlan).catch(() => {})
+  }, [])
 
-  if (premium) {
+  if (hasPod) return null
+  return premium ? <PremiumNoPod /> : <Upgrade plan={plan} />
+}
+
+/**
+ * How long to keep watching after the browser opens, and how often.
+ *
+ * The user is in a checkout flow, so five seconds is invisible traffic and quick
+ * enough to feel immediate when they come back. Five minutes is past the point
+ * where "they are still typing a card number" is likelier than "they closed the
+ * tab" — and giving up costs nothing, because the pods list re-checks on its own
+ * and the account keeps whatever was bought.
+ */
+const POLL_MS = 5000
+const POLL_LIMIT_MS = 300_000
+
+function Upgrade({ plan }: { plan: Plan | null }) {
+  const { refreshPods } = useConnection()
+  const [waiting, setWaiting] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
+  // Survives the polling loop's closure so cancelling actually stops it.
+  const live = useRef(false)
+
+  const label = (() => {
+    if (!plan) return 'Get Metalcraft premium'
+    const per = `${money(plan.amount, plan.currency)}/${plan.interval ?? 'mo'}`
+    if (plan.promo.eligible && plan.promo.first_month_amount !== null) {
+      return `${money(plan.promo.first_month_amount, plan.currency)} first month, then ${per}`
+    }
+    return `Get premium — ${per}`
+  })()
+
+  const watch = useCallback(async () => {
+    live.current = true
+    for (let i = 0; i < POLL_LIMIT_MS / POLL_MS; i++) {
+      await new Promise((r) => setTimeout(r, POLL_MS))
+      if (!live.current) return
+      // `refresh` re-reads the account, which is what turns a completed checkout
+      // into `premium: true` here; `refreshPods` is what notices the pod the hub
+      // provisioned behind it. The store's own auto-connect takes it from there.
+      await useConnection.getState().boot()
+      await refreshPods().catch(() => {})
+      const { session, pods } = useConnection.getState()
+      if (session?.premium && pods.length > 0) break
+    }
+    live.current = false
+    setWaiting(false)
+  }, [refreshPods])
+
+  const start = async () => {
+    setWaiting(true)
+    try {
+      setUrl(await billing.checkout())
+    } catch {
+      // The hand-off failed, not the offer. Fall back to the hub's own page as a
+      // link rather than leaving a spinner with nothing behind it.
+      setUrl(null)
+    }
+    void watch()
+  }
+
+  if (waiting) {
     return (
       <section className="rounded-card bg-surface p-5 shadow-card">
-        <header className="flex items-start gap-3">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[14px] font-semibold">Premium is on this account</h2>
-            <p className="mt-0.5 text-[12.5px] text-ink-2">
-              But no pod is provisioned against it yet. That is not something this window can
-              fix — if it does not appear shortly, the account page is the place to ask.
-            </p>
-          </div>
-        </header>
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-4"
-          onClick={() => window.open(UPGRADE_URL, '_blank')}
-        >
-          Open your account <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-2.5">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-ink-3" />
+          <p className="min-w-0 flex-1 text-[12.5px] text-ink-2">
+            Finish in your browser — this picks it up on its own, and your pod is started for
+            you.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              live.current = false
+              setWaiting(false)
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+        {url && (
+          <p className="mt-2 truncate text-[11px] text-ink-3">
+            If no tab opened: <span className="font-mono">{url}</span>
+          </p>
+        )}
       </section>
     )
   }
@@ -238,12 +321,58 @@ function GetAPodCard({ premium, hasPod }: { premium: boolean; hasPod: boolean })
         <Perk>Registry identity for installing packs</Perk>
       </ul>
 
-      <Button size="sm" className="mt-4" onClick={() => window.open(UPGRADE_URL, '_blank')}>
-        Get Metalcraft premium <ExternalLink className="h-3.5 w-3.5" />
+      <Button size="sm" className="mt-4" onClick={() => void start()}>
+        {label} <ExternalLink className="h-3.5 w-3.5" />
       </Button>
       <p className="mt-3 text-[11px] text-ink-3">
-        Opens in your browser. Come back here when it is done — this list re-checks itself.
+        Opens in your browser. Your pod is provisioned for you when it goes through.
       </p>
+    </section>
+  )
+}
+
+/**
+ * Paid, and nothing to show for it yet.
+ *
+ * Not a sale — a provisioning problem, and offering an upgrade button here would
+ * be the app failing to notice it had already been paid. Provisioning is
+ * automatic now, so the honest thing is to say it is coming and hand over a way
+ * to ask directly when patience runs out.
+ */
+function PremiumNoPod() {
+  const { refreshPods } = useConnection()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const ask = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await podsRpc.provision()
+      await refreshPods()
+    } catch (e) {
+      setError(String(e))
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="rounded-card bg-surface p-5 shadow-card">
+      <header className="flex items-start gap-3">
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-semibold">Premium is on this account</h2>
+          <p className="mt-0.5 text-[12.5px] text-ink-2">
+            Your pod is started for you when a subscription begins, and that takes a moment. If
+            it does not appear, you can ask for it directly.
+          </p>
+        </div>
+      </header>
+      {error && <p className="mt-3 text-[11.5px] text-red">{error}</p>}
+      <Button size="sm" className="mt-4" onClick={() => void ask()} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        Provision my pod
+      </Button>
     </section>
   )
 }
