@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { KeyRound, Plus, Store, X } from 'lucide-react'
+import { KeyRound, MessageCircle, Plus, Store, X } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
 import { useFleet } from '@/stores/fleet'
 import { useNudges } from '@/stores/nudges'
@@ -35,6 +35,9 @@ interface Nudge {
 export function Nudges() {
   const info = useConnection((s) => s.info)
   const premium = useConnection((s) => s.session?.premium ?? false)
+  const ready = useConnection((s) => s.ready)
+  const pods = useConnection((s) => s.pods)
+  const pod = useConnection((s) => s.pod)
   const { instances, presets, loading } = useFleet()
   const { ownSource, inference, go, setNewAgentOpen } = useUi()
   const { dismissed, dismiss, revive } = useNudges()
@@ -75,8 +78,31 @@ export function Nudges() {
         run: () => setNewAgentOpen(true),
       })
     }
+
+    // The self-hoster (LAUNCHPAD_PLAN §3.3). Last on purpose: it is the only
+    // entry here that sells rather than unblocks, so it speaks only when nothing
+    // else needs doing, and it is dismissible like the rest.
+    //
+    // This is the reader a paywall insults — they run the product daily, on
+    // their own hardware, and are the least likely of anyone to be moved by a
+    // page of benefits. So the pitch is two things that are specific and
+    // checkable *for them*, both of which they can verify from inside this app:
+    // the gateway card already refuses on a pod with no Metalcraft account, in
+    // those words, and their thinking is billed to a provider key they pay for
+    // themselves. It points at the Launchpad rather than restating the offer,
+    // because the price lives there and is quoted by the hub.
+    if (ready && pod && !premium && !pods.some((p) => p.slug === pod.slug)) {
+      out.push({
+        key: 'self-hosted-premium',
+        icon: MessageCircle,
+        title: 'Premium adds two things to this pod',
+        body: 'WhatsApp and SMS need an account the pod can be linked to, and credits mean its thinking is not billed to a provider key of your own. Your pod stays yours either way.',
+        action: 'See what it costs',
+        run: () => go({ kind: 'pods' }),
+      })
+    }
     return out
-  }, [go, inference, instances.length, ownSource, premium, presets.length, setNewAgentOpen])
+  }, [go, inference, instances.length, ownSource, pod, pods, premium, presets.length, ready, setNewAgentOpen])
 
   // A dismissal only lasts as long as the thing it dismissed. Once a condition
   // resolves, forget that it was waved away, so it can speak again if it recurs.

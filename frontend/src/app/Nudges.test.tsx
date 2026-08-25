@@ -16,6 +16,11 @@ async function mount(state: {
   premium?: boolean
   inference?: InferenceStatus | null
   loading?: boolean
+  /** The pod this window is on, and what the account owns — the pair that says
+   *  whether somebody is self-hosting. */
+  pod?: { slug: string; url: string } | null
+  pods?: { id: string; slug: string; url: string }[]
+  ready?: boolean
 }) {
   vi.resetModules()
   const { useConnection } = await import('@/stores/connection')
@@ -27,6 +32,9 @@ async function mount(state: {
   useConnection.setState({
     info: (state.info ?? { name: 'agent', version: '1' }) as never,
     session: { email: 'a@b.c', premium: state.premium ?? false },
+    ready: state.ready ?? true,
+    pod: (state.pod ?? null) as never,
+    pods: (state.pods ?? []) as never,
   })
   useFleet.setState({
     presets: (state.presets ?? []) as never,
@@ -152,5 +160,61 @@ describe('Nudges', () => {
     const { useUi } = await mount({ ownSource: false })
     await userEvent.click(screen.getByRole('button', { name: 'Bind a source' }))
     expect(useUi.getState().activeKey).toBe('source')
+  })
+
+  it('tells a self-hoster what premium adds, once nothing else needs doing', async () => {
+    // The reader a paywall insults: they run the product daily, on their own
+    // hardware. So it is last, it is dismissible, and it names two things they
+    // can check from inside this app rather than a page of benefits.
+    await mount({
+      presets: [{ slug: 'p' }],
+      instances: [{ id: 'i' }],
+      premium: false,
+      pod: { slug: 'mine', url: 'https://pod.example.com' },
+      pods: [],
+    })
+    expect(screen.getByText('Premium adds two things to this pod')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'See what it costs' })).toBeTruthy()
+  })
+
+  it('does not sell to somebody already on a pod from their account', async () => {
+    await mount({
+      presets: [{ slug: 'p' }],
+      instances: [{ id: 'i' }],
+      premium: false,
+      pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      pods: [{ id: 'amy', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+    })
+    expect(screen.queryByText('Premium adds two things to this pod')).toBeNull()
+  })
+
+  it('waits for the pod list before deciding somebody is self-hosting', async () => {
+    // Mid-boot the account's pods are an empty array, which is indistinguishable
+    // from having none — and nudging on that would flash a sales pitch at a
+    // paying customer on every launch.
+    await mount({
+      presets: [{ slug: 'p' }],
+      instances: [{ id: 'i' }],
+      premium: false,
+      pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      pods: [],
+      ready: false,
+    })
+    expect(screen.queryByText('Premium adds two things to this pod')).toBeNull()
+  })
+
+  it('never speaks over a blocker', async () => {
+    // A pod that cannot think is a problem; premium is an offer. The offer waits.
+    await mount({
+      presets: [{ slug: 'p' }],
+      instances: [{ id: 'i' }],
+      premium: false,
+      ownSource: false,
+      inference: { ready: false, credential: 'none', gateway: false } as InferenceStatus,
+      pod: { slug: 'mine', url: 'https://pod.example.com' },
+      pods: [],
+    })
+    expect(screen.getByText('This pod cannot think yet')).toBeTruthy()
+    expect(screen.queryByText('Premium adds two things to this pod')).toBeNull()
   })
 })
