@@ -14,6 +14,8 @@ Where Orca is `Electron → node-pty → CLI → git worktree`, this is
 **[`LAUNCHPAD_PLAN.md`](LAUNCHPAD_PLAN.md)** — the app with no pod: connecting one you run,
 and the funnel to one we host.
 
+<img width="2594" height="1596" alt="image" src="https://github.com/user-attachments/assets/353106ec-7bec-4cf2-871f-0fedb89548b4" />
+
 ## Layout
 
 | Path | What |
