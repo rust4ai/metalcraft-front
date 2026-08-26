@@ -18,8 +18,9 @@
 
 use std::sync::Arc;
 
+use front_cloud::ALLOW_UNVERIFIED_PACKS;
 use front_cloud::SessionStore;
-use front_cloud::octaweave::{self, KEY_NAME, PACK_SLUG, Workspace};
+use front_cloud::octaweave::{self, KEY_NAME, PACK_ID, PACK_REF, Workspace};
 use front_core::{Integration, PodConnection};
 use serde::Serialize;
 
@@ -80,7 +81,9 @@ pub async fn status_of(conn: &PodConnection, diag: &DiagLog) -> Result<Octaweave
             Vec::new()
         }
     };
-    let pack = integrations.into_iter().find(|i| i.id == PACK_SLUG);
+    // `PACK_ID`, not the reference it was installed by — the pod lists what the
+    // archive calls itself.
+    let pack = integrations.into_iter().find(|i| i.id == PACK_ID);
 
     Ok(OctaweaveStatus {
         key_present: keys.iter().any(|k| k.name == KEY_NAME),
@@ -244,7 +247,10 @@ pub async fn connect_with(
     // A failed pack install does not fail the call. The key is stored and that is
     // worth keeping — reporting failure would invite the user to redo a step that
     // succeeded, and the pack can be installed on its own afterwards.
-    let pack_error = match conn.install_integration(PACK_SLUG).await {
+    let pack_error = match conn
+        .install_agent_pack(PACK_REF, ALLOW_UNVERIFIED_PACKS)
+        .await
+    {
         Ok(_) => None,
         Err(e) => Some(e.to_string()),
     };
@@ -273,7 +279,7 @@ pub async fn connect_with(
 pub async fn octaweave_install_pack(state: State<'_>) -> Result<OctaweaveStatus, String> {
     state
         .conn(None)?
-        .install_integration(PACK_SLUG)
+        .install_agent_pack(PACK_REF, ALLOW_UNVERIFIED_PACKS)
         .await
         .map_err(|e| e.to_string())?;
     octaweave_status(state).await
@@ -596,7 +602,7 @@ mod tests {
         // The credential reached the pod, and the pack install was attempted.
         let asked: Vec<String> = pod.seen().into_iter().map(|s| s.path).collect();
         assert!(asked.iter().any(|p| p == "/api/v1/keys"));
-        assert!(asked.iter().any(|p| p == "/api/v1/integrations/install"));
+        assert!(asked.iter().any(|p| p == "/api/v1/agent-packs/install"));
     }
 
     /// Not linked is a fork, not a failure: the app opens a browser and asks

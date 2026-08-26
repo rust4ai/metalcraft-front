@@ -11,6 +11,10 @@
  *   turn: the fleet view and the open session both see it).
  * - An `error` renders as itself and `done` still arrives after it; the turn ends
  *   on `done` only.
+ * - A `done` that says `interrupted` leaves a notice in the transcript. A turn
+ *   that stops has to look stopped, not abandoned.
+ * - `phase` names the silent pre-model work (compaction, recall) so a long wait
+ *   says what it is waiting on. Any frame that produces output clears it.
  * - `unknown` frames are ignored. A pod newer than this client must not break a
  *   live turn.
  */
@@ -42,7 +46,41 @@ export interface TranscriptState {
    *  fleet card's live status. */
   busy: boolean
   thinking: boolean
+  /** What the turn is doing right now, when the pod has said. `undefined` is not
+   *  "idle" — it is "no finer answer than busy", which is every pod older than
+   *  the phase frames and every moment they do not cover. */
+  phase?: TurnPhase
+  /** The pod's diagnostics session for the turn in progress, from `turn_started`.
+   *  The handle the debug view is opened with. */
+  sessionId?: string
   lastStatus?: 'completed' | 'interrupted' | 'failed'
+}
+
+/** The phases the pod names today, plus whatever a newer one names. */
+export type TurnPhase = 'compacting' | 'recalling' | 'waiting' | (string & {})
+
+/**
+ * What to call a phase on screen.
+ *
+ * An unrecognised phase is humanised rather than dropped: a pod newer than this
+ * client saying `indexing_files` should read as "Indexing files", not send the
+ * view back to the undifferentiated "Thinking" this whole path exists to end.
+ */
+export function phaseLabel(phase: TurnPhase | undefined): string {
+  switch (phase) {
+    case undefined:
+      return 'Thinking'
+    case 'compacting':
+      return 'Compacting context'
+    case 'recalling':
+      return 'Searching memory'
+    case 'waiting':
+      return 'Waiting for the model'
+    default: {
+      const words = phase.replace(/[_-]+/g, ' ').trim()
+      return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Thinking'
+    }
+  }
 }
 
 export const emptyTranscript = (): TranscriptState => ({ items: [], busy: false, thinking: false })
@@ -130,6 +168,10 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         ...state,
         busy: true,
         thinking: true,
+        phase: undefined,
+        // `?? undefined`: an older pod sends no session id, and `null` in the
+        // field would read as "there is a session" to every `!= null` check.
+        sessionId: ev.session_id ?? undefined,
         lastStatus: undefined,
         items: [
           ...state.items,
@@ -137,17 +179,23 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         ],
       }
 
+    case 'phase':
+      return { ...state, thinking: true, phase: ev.phase }
+
+    // The model call is a phase too, and the one people wait on longest. Named
+    // here rather than by the pod because `llm_started` already says it.
     case 'llm_started':
-      return { ...state, thinking: true }
+      return { ...state, thinking: true, phase: 'waiting' }
 
     case 'llm_completed':
       // Free-text content is deliberately not rendered: `reply` is the message.
-      return { ...state, thinking: false }
+      return { ...state, thinking: false, phase: undefined }
 
     case 'tool_started':
       return {
         ...state,
         thinking: false,
+        phase: undefined,
         items: [
           ...state.items,
           { kind: 'tool', id: ev.tool_call_id, name: ev.name, args: ev.args, status: 'running' },
@@ -184,6 +232,7 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
       return {
         ...state,
         thinking: false,
+        phase: undefined,
         items: [...state.items, { kind: 'reply', id: `r${state.items.length}`, content: ev.content }],
       }
 
@@ -191,6 +240,7 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
       return {
         ...state,
         thinking: false,
+        phase: undefined,
         items: [
           ...state.items,
           {
@@ -203,8 +253,28 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         ],
       }
 
-    case 'done':
-      return { ...state, busy: false, thinking: false, lastStatus: ev.status }
+    case 'done': {
+      const next = {
+        ...state,
+        busy: false,
+        thinking: false,
+        phase: undefined,
+        lastStatus: ev.status,
+      }
+      // A stopped turn has to say so where the user is looking. Without this the
+      // agent simply goes quiet mid-trace, which reads as a bug rather than as
+      // the thing that was just asked for. The pod writes the sentence (`reason`)
+      // because the pod knows who stopped it — including when that was another
+      // device watching the same chat.
+      if (ev.status !== 'interrupted') return next
+      return {
+        ...next,
+        items: [
+          ...next.items,
+          { kind: 'notice', id: `s${next.items.length}`, content: ev.reason ?? 'Stopped.' },
+        ],
+      }
+    }
 
     default:
       return state

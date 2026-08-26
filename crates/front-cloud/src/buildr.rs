@@ -48,8 +48,27 @@ pub fn buildr_base() -> String {
 /// other name.
 pub const KEY_NAME: &str = "BUILDR_API_KEY";
 
-/// The integration pack's registry slug.
-pub const PACK_SLUG: &str = "buildr-space";
+/// Where the pack is fetched from: a *qualified* reference on the Axoniac host.
+///
+/// Not a slug, and that distinction is the whole bug this replaced. The pod has
+/// two install routes: `/integrations/install` takes a bare slug and only ever
+/// asks packs.metalcraftai.com, which has never carried this pack; the reference
+/// route asks the host named in front of the colon. Installing by slug therefore
+/// 404'd on a registry that was never going to have it, and the pod reported
+/// that as a 502 — a gateway error for a pack that was sitting on the other host
+/// the whole time.
+///
+/// `buildrspace`, with no separator, because that is Axoniac's *handle* for it.
+/// It is not [`PACK_ID`], and asking for `@buildr-space` is a 404.
+pub const PACK_REF: &str = "axoniac:@buildrspace";
+
+/// The id the pod files the installed pack under — the archive's own
+/// `agent_pack.json: id`, which is what `/integrations` lists back.
+///
+/// Deliberately separate from [`PACK_REF`]: the host's name for a pack and the
+/// pack's name for itself are different strings here, so one constant used for
+/// both would have to be wrong in one of the two places.
+pub const PACK_ID: &str = "buildr-space";
 
 /// The name the minted key carries in buildr.space's Keys page.
 ///
@@ -462,7 +481,8 @@ mod tests {
     #[test]
     fn the_key_name_is_the_one_the_pack_requires() {
         assert_eq!(KEY_NAME, "BUILDR_API_KEY");
-        assert_eq!(PACK_SLUG, "buildr-space");
+        assert_eq!(PACK_ID, "buildr-space");
+        assert_eq!(PACK_REF, "axoniac:@buildrspace");
     }
 
     /// `admin` is for reaping other people's workspaces. Asking for it would be

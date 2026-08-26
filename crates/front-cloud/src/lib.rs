@@ -22,6 +22,22 @@ pub use id::{Credits, DeviceLogin, IdClient, LoginStatus, Plan, PlanPromo};
 pub use octaweave::{WhoAmI, octaweave_base};
 pub use session::{Session, SessionStore};
 
+/// Whether the two Connect buttons may install a pack their host has not
+/// vouched for.
+///
+/// True, and it is a stopgap rather than a position. Axoniac reports both
+/// `buildr-space` and `octaweave` as `verified: false` today, so a pod set to
+/// `verified-only` refuses them with a 403 — which would leave the Connect
+/// button permanently broken on exactly the pods configured most carefully.
+/// These two packs are first-party and the button that installs them is
+/// first-party, so overriding here is not the user trusting a stranger.
+///
+/// It should stop being a constant once the packs are verified on the host: the
+/// honest version is to let the 403 through and let a person override it, which
+/// is why [`front_core::PodConnection::install_agent_pack`] takes the flag as a
+/// parameter in the first place.
+pub const ALLOW_UNVERIFIED_PACKS: bool = true;
+
 /// Metalcraft ID origin. `METALCRAFT_ID_URL` overrides for local testing.
 pub fn id_base() -> String {
     env_or("METALCRAFT_ID_URL", "https://id.metalcraftai.com")

@@ -54,6 +54,70 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
     pod.list_instances().await.expect("GET /agents/instances");
     pod.list_chats().await.expect("GET /chats");
     pod.list_keys().await.expect("GET /keys");
+    // Scheduled follow-ups. `Some` rather than merely `Ok`: `None` is the
+    // too-old-to-ask branch, and a live pod answering it that way would mean the
+    // countdown silently never shows against the very pod we test on.
+    assert!(
+        pod.list_scheduled_tasks()
+            .await
+            .expect("GET /scheduled-tasks")
+            .is_some(),
+        "a current pod has the scheduled-tasks endpoint"
+    );
+
+    // The stop button's endpoint. `Some` rather than merely `Ok` for the same
+    // reason as the follow-ups above: `None` is the pod-is-too-old branch, and a
+    // live pod answering that way would mean the button we ship says "this pod
+    // cannot stop a turn" against the very pod we develop on. `false` is the
+    // right answer here — a chat nobody has sent a turn to has nothing to stop.
+    let chat = pod
+        .create_chat(&front_core::NewChat::default())
+        .await
+        .expect("POST /chats");
+    assert_eq!(
+        pod.interrupt_chat(&chat.id)
+            .await
+            .expect("POST /chats/{id}/interrupt"),
+        Some(false),
+        "a current pod has the interrupt endpoint, and an idle chat has nothing to stop"
+    );
+
+    // The pod's own record of what it did — what the debug view reads. `Some`
+    // for the same reason as everything else here: `None` is the too-old branch,
+    // and a live pod answering that way would mean the view we ship says "no
+    // recorded runs" against the very pod we develop on.
+    let runs = pod
+        .diagnostics_sessions()
+        .await
+        .expect("GET /diagnostics")
+        .expect("a current pod records its runs");
+    // A run needs a turn to exist, and this probe deliberately does not spend
+    // one — so assert the shape of whatever is there rather than that it is.
+    if let Some(run) = runs.first() {
+        let detail = pod
+            .diagnostics_session(&run.id)
+            .await
+            .expect("GET /diagnostics/{id}")
+            .expect("a listed run can be read back");
+        assert_eq!(detail.id, run.id);
+        // A trace exists once there is something to time. A chat that was
+        // created and never used has a session directory and no trace at all —
+        // which is why the debug view treats a missing trace as "nothing to
+        // show yet" rather than as a pod that cannot trace.
+        let trace = pod
+            .diagnostics_trace(&run.id)
+            .await
+            .expect("GET /diagnostics/{id}/trace");
+        if run.turn_count > 0 {
+            assert!(trace.is_some(), "a run that took a turn has a trace");
+        }
+    }
+    assert!(
+        pod.diagnostics_trace("no-such-run")
+            .await
+            .expect("a missing trace is an answer, not a transport failure")
+            .is_none()
+    );
 
     // Automations. Seed a flow through the pod's own API so the test is
     // self-contained rather than assuming somebody left one lying around.

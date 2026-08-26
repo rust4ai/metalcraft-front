@@ -34,67 +34,69 @@ describe('newestChat', () => {
   })
 })
 
-describe('submit', () => {
-  /**
-   * Drives the real rpc layer over a stubbed transport, the same seam App.test
-   * uses. Mocking `@/rpc` as a module instead would replace `auth`/`pods` with
-   * undefined for anything that loaded it afterwards — which is exactly what it
-   * did, hanging App's boot two files later.
-   */
-  async function mount(overrides: Record<string, unknown> = {}) {
-    vi.resetModules()
-    const calls: Array<{ method: string; args?: Record<string, unknown> }> = []
-    const responses: Record<string, unknown> = {
-      send_turn: undefined,
-      compact_chat: {
-        compacted: true,
-        tokens_before: 24_100,
-        tokens_after: 6_800,
-        messages_before: 38,
-        messages_after: 12,
-      },
-      clear_chat: {},
-      chat_context: {
-        estimated_tokens: 12_400,
-        message_count: 38,
-        context_window: 128_000,
-        compact_threshold_tokens: 76_800,
-        would_compact: false,
-      },
-      ...overrides,
-    }
-    const transport = await import('@/rpc/transport')
-    transport.setTransport({
-      call: async (method: string, args?: Record<string, unknown>) => {
-        calls.push({ method, args })
-        const r = responses[method]
-        if (r instanceof Error) throw r
-        return r as never
-      },
-      listen: async () => () => {},
-    })
-    const { useSessions } = await import('./sessions')
-    const { emptyTranscript } = await import('@/features/session/transcript')
-    useSessions.setState({
-      byInstance: {
-        i1: {
-          instanceId: 'i1',
-          chatId: 'c1',
-          transcript: { ...emptyTranscript(), items: [{ kind: 'user', id: 'u0', content: 'hi' }] },
-          sending: false,
-          error: null,
-        },
-      },
-    })
-    return {
-      useSessions,
-      sent: () => calls.filter((c) => c.method === 'send_turn').map((c) => c.args?.message),
-      calls,
-      items: () => useSessions.getState().byInstance.i1!.transcript.items,
-      lastNotice: () => (useSessions.getState().byInstance.i1!.transcript.items.at(-1) as { content: string }).content,
-    }
+/**
+ * Drives the real rpc layer over a stubbed transport, the same seam App.test
+ * uses. Mocking `@/rpc` as a module instead would replace `auth`/`pods` with
+ * undefined for anything that loaded it afterwards — which is exactly what it
+ * did, hanging App's boot two files later.
+ */
+async function mount(overrides: Record<string, unknown> = {}) {
+  vi.resetModules()
+  const calls: Array<{ method: string; args?: Record<string, unknown> }> = []
+  const responses: Record<string, unknown> = {
+    send_turn: undefined,
+    compact_chat: {
+      compacted: true,
+      tokens_before: 24_100,
+      tokens_after: 6_800,
+      messages_before: 38,
+      messages_after: 12,
+    },
+    clear_chat: {},
+    chat_context: {
+      estimated_tokens: 12_400,
+      message_count: 38,
+      context_window: 128_000,
+      compact_threshold_tokens: 76_800,
+      would_compact: false,
+    },
+    ...overrides,
   }
+  const transport = await import('@/rpc/transport')
+  transport.setTransport({
+    call: async (method: string, args?: Record<string, unknown>) => {
+      calls.push({ method, args })
+      const r = responses[method]
+      if (r instanceof Error) throw r
+      return r as never
+    },
+    listen: async () => () => {},
+  })
+  const { useSessions } = await import('./sessions')
+  const { emptyTranscript } = await import('@/features/session/transcript')
+  useSessions.setState({
+    byInstance: {
+      i1: {
+        instanceId: 'i1',
+        chatId: 'c1',
+        transcript: { ...emptyTranscript(), items: [{ kind: 'user', id: 'u0', content: 'hi' }] },
+        sending: false,
+        stopping: false,
+        error: null,
+        followups: null,
+      },
+    },
+  })
+  return {
+    useSessions,
+    sent: () => calls.filter((c) => c.method === 'send_turn').map((c) => c.args?.message),
+    calls,
+    items: () => useSessions.getState().byInstance.i1!.transcript.items,
+    lastNotice: () => (useSessions.getState().byInstance.i1!.transcript.items.at(-1) as { content: string }).content,
+  }
+}
 
+describe('submit', () => {
   it('sends ordinary text to the agent', async () => {
     const { useSessions, sent } = await mount()
     await useSessions.getState().submit('i1', 'what changed?')
@@ -170,5 +172,94 @@ describe('submit', () => {
     await useSessions.getState().submit('i1', '/compact')
     expect(lastNotice()).toContain('not found')
     expect(lastNotice()).not.toContain('too old')
+  })
+})
+
+
+describe('stop', () => {
+  /** A session with a turn in flight — the only state stop has anything to do in. */
+  async function midTurn(overrides: Record<string, unknown> = {}) {
+    const m = await mount({ interrupt_turn: true, ...overrides })
+    const s = m.useSessions.getState().byInstance.i1!
+    m.useSessions.setState({
+      byInstance: { i1: { ...s, transcript: { ...s.transcript, busy: true, thinking: true } } },
+    })
+    return {
+      ...m,
+      session: () => m.useSessions.getState().byInstance.i1!,
+      stops: () => m.calls.filter((c) => c.method === 'interrupt_turn'),
+      /** The `done` the pod sends once the executor notices. */
+      finish: () =>
+        m.useSessions
+          .getState()
+          .apply('i1', { kind: 'done', status: 'interrupted', reason: 'Stopped by the user.' }),
+    }
+  }
+
+  it('asks the pod, then waits for the turn to say it stopped', async () => {
+    // The gap is the whole design: the pod stops at the executor's next step
+    // boundary, so the button must stay in "stopping" rather than claim a stop
+    // that has not happened.
+    const { useSessions, session, stops, finish } = await midTurn()
+    await useSessions.getState().stop('i1')
+    expect(stops()).toEqual([{ method: 'interrupt_turn', args: { chatId: 'c1' } }])
+    expect(session().stopping).toBe(true)
+    expect(session().transcript.busy).toBe(true)
+
+    finish()
+    expect(session().stopping).toBe(false)
+    expect(session().transcript.busy).toBe(false)
+    // The pod's own sentence, where the user is looking.
+    expect(session().transcript.items.at(-1)).toMatchObject({
+      kind: 'notice',
+      content: 'Stopped by the user.',
+    })
+  })
+
+  it('asks once, however many times it is pressed', async () => {
+    const { useSessions, stops } = await midTurn()
+    await useSessions.getState().stop('i1')
+    await useSessions.getState().stop('i1')
+    expect(stops()).toHaveLength(1)
+  })
+
+  it('says a pod cannot stop a turn rather than pretending it did', async () => {
+    // Every pod older than the interrupt endpoint. Reporting a stop that never
+    // happened would leave the agent working — and spending — behind a button
+    // that looked like it worked.
+    const { useSessions, session, lastNotice } = await midTurn({ interrupt_turn: null })
+    await useSessions.getState().stop('i1')
+    expect(session().stopping).toBe(false)
+    expect(lastNotice()).toContain('cannot stop a turn')
+    // Still running, and still shown as running.
+    expect(session().transcript.busy).toBe(true)
+  })
+
+  it('stays quiet when the turn ended between the press and the ask', async () => {
+    // A race the user did not cause and does not need told about; the turn's own
+    // `done` frame already says it finished.
+    const { useSessions, session, items } = await midTurn({ interrupt_turn: false })
+    const before = items().length
+    await useSessions.getState().stop('i1')
+    expect(session().stopping).toBe(false)
+    expect(items()).toHaveLength(before)
+  })
+
+  it('keeps the conversation when the ask itself fails', async () => {
+    // `session.error` replaces the pane with a red panel. Losing the transcript
+    // mid-turn, because a stop failed to send, is the wrong trade.
+    const { useSessions, session, lastNotice } = await midTurn({
+      interrupt_turn: new Error('transport: connection refused'),
+    })
+    await useSessions.getState().stop('i1')
+    expect(session().stopping).toBe(false)
+    expect(session().error).toBeNull()
+    expect(lastNotice()).toContain('Could not stop the turn')
+  })
+
+  it('does nothing at all when no turn is running', async () => {
+    const { useSessions, calls } = await mount({ interrupt_turn: true })
+    await useSessions.getState().stop('i1')
+    expect(calls).toEqual([])
   })
 })

@@ -227,6 +227,102 @@ pub struct ChatCompacted {
     pub summary: Option<String>,
 }
 
+/// One of the pod's own diagnostics sessions — a run it recorded, listed.
+///
+/// Distinct from this app's `Diagnostic`, which is the *core's* error log. This
+/// is the pod's: what the agent did, on the machine that did it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodSession {
+    pub id: String,
+    pub timestamp: String,
+    #[serde(default)]
+    pub persona_slug: Option<String>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    /// `"session"` for an ordinary run, `"flow"` for a flow run.
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub flow_id: Option<String>,
+    #[serde(default)]
+    pub instance_id: Option<String>,
+    /// How far the run actually got — one per executor step, not per user turn.
+    pub turn_count: usize,
+}
+
+/// One recorded session in full: its configuration, and every event file the pod
+/// wrote for it in order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodSessionDetail {
+    pub id: String,
+    /// Persona, model, cwd, tools, skills — and the system prompt as actually
+    /// built. Untyped because it is the pod's record of its own configuration,
+    /// which changes with the pod and not with this client.
+    #[serde(default)]
+    pub session_info: Option<serde_json::Value>,
+    pub timeline: Vec<PodSessionEvent>,
+}
+
+/// One file in a session's timeline. `kind` is the pod's classification
+/// (`turn`, `llm_request`, `compaction`, `error`); `data` is the file verbatim.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodSessionEvent {
+    pub kind: String,
+    pub file: String,
+    pub data: serde_json::Value,
+}
+
+/// The pod's answer to a stop press. `stopping` is false when nothing was
+/// running — the turn ended between the press and the request, which is a race
+/// and not an error.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatInterrupt {
+    pub stopping: bool,
+}
+
+/// A **scheduled follow-up**: work the agent armed for later with its
+/// `schedule_followup` tool, stored on the pod and fired by the daemon's poll
+/// loop (every 30s by default).
+///
+/// This is the one thing an agent can promise that outlives its own turn. A turn
+/// is synchronous, so "I'll check back in 3 minutes" is a lie unless the agent
+/// armed one of these — and until this shape reached the desktop, an armed
+/// follow-up and an invented one looked exactly alike from the chat. That is the
+/// whole reason it is here: the countdown is the receipt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledTask {
+    pub id: String,
+    /// The chat the result is delivered to. `None` for a gateway-bound or
+    /// unbound job, whose reply is logged rather than said to anyone here.
+    #[serde(default)]
+    pub chat_id: Option<String>,
+    /// RFC-3339. The daemon fires *at or after* this, on its next poll tick, so
+    /// treat it as "not before" rather than an exact moment.
+    pub run_at: String,
+    #[serde(default)]
+    pub created_at: String,
+    /// The instruction the wakeup sub-agent runs. Self-contained by contract —
+    /// which also makes it the honest label for the countdown.
+    #[serde(default)]
+    pub task: String,
+    #[serde(default)]
+    pub persona: Option<String>,
+    /// `pending` | `running` | `done` | `failed` | `cancelled`.
+    #[serde(default)]
+    pub status: String,
+    /// How many times this chain has re-armed itself. The pod caps it at 12; a
+    /// follow-up deep in that chain is one worth being able to see and stop.
+    #[serde(default)]
+    pub reschedule_depth: u32,
+}
+
+impl ScheduledTask {
+    /// Still going to happen — the only status a countdown belongs on.
+    pub fn is_pending(&self) -> bool {
+        self.status == "pending" || self.status == "running"
+    }
+}
+
 /// A host the pod is willing to fetch agent packs from.
 ///
 /// The pod returns these (rather than only enforcing them) so a UI can say what it

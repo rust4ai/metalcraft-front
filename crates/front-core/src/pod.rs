@@ -320,6 +320,149 @@ impl PodConnection {
         self.post(&format!("/chats/{id}/clear"), &()).await
     }
 
+    /// Ask a running turn to stop — the stop button.
+    ///
+    /// Returns when the pod has *recorded* the request, not when the turn is
+    /// over: the executor notices at its next step boundary and ends the turn
+    /// itself, which arrives here as `done{status:"interrupted"}` on the chat's
+    /// event stream. That frame is what unlocks the composer; this call only
+    /// promises the ask landed.
+    ///
+    /// Three answers, and a stop button needs all three:
+    ///   * `Some(true)`  — a turn was running and has been asked to stop.
+    ///   * `Some(false)` — nothing was running. An ordinary race (the turn ended
+    ///     between the press and the request), not a failure.
+    ///   * `None`        — the pod has no such endpoint. Every pod before
+    ///     `POST /chats/{id}/interrupt` shipped is one whose turns cannot be
+    ///     stopped, and saying so is better than a button that reports success
+    ///     while the agent keeps working and keeps spending.
+    ///
+    /// A 404 also covers "no such chat", which collapses into `None` here on
+    /// purpose: for the one caller — a session watching a live turn — the chat
+    /// demonstrably exists, and both answers mean the same thing on screen.
+    pub async fn interrupt_chat(&self, id: &str) -> anyhow::Result<Option<bool>> {
+        let path = format!("/chats/{id}/interrupt");
+        let resp = self
+            .client
+            .post(self.url(&path))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let body: ChatInterrupt = Self::decode(resp, &path).await?;
+        Ok(Some(body.stopping))
+    }
+
+    // ---- the pod's own diagnostics ---------------------------------------
+    //
+    // Everything under here is read-only and about *this pod's* record of what it
+    // did. It has nothing to do with `front-core`'s own error log, which is about
+    // what this app failed to do — the two answer opposite questions and are
+    // deliberately not merged.
+
+    /// Every run the pod recorded, newest first.
+    ///
+    /// `Ok(None)` on 404, the same contract as [`Self::inference_status`]: a pod
+    /// too old to be asked, which must not be rendered as "this pod has never
+    /// run anything".
+    pub async fn diagnostics_sessions(&self) -> anyhow::Result<Option<Vec<PodSession>>> {
+        self.get_optional("/diagnostics").await
+    }
+
+    /// One recorded run in full — configuration, every turn's messages, every
+    /// prompt as it was actually sent.
+    pub async fn diagnostics_session(&self, id: &str) -> anyhow::Result<Option<PodSessionDetail>> {
+        self.get_optional(&format!("/diagnostics/{id}")).await
+    }
+
+    /// The OTLP trace for a run: a span per turn, per model call and per tool,
+    /// with real timings and token usage.
+    ///
+    /// The one read that answers *where the time went*, which its sibling above
+    /// cannot: a session's files say what was sent, never how long it took.
+    ///
+    /// Left as raw JSON on purpose. It is an OpenTelemetry document following a
+    /// published spec that neither this crate nor the pod owns, and typing it
+    /// here would be a third copy to keep in step for no gain — the one consumer
+    /// walks spans.
+    pub async fn diagnostics_trace(&self, id: &str) -> anyhow::Result<Option<serde_json::Value>> {
+        self.get_optional(&format!("/diagnostics/{id}/trace")).await
+    }
+
+    /// A GET whose 404 means "nothing to show", not "something went wrong".
+    ///
+    /// Covers both of the reasons a diagnostics read comes back empty — a pod
+    /// older than the endpoint, and a run with no trace — because a caller can
+    /// do nothing different about either: there is no timeline to draw.
+    async fn get_optional<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<Option<T>> {
+        let resp = self
+            .client
+            .get(self.url(path))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(Self::decode(resp, path).await?))
+    }
+
+    // ---- scheduled follow-ups --------------------------------------------
+    //
+    // The agent's `schedule_followup` tool arms deferred work and then ends its
+    // turn saying "I'll check back". Reading these back is what lets the desktop
+    // tell an armed promise from an invented one.
+
+    /// Every follow-up the pod holds, newest-armed first.
+    ///
+    /// `Ok(None)` on 404, the same contract as [`Self::inference_status`]: a pod
+    /// older than the endpoint cannot say, and a chat that simply has nothing
+    /// scheduled must not look the same as one whose pod cannot be asked.
+    pub async fn list_scheduled_tasks(&self) -> anyhow::Result<Option<Vec<ScheduledTask>>> {
+        let resp = self
+            .client
+            .get(self.url("/scheduled-tasks"))
+            .bearer_auth(self.bearer())
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(Self::decode(resp, "/scheduled-tasks").await?))
+    }
+
+    /// The follow-ups one chat is still going to act on, newest-armed first.
+    ///
+    /// `done` and `cancelled` jobs are dropped. A delivered follow-up already
+    /// appears in the transcript as its own turn, so listing it again would
+    /// double it; a cancelled one is a thing the user just did. `failed`
+    /// survives the filter deliberately — it is the only outcome that is
+    /// otherwise completely silent, and a promise that quietly died is exactly
+    /// what someone waiting on a countdown needs told.
+    pub async fn followups_for_chat(
+        &self,
+        chat_id: &str,
+    ) -> anyhow::Result<Option<Vec<ScheduledTask>>> {
+        Ok(self.list_scheduled_tasks().await?.map(|tasks| {
+            tasks
+                .into_iter()
+                .filter(|t| t.chat_id.as_deref() == Some(chat_id))
+                .filter(|t| t.is_pending() || t.status == "failed")
+                .collect()
+        }))
+    }
+
+    /// Cancel a pending follow-up. The pod refuses one that already fired, which
+    /// is right: cancelling is about the future, and a delivered result stays.
+    pub async fn cancel_scheduled_task(&self, id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/scheduled-tasks/{id}")).await
+    }
+
     // ---- the Metalcraft Gateway (WhatsApp / SMS) -------------------------
     //
     // Four calls, all of them the pod's own. The gateway is an account-level
@@ -688,6 +831,12 @@ impl PodConnection {
     ///
     /// The pod fetches it from packs.metalcraftai.com itself; the desktop never
     /// downloads a pack. Enabling is part of installing on the pod side.
+    ///
+    /// **Only that one registry.** The slug is not looked up anywhere else, so a
+    /// pack published to Axoniac 404s here and the pod reports the miss as a 502
+    /// — an error that names a gateway for what is really a wrong-host lookup.
+    /// Reach for [`Self::install_agent_pack`] and a qualified reference unless
+    /// the pack is genuinely on packs.metalcraftai.com.
     pub async fn install_integration(&self, slug: &str) -> anyhow::Result<Integration> {
         let body = serde_json::json!({ "slug": slug });
         self.post_long("/integrations/install", &body).await

@@ -1,17 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
-import type { ToolCard, TranscriptItem } from './transcript'
+import { phaseLabel, type ToolCard, type TranscriptItem } from './transcript'
 import { useSessions } from '@/stores/sessions'
 import { useFleet } from '@/stores/fleet'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { Trace } from './Trace'
 import { Composer } from './Composer'
+import { Followups } from './Followups'
+import { DebugButton, DebugDrawer } from './DebugDrawer'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { groupIntoBlocks } from './blocks'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
-  const { byInstance, opening, open, submit } = useSessions()
+  const { byInstance, opening, open, submit, stop } = useSessions()
   const instance = useFleet((s) => s.instances.find((i) => i.id === instanceId))
   const session = byInstance[instanceId]
   const bottom = useRef<HTMLDivElement>(null)
@@ -27,17 +29,23 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   }, [session?.transcript.items.length, session?.transcript.thinking])
 
   const busy = session?.transcript.busy ?? false
+  const stopping = session?.stopping ?? false
+  const phase = session?.transcript.phase
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
         <StatusDot status={busy ? (session?.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{instance?.name ?? 'Agent'}</div>
           <div className="truncate text-xs text-ink-2">
             {instance ? `${instance.agent_preset} · ${instance.persona}` : ''}
           </div>
         </div>
+        {/* Opened against the live turn when there is one, and against this
+            agent's last recorded run when there is not — which is when someone
+            comes looking, after something already took too long. */}
+        <DebugButton instanceId={instanceId} sessionId={session?.transcript.sessionId} />
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
@@ -56,14 +64,29 @@ export function SessionView({ instanceId }: { instanceId: string }) {
                 <Item key={block.item.id} item={block.item} />
               ),
             )}
-            {/* Only ever one waiting indicator, and never alongside output. */}
-            {session?.transcript.thinking && <LoadingState label="Thinking" />}
+            {/* Only ever one waiting indicator, and never alongside output.
+                Keyed by phase so the counter restarts with each one: "Compacting
+                context 40.2s" is the sentence that explains a long turn, and a
+                counter that keeps running across phases cannot say it. */}
+            {session?.transcript.thinking && (
+              <LoadingState key={phase ?? 'busy'} label={stopping ? 'Stopping' : phaseLabel(phase)} />
+            )}
             <div ref={bottom} />
           </div>
         )}
       </div>
 
-      <Composer busy={busy} onSend={(m) => void submit(instanceId, m)} />
+      {/* Above the composer, outside the scroller: a pending follow-up is a
+          standing state of the conversation, not something that happened at a
+          point in the transcript. */}
+      <Followups instanceId={instanceId} />
+      <DebugDrawer />
+      <Composer
+        busy={busy}
+        stopping={stopping}
+        onSend={(m) => void submit(instanceId, m)}
+        onStop={() => void stop(instanceId)}
+      />
     </div>
   )
 }

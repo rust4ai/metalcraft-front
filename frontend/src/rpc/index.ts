@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary } from '@/types'
+import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -230,6 +230,22 @@ export const library = {
   flowTemplate: (slug: string) => call<Record<string, unknown>>('flow_template_detail', { slug }),
 }
 
+/**
+ * The pod's own record of what the agent did — what the debug view reads.
+ *
+ * Deliberately not folded into `diagnostics` above: that one is the *core's*
+ * error log and never touches a pod. These are the pod's, and every one of them
+ * answers `null` on a pod too old to be asked rather than an empty list, because
+ * "nothing recorded" and "could not ask" must not draw the same panel.
+ */
+export const podLogs = {
+  sessions: () => call<PodSession[] | null>('pod_diagnostics'),
+  session: (id: string) => call<PodSessionDetail | null>('pod_diagnostics_session', { id }),
+  /** The OTLP trace: a span per turn, per model call and per tool, with real
+   *  durations and token counts. `null` for a run recorded before tracing. */
+  trace: (id: string) => call<unknown>('pod_diagnostics_trace', { id }),
+}
+
 export const packs = {
   registries: () => call<Registries>('list_registries'),
   status: (name: string) => call<RegistryConnection>('registry_status', { name }),
@@ -256,6 +272,19 @@ export const chats = {
   compact: (chatId: string) => call<ChatCompacted>('compact_chat', { chatId }),
   /** Drop the conversation, keep the chat. Distinct from deleting it. */
   clear: (chatId: string) => call<ChatContext>('clear_chat', { chatId }),
+  /** Ask the running turn to stop. Resolves when the pod took the request, not
+   *  when the agent stopped — the `done` frame on `session://{chatId}` is what
+   *  says that, and it is what unlocks the composer.
+   *
+   *  `null` = the pod has no interrupt endpoint and its turns cannot be stopped.
+   *  `false` = nothing was running, which is a race and not a failure. */
+  interrupt: (chatId: string) => call<boolean | null>('interrupt_turn', { chatId }),
+  /** What this chat will do on its own later — the agent's armed follow-ups.
+   *  `null` means the pod is too old to be asked, which is not the same as
+   *  "nothing scheduled" and must not be rendered as it. */
+  followups: (chatId: string) => call<ScheduledTask[] | null>('scheduled_followups', { chatId }),
+  /** Call off a pending follow-up. The pod refuses one that already fired. */
+  cancelFollowup: (id: string) => call<void>('cancel_followup', { id }),
   /** Live frames for one chat. The channel name is the core's contract. */
   onEvent: (chatId: string, cb: (ev: ChatEvent) => void) => listen<ChatEvent>(`session://${chatId}`, cb),
 }

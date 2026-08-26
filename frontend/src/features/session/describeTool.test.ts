@@ -13,6 +13,15 @@ describe('describeTool', () => {
     expect(describeTool('mdrv_upload_file', {}).verb).toBe('Upload file')
   })
 
+  /** Left to `humanize` this reads "Followup", which is the one chip where the
+   *  distinction between saying you will check back and arming something that
+   *  will is the whole point. */
+  it('names arming a follow-up as the act it is', () => {
+    expect(describeTool('schedule_followup', { task: 're-check', delay: '3m' }).verb).toBe(
+      'Schedule follow-up',
+    )
+  })
+
   it('finds the recognizable argument, preferring the most specific', () => {
     expect(describeTool('grep', { pattern: 'x', path: 'src/' }).target).toBe('src/')
     expect(describeTool('web_fetch', { url: 'https://example.com' }).target).toBe('https://example.com')

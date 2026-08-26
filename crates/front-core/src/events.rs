@@ -41,8 +41,8 @@ pub enum ChatMessage {
 
 /// A frame from `POST /chats/{id}/turn` or `GET /chats/{id}/events`.
 ///
-/// Lifecycle: `turn_started` → (`llm_started` → `llm_completed` → `tool_started`*
-/// → `tool_completed`*)+ → `done`. An `error` may precede `done`.
+/// Lifecycle: `turn_started` → `phase`* → (`llm_started` → `llm_completed` →
+/// `tool_started`* → `tool_completed`*)+ → `done`. An `error` may precede `done`.
 ///
 /// `Unknown` is deliberate: a pod can be newer than this client (the fleet is
 /// rolled independently of the desktop app), and an unrecognised frame must not
@@ -85,6 +85,18 @@ pub enum ChatEvent {
         message: String,
         retryable: bool,
     },
+    /// What the turn is doing *before* the model is called — work that emits no
+    /// other frame.
+    ///
+    /// Compaction is an entire extra summarization LLM call and recall is an
+    /// embeddings call, both ahead of the executor, so a turn could spend minutes
+    /// between `turn_started` and the first `llm_started` without saying a word.
+    /// The phase is an open string (the pod's `runtime::phase`) rather than an
+    /// enum: a pod newer than this client must be able to name a phase we have
+    /// never heard of, and the worst that can happen is we render its own word.
+    Phase {
+        phase: String,
+    },
     /// Terminal. `status` is `completed` | `interrupted` | `failed`.
     Done {
         status: String,
@@ -111,6 +123,7 @@ mod tests {
     fn decodes_the_documented_lifecycle() {
         let frames = [
             r#"{"kind":"turn_started","turn_index":0,"user_message":"hi"}"#,
+            r#"{"kind":"phase","phase":"compacting"}"#,
             r#"{"kind":"llm_started"}"#,
             r#"{"kind":"tool_started","tool_call_id":"c1","name":"read_file","args":{"path":"a"}}"#,
             r#"{"kind":"reply","content":"done"}"#,
@@ -124,6 +137,8 @@ mod tests {
             parsed[0],
             ChatEvent::TurnStarted { turn_index: 0, .. }
         ));
+        // The frame that exists so a silent phase stops looking like a hang.
+        assert!(matches!(&parsed[1], ChatEvent::Phase { phase } if phase == "compacting"));
         assert!(parsed.last().unwrap().is_terminal());
     }
 

@@ -252,6 +252,14 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "chat_context" => j(app.conn(None)?.chat_context(need(args, "chatId")?).await),
         "compact_chat" => j(app.conn(None)?.compact_chat(need(args, "chatId")?).await),
         "clear_chat" => j(app.conn(None)?.clear_chat(need(args, "chatId")?).await),
+        "interrupt_turn" => j(app.conn(None)?.interrupt_chat(need(args, "chatId")?).await),
+        "pod_diagnostics" => j(app.conn(None)?.diagnostics_sessions().await),
+        "pod_diagnostics_session" => {
+            j(app.conn(None)?.diagnostics_session(need(args, "id")?).await)
+        }
+        "pod_diagnostics_trace" => j(app.conn(None)?.diagnostics_trace(need(args, "id")?).await),
+        "scheduled_followups" => j(app.conn(None)?.followups_for_chat(need(args, "chatId")?).await),
+        "cancel_followup" => j(app.conn(None)?.cancel_scheduled_task(need(args, "id")?).await),
         "create_chat" => {
             let new = NewChat {
                 instance_id: arg(args, "instanceId").map(str::to_string),

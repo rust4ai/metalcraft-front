@@ -49,8 +49,21 @@ pub fn octaweave_base() -> String {
 /// other name.
 pub const KEY_NAME: &str = "OCTAWEAVE_API_KEY";
 
-/// The integration pack's registry slug.
-pub const PACK_SLUG: &str = "octaweave";
+/// Where the pack is fetched from: a *qualified* reference on the Axoniac host.
+///
+/// Not a slug. The bare-slug route (`/integrations/install`) only ever asks
+/// packs.metalcraftai.com, which does not carry this pack, so it 404'd there and
+/// the pod reported that as a 502 — see [`crate::buildr::PACK_REF`], where the
+/// same mistake was louder because the two names also differ.
+///
+/// Here handle and id happen to agree, which is exactly why they are still two
+/// constants: a coincidence that holds today is not a rule, and the next pack
+/// whose handle drifts should not have to rediscover this.
+pub const PACK_REF: &str = "axoniac:@octaweave";
+
+/// The id the pod files the installed pack under — the archive's own
+/// `agent_pack.json: id`, which is what `/integrations` lists back.
+pub const PACK_ID: &str = "octaweave";
 
 /// The name the minted key carries in Octaweave's Keys page.
 ///

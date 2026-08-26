@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Transport } from '@/rpc/transport'
 import type { ChatEvent } from '@/types'
 
@@ -23,6 +23,11 @@ async function mountSession() {
         case 'watch_chat':
         case 'send_turn':
           return undefined as never
+        case 'interrupt_turn':
+          return true as never
+        // Nothing armed for later. The strip is exercised in Followups.test.
+        case 'scheduled_followups':
+          return [] as never
         default:
           throw new Error(`unstubbed: ${method}`)
       }
@@ -70,6 +75,51 @@ describe('SessionView', () => {
     // Settled traces speak in the past tense — a finished trace still saying
     // "Running tools" is the classic way agent UI looks broken.
     expect(screen.getByText('Ran 1 tool')).toBeTruthy()
+  })
+
+  it('says which silent phase it is in, not just that it is thinking', async () => {
+    // The six-minute "Thinking": compaction and recall happen before the model
+    // is reached and emit nothing else, so the wait used to have no explanation.
+    const { emit } = await mountSession()
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+
+    emit({ kind: 'turn_started', turn_index: 1, user_message: 'clone the repo' })
+    await waitFor(() => expect(screen.getByText('Thinking')).toBeTruthy())
+
+    emit({ kind: 'phase', phase: 'compacting' })
+    await waitFor(() => expect(screen.getByText('Compacting context')).toBeTruthy())
+
+    emit({ kind: 'llm_started' })
+    await waitFor(() => expect(screen.getByText('Waiting for the model')).toBeTruthy())
+
+    // Output ends the waiting indicator entirely.
+    emit({ kind: 'reply', content: 'cloned' })
+    emit({ kind: 'done', status: 'completed' })
+    await waitFor(() => expect(screen.getByText('cloned')).toBeTruthy())
+    expect(screen.queryByText('Waiting for the model')).toBeNull()
+  })
+
+  it('offers a stop while the agent works, and stops on the turn own word', async () => {
+    const { emit, transport } = await mountSession()
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+    // Nothing running: the only button is Send.
+    expect(screen.queryByLabelText('Stop')).toBeNull()
+
+    emit({ kind: 'turn_started', turn_index: 1, user_message: 'go' })
+    const stop = await screen.findByLabelText('Stop')
+    fireEvent.click(stop)
+
+    await waitFor(() =>
+      expect(transport.call).toHaveBeenCalledWith('interrupt_turn', { chatId: 'c1' }),
+    )
+    // Asked, not yet stopped — and the button says exactly that much.
+    await waitFor(() => expect(screen.getByLabelText('Stopping')).toBeTruthy())
+
+    // The pod's `done` is what ends the turn, on every device watching it.
+    emit({ kind: 'done', status: 'interrupted', reason: 'Stopped by the user.' })
+    await waitFor(() => expect(screen.getByText('Stopped by the user.')).toBeTruthy())
+    expect(screen.queryByLabelText('Stopping')).toBeNull()
+    expect(screen.getByLabelText('Send')).toBeTruthy()
   })
 
   it('shows a classified failure in the user own words', async () => {

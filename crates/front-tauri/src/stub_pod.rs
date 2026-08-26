@@ -47,8 +47,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// What `POST /integrations/install` claims to have installed. The real pod
-/// takes a slug in the body; a fake with one pack does not need to read it.
+/// What either install route claims to have installed. The real pod takes a slug
+/// in the body or a `?ref=` in the query; a fake with one pack does not need to
+/// read either.
 const PACK_ID: &str = "octaweave";
 
 /// One programmed answer.
@@ -161,7 +162,7 @@ pub struct Harness {
     /// and then reads the status is checking its own work. Names only — the
     /// value is a credential and a fake has no reason to keep one.
     keys: Mutex<Vec<String>>,
-    /// Integration slugs that have been installed through `/integrations/install`.
+    /// Integration ids installed through either install route.
     installed: Mutex<Vec<String>>,
     /// The gateway connection, as this pod would report it.
     ///
@@ -290,7 +291,15 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, 
             _ => return None,
         }
     }
-    if (method, path) == ("POST", "/api/v1/integrations/install") {
+    // Two install routes, one fake pack. `/integrations/install` takes a slug and
+    // only ever reaches packs.metalcraftai.com; `/agent-packs/install` takes a
+    // qualified `?ref=` and reaches the host named in it, which is the only one
+    // that can serve the buildr.space and Octaweave packs. Neither argument is
+    // read here — with one pack there is nothing to disambiguate, and what a test
+    // needs to assert is *which route was called*, which `seen` already records.
+    if method == "POST"
+        && (path == "/api/v1/integrations/install" || path == "/api/v1/agent-packs/install")
+    {
         h.installed.lock().push(PACK_ID.to_string());
         return Some((
             StatusCode::OK,
@@ -431,6 +440,9 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, 
         ("GET", "/api/v1/chats") => json!([]),
         ("GET", "/api/v1/flows") => json!({ "flows": [] }),
         ("GET", "/api/v1/flow-runs") => json!([]),
+        // Nothing armed. A pod that answers this at all is new enough to have
+        // the endpoint, which is the distinction the client cares about.
+        ("GET", "/api/v1/scheduled-tasks") => json!([]),
         _ => return None,
     };
     Some((StatusCode::OK, body))

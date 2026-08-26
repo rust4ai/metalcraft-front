@@ -25,6 +25,9 @@ const VERBS: Record<string, string> = {
   web_fetch: 'Fetch',
   say_to_user: 'Reply',
   sub_agent: 'Delegate',
+  // Not "Followup": the agent is arming work for later, and the chip is the
+  // only place a reader sees that it did rather than merely said it would.
+  schedule_followup: 'Schedule follow-up',
   load_skill: 'Load skill',
 }
 

@@ -76,6 +76,30 @@ export interface ChatCompacted {
   summary?: string | null
 }
 
+/**
+ * Work the agent armed for **later** with its `schedule_followup` tool, held on
+ * the pod and fired by the daemon's poll loop.
+ *
+ * A turn is synchronous, so "I'll check back in 3 minutes" is only true if one
+ * of these exists behind it. Rendering the countdown is what makes the
+ * difference visible from the chat.
+ */
+export interface ScheduledTask {
+  id: string
+  chat_id?: string | null
+  /** RFC-3339, and a floor rather than an exact moment: the daemon fires it on
+   *  the first poll tick at or after this time. */
+  run_at: string
+  created_at?: string
+  /** The instruction the wakeup sub-agent runs — self-contained by contract,
+   *  which makes it the honest label for the countdown. */
+  task: string
+  persona?: string | null
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
+  /** How many times this chain has re-armed itself; the pod caps it at 12. */
+  reschedule_depth?: number
+}
+
 /** The connected pod, as the renderer is allowed to see it. */
 export interface ActivePod {
   slug: string
@@ -221,6 +245,39 @@ export interface ChatDetail {
   messages: ChatMessage[]
 }
 
+/**
+ * One run the pod recorded — its own account of what the agent did, which is a
+ * different thing from this app's `Diagnostic` (what this side failed to do).
+ */
+export interface PodSession {
+  id: string
+  timestamp: string
+  persona_slug?: string | null
+  model_name?: string | null
+  /** `'session'` for an ordinary run, `'flow'` for a flow run. */
+  kind?: string | null
+  flow_id?: string | null
+  instance_id?: string | null
+  /** Executor steps recorded, not user turns. */
+  turn_count: number
+}
+
+/** A recorded run in full: how it was configured, and every event file in order. */
+export interface PodSessionDetail {
+  id: string
+  /** Persona, model, cwd, tools, skills, and the system prompt as actually built.
+   *  Untyped: it is the pod's record of its own configuration. */
+  session_info?: Record<string, unknown> | null
+  timeline: PodSessionEvent[]
+}
+
+export interface PodSessionEvent {
+  /** The pod's classification: `turn` | `llm_request` | `compaction` | `error`. */
+  kind: string
+  file: string
+  data: unknown
+}
+
 /** Mirrors the agent's SSE frames verbatim; see front-core's `events.rs`. */
 export type ChatEvent =
   | { kind: 'turn_started'; turn_index: number; user_message: string; session_id?: string | null }
@@ -230,6 +287,11 @@ export type ChatEvent =
   | { kind: 'tool_completed'; tool_call_id: string; name: string; duration_ms: number; result: ChatMessage }
   | { kind: 'reply'; content: string }
   | { kind: 'error'; code: string; message: string; retryable: boolean }
+  /** Work that happens before the model is called and emits nothing else —
+   *  compaction (a whole extra LLM call) and memory recall (an embeddings call).
+   *  An open string, not a union: a pod newer than this client may name a phase
+   *  we have never heard of, and rendering its word beats dropping the frame. */
+  | { kind: 'phase'; phase: string }
   | { kind: 'done'; status: 'completed' | 'interrupted' | 'failed'; reason?: string | null }
   | { kind: 'unknown' }
 

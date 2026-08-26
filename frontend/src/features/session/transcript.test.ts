@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyTranscript, fromMessages, reduce, reduceAll } from './transcript'
+import { emptyTranscript, fromMessages, phaseLabel, reduce, reduceAll } from './transcript'
 import type { ChatEvent, ChatMessage } from '@/types'
 
 const turn: ChatEvent[] = [
@@ -24,6 +24,65 @@ describe('transcript reducer', () => {
     expect(s.items.map((i) => i.kind)).toEqual(['user', 'tool', 'reply'])
     expect(s.busy).toBe(false)
     expect(s.lastStatus).toBe('completed')
+  })
+
+  it('names the silent phases, so a long wait says what it is waiting on', () => {
+    // The whole point: compaction is an extra LLM call and recall is an
+    // embeddings call, both before the model is even reached. They used to be
+    // indistinguishable from thinking hard about the answer.
+    let s = reduce(emptyTranscript(), turn[0]!)
+    expect(s.phase).toBeUndefined()
+
+    s = reduce(s, { kind: 'phase', phase: 'compacting' })
+    expect(phaseLabel(s.phase)).toBe('Compacting context')
+    s = reduce(s, { kind: 'phase', phase: 'recalling' })
+    expect(phaseLabel(s.phase)).toBe('Searching memory')
+
+    // The model call names itself; the pod does not send a frame for it.
+    s = reduce(s, { kind: 'llm_started' })
+    expect(phaseLabel(s.phase)).toBe('Waiting for the model')
+
+    // Anything that produces output ends the waiting.
+    s = reduce(s, { kind: 'llm_completed', messages: [], duration_ms: 1 })
+    expect(s.phase).toBeUndefined()
+    expect(s.thinking).toBe(false)
+  })
+
+  it('renders a phase from a newer pod rather than dropping it', () => {
+    // A pod is rolled independently of this app. Falling back to "Thinking" for
+    // a phase we have not heard of would undo the fix on the newest pods first.
+    expect(phaseLabel('indexing_files')).toBe('Indexing files')
+    expect(phaseLabel(undefined)).toBe('Thinking')
+  })
+
+  it('remembers which diagnostics session a turn belongs to', () => {
+    // The handle the debug view opens with; `null` from an older pod must not
+    // read as "there is one".
+    const withId = reduce(emptyTranscript(), {
+      kind: 'turn_started',
+      turn_index: 0,
+      user_message: 'go',
+      session_id: '2026-08-26T05-28-20',
+    })
+    expect(withId.sessionId).toBe('2026-08-26T05-28-20')
+    expect(reduce(emptyTranscript(), turn[0]!).sessionId).toBeUndefined()
+  })
+
+  it('leaves a notice when a turn is stopped, so it looks stopped and not hung', () => {
+    // Mid-trace silence reads as a bug. The pod writes the sentence because the
+    // pod knows who stopped it — including when that was another device.
+    const s = reduceAll(emptyTranscript(), [
+      ...turn.slice(0, 5),
+      { kind: 'done', status: 'interrupted', reason: 'Stopped by the user.' },
+    ])
+    expect(s.lastStatus).toBe('interrupted')
+    expect(s.busy).toBe(false)
+    expect(s.items.at(-1)).toMatchObject({ kind: 'notice', content: 'Stopped by the user.' })
+  })
+
+  it('still says a turn stopped when the pod gave no reason', () => {
+    const s = reduceAll(emptyTranscript(), [turn[0]!, { kind: 'done', status: 'interrupted' }])
+    expect(s.items.at(-1)).toMatchObject({ kind: 'notice', content: 'Stopped.' })
   })
 
   it('completes a tool card in place rather than adding a second one', () => {

@@ -199,10 +199,13 @@ Decisions:
   `tauri` (invoke + Tauri events) and `http` (fetch + `EventSource` against a thin proxy,
   reusing workshop-web's stateless-proxy design). Enforced by an oxlint rule banning
   `@tauri-apps/api` imports outside `rpc/transport/tauri.ts`.
-- **Transcript reducer** handles the real event set: `turn_started`, `llm_started`,
-  `llm_completed`, `tool_started`, `tool_completed`, `reply`, `error{code,message,retryable}`,
-  `done{status,reason}` (see `workshop_api.rs:3728-3786`). `error` gets first-class UI —
-  the 402 out-of-credits path already has a taxonomy.
+- **Transcript reducer** handles the real event set: `turn_started`, `phase{phase}`,
+  `llm_started`, `llm_completed`, `tool_started`, `tool_completed`, `reply`,
+  `error{code,message,retryable}`, `done{status,reason}` (see `workshop_api.rs`). `error` gets
+  first-class UI — the 402 out-of-credits path already has a taxonomy. `phase` names the work
+  that happens *before* the model is reached — compaction is a whole extra summarization call,
+  recall is an embeddings call — which used to render as an undifferentiated "Thinking" for as
+  long as it took.
 - **Optimistic composer:** user bubble appears immediately; a 409 "chat is already mid-turn"
   rolls it back with a toast (the pod rejects concurrent turns per chat).
 
@@ -428,9 +431,29 @@ These are **not** blockers for P0–P4, but the UI will be visibly better with t
    client can't know what an OpenRouter or custom source offers. Add `GET /api/v1/models`
    (pod-side, source-aware) or accept a client-side catalog per provider + free-text override.
    *(agent, small)*
-3. **Turn cancellation.** There is no `POST /chats/{id}/interrupt`; `Done{status:"interrupted"}`
-   only comes from the executor's own guard (`workshop_api.rs:4156`). A stop button needs a
-   real endpoint. *(agent, small)*
+3. **Turn cancellation.** ✅ *Closed.* `POST /chats/{id}/interrupt` now exists (agent
+   `workshop_api.rs`): it sets a per-session `Arc<AtomicBool>` that the chat turn's existing
+   step guard reads, returning `GuardAction::Stop` — so the turn ends at the next step
+   boundary and emits the `Done{status:"interrupted"}` the pod already knew how to send. It
+   answers `{stopping:false}` for an idle chat rather than `409`, because pressing stop as the
+   last frame lands is a race and not a failure. Client side: `PodConnection::interrupt_chat`
+   (`None` on 404 = a pod too old to stop a turn), the `interrupt_turn` command, and the
+   composer's send button, which becomes a stop button for the length of a turn. What is
+   *not* covered: an LLM call already in flight is still paid for, and a tool already running
+   finishes — a step guard cannot promise more than the next boundary.
+3a. **Turn observability.** ✅ *Closed alongside the above.* Three gaps, one story — a turn
+   could spend minutes with the UI saying only "Thinking":
+   - The pod now emits `phase` frames for the silent pre-model work (`runtime::phase`,
+     announced only when compaction will actually run), and the session view labels its
+     waiting indicator with them.
+   - `build_openai_client` had **no request timeout** — rig sets none — so a stalled provider
+     connection held a chat busy forever with no retry. Now 600s, `METALCRAFT_LLM_TIMEOUT_SECS`
+     to tune, `0` to disable. A timeout already classifies as `UpstreamUnavailable`/retryable.
+   - `traces/<id>/otlp-trace.json` was written and never served. `GET /diagnostics/{id}/trace`
+     now serves it, and the desktop's debug drawer reads it: per turn, the untraced prelude
+     (compaction + recall + prompt building, visible only as the gap before the first span),
+     then every model call and tool with real durations and token counts, with the session's
+     own files underneath.
 4. **Token-level streaming.** `LlmCompleted` arrives whole — no deltas. Orca's chat feels
    live because a PTY streams bytes. Add `LlmDelta { text }` frames behind a feature flag.
    *(agent, medium)*

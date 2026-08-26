@@ -160,6 +160,12 @@ fn main() {
             rpc::chat::compact_chat,
             rpc::chat::clear_chat,
             rpc::chat::watch_chat,
+            rpc::chat::interrupt_turn,
+            rpc::chat::pod_diagnostics,
+            rpc::chat::pod_diagnostics_session,
+            rpc::chat::pod_diagnostics_trace,
+            rpc::chat::scheduled_followups,
+            rpc::chat::cancel_followup,
             rpc::diagnostics::list_diagnostics,
             rpc::diagnostics::clear_diagnostics,
         ])
