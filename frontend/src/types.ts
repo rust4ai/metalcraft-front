@@ -227,6 +227,9 @@ export interface ChatSummary {
   model_name?: string | null
   created_at: string
   updated_at?: string | null
+  /** How many turns the conversation holds. Absent from a pod too old to report
+   *  it, which is not the same as none and is not ranked as if it were. */
+  turn_count?: number | null
 }
 
 export type ChatMessage =

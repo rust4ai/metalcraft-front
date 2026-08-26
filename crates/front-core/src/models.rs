@@ -126,6 +126,10 @@ pub struct ChatSummary {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// How many turns this conversation holds. `None` from a pod too old to
+    /// report it — which is not "no turns", and must not be ranked as if it were.
+    #[serde(default)]
+    pub turn_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

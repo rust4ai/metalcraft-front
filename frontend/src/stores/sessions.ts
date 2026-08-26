@@ -2,16 +2,17 @@ import { create } from 'zustand'
 import { chats } from '@/rpc'
 import { emptyTranscript, fromMessages, reduce, type TranscriptState } from '@/features/session/transcript'
 import { describeCommandError, helpText, parse } from '@/features/session/commands'
-import type { ChatEvent, ChatSummary, ScheduledTask } from '@/types'
+import type { ChatDetail, ChatEvent, ChatSummary, ScheduledTask } from '@/types'
 import { useFleet } from './fleet'
 
 /**
  * Open conversations, one per agent instance.
  *
- * Opening an instance **reuses its most recent chat** rather than starting a new
- * one. An instance is long-lived and its conversation is the thing you come back
- * to; spawning a fresh chat on every click would scatter one relationship across
- * a dozen transcripts and lose the context the agent was relying on.
+ * Opening an instance **reuses the chat it was last on**, by id, and falls back
+ * to its most recent one only when there is no remembered id to honour. An
+ * instance is long-lived and its conversation is the thing you come back to;
+ * spawning a fresh chat on every click would scatter one relationship across a
+ * dozen transcripts and lose the context the agent was relying on.
  *
  * Live frames arrive on `session://{chat_id}` whether this client drove the turn
  * or not, so a session opened while the agent is mid-turn (fired by a schedule, a
@@ -61,14 +62,87 @@ interface SessionsState {
   refreshFollowups: (instanceId: string) => Promise<void>
 }
 
-/** The instance's newest conversation, or undefined if it has none yet. */
+/**
+ * Which chat each instance was last opened on, by id, across restarts.
+ *
+ * The heuristic below cannot carry this on its own. `newestChat` ranks by
+ * `updated_at ?? created_at`, and the pod's chat list has never sent
+ * `updated_at` — so "most recent" really means *most recently created*, and one
+ * accidental empty chat becomes the instance's conversation for good. Pinning
+ * the id is what makes reopening a conversation an identity question instead of
+ * a ranking question.
+ */
+const CHATS_KEY = 'mc.chats'
+
+function rememberedChats(): Record<string, string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHATS_KEY) ?? 'null') as unknown
+    return saved && typeof saved === 'object' ? (saved as Record<string, string>) : {}
+  } catch {
+    // A binding we cannot read is one we re-derive; never a reason to fail to
+    // open a conversation.
+    return {}
+  }
+}
+
+function rememberChat(instanceId: string, chatId: string) {
+  try {
+    localStorage.setItem(CHATS_KEY, JSON.stringify({ ...rememberedChats(), [instanceId]: chatId }))
+  } catch {
+    // Private mode, quota, a wiped profile: the session still opens, it just
+    // falls back to the newest chat next time.
+  }
+}
+
+/**
+ * The chat to open this instance on.
+ *
+ * Ordered by how much it knows: the id this instance was last on, then the
+ * newest chat the pod lists for it, and only then a new one. Creating is the
+ * last resort on purpose — a stray `create` mints a second conversation that
+ * then *outranks* the real one by creation time, so the transcript with all the
+ * history stops being reachable at all. That is only ever done when the pod has
+ * answered and genuinely has no chat for this agent.
+ */
+async function resolveChat(instanceId: string): Promise<ChatDetail> {
+  const remembered = rememberedChats()[instanceId]
+  if (remembered) {
+    try {
+      const detail = await chats.get(remembered)
+      // A chat that has moved to another agent is not this agent's conversation,
+      // whatever we wrote down. Pods older than `instance_id` on chat detail send
+      // nothing here, and silence is not a mismatch.
+      if (!detail.instance_id || detail.instance_id === instanceId) return detail
+    } catch {
+      // Deleted, or on a pod that has never heard of it — re-derive below rather
+      // than strand the agent on an id that no longer resolves.
+    }
+  }
+  const existing = newestChat(await chats.list(), instanceId)
+  return existing ? await chats.get(existing.id) : await chats.create({ instanceId })
+}
+
+/**
+ * The instance's conversation, or undefined if it has none yet.
+ *
+ * Newest first, but **a conversation that has been spoken in outranks one that
+ * has not**, however recently the empty one was made. That second rule is the
+ * whole reason this is not a one-line sort: an empty chat is newer than the
+ * transcript it was accidentally created beside, so ranking on time alone hands
+ * the agent a blank pane and buries everything it had said. A pod too old to
+ * report `turn_count` says nothing rather than zero, and nothing is not empty.
+ */
+const spokenIn = (c: ChatSummary) => (c.turn_count == null || c.turn_count > 0 ? 1 : 0)
+
 export function newestChat(all: ChatSummary[], instanceId: string): ChatSummary | undefined {
   const mine = all.filter((c) => c.instance_id === instanceId)
   // `sort` rather than `toSorted`: the build targets safari15 for older macOS
   // webviews, and `mine` is already a fresh array from `filter`.
   // oxlint-disable-next-line unicorn/no-array-sort
   return mine.sort(
-    (a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at),
+    (a, b) =>
+      spokenIn(b) - spokenIn(a) ||
+      Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at),
   )[0]
 }
 
@@ -101,6 +175,20 @@ function notice(instanceId: string, content: string) {
   })
 }
 
+/**
+ * Live subscriptions, by instance — held outside the store on purpose.
+ *
+ * A session entry can go away (a close, a reset) while the transport
+ * subscription it opened is still delivering; the handle has to outlive the
+ * entry or the next open silently stacks a second listener on the same chat.
+ */
+const listeners: Record<string, () => void> = {}
+
+function detach(instanceId: string) {
+  listeners[instanceId]?.()
+  delete listeners[instanceId]
+}
+
 export const useSessions = create<SessionsState>((set, get) => ({
   byInstance: {},
   opening: {},
@@ -109,12 +197,21 @@ export const useSessions = create<SessionsState>((set, get) => ({
     if (get().byInstance[instanceId] || get().opening[instanceId]) return
     set({ opening: { ...get().opening, [instanceId]: true } })
     try {
-      const existing = newestChat(await chats.list(), instanceId)
-      const detail = existing ? await chats.get(existing.id) : await chats.create({ instanceId })
-      const unlisten = await chats.onEvent(detail.id, (ev) => get().apply(instanceId, ev))
-      // Attach to the broadcast channel so a turn already running elsewhere shows
-      // up here too.
-      await chats.watch(detail.id)
+      const detail = await resolveChat(instanceId)
+      // Pinned only once there is something in it. A chat with no messages is
+      // not yet this agent's conversation — pinning one on sight is how a stray
+      // empty chat used to become permanent, which is the failure the ranking in
+      // `newestChat` exists to undo. `turn_started` pins it the moment it is
+      // spoken in.
+      if ((detail.messages ?? []).length > 0) rememberChat(instanceId, detail.id)
+      // A previous listener for this instance outlives its session entry — the
+      // transport's subscription is not the store's to lose. Attaching a second
+      // one would double every reply in the transcript, so the old one goes
+      // first, whatever became of the session it was opened for.
+      detach(instanceId)
+      // The entry lands *before* the subscription: `apply` drops frames for an
+      // instance it has no session for, and a turn already running elsewhere
+      // starts sending the moment the channel is attached.
       set({
         byInstance: {
           ...get().byInstance,
@@ -127,10 +224,20 @@ export const useSessions = create<SessionsState>((set, get) => ({
             stopping: false,
             error: null,
             followups: null,
-            unlisten,
           },
         },
       })
+      const unlisten = await chats.onEvent(detail.id, (ev) => get().apply(instanceId, ev))
+      listeners[instanceId] = unlisten
+      // Attach to the broadcast channel so a turn already running elsewhere shows
+      // up here too.
+      await chats.watch(detail.id)
+      const opened = get().byInstance[instanceId]
+      // Only if this is still the session that was opened: a close, or a reopen
+      // onto another chat, must not have a stale detach handle written into it.
+      if (opened?.chatId === detail.id) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...opened, unlisten } } })
+      }
     } catch (e) {
       set({
         byInstance: {
@@ -258,8 +365,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
   },
 
   close: (instanceId) => {
-    const session = get().byInstance[instanceId]
-    session?.unlisten?.()
+    detach(instanceId)
     const { [instanceId]: _, ...rest } = get().byInstance
     set({ byInstance: rest })
   },
@@ -284,6 +390,9 @@ export const useSessions = create<SessionsState>((set, get) => ({
   apply: (instanceId, ev) => {
     const session = get().byInstance[instanceId]
     if (!session) return
+    // The first word makes it the agent's conversation: from here on this is the
+    // chat to come back to, whatever else gets created alongside it.
+    if (ev.kind === 'turn_started' && session.chatId) rememberChat(instanceId, session.chatId)
     const transcript = reduce(session.transcript, ev)
     set({
       byInstance: {

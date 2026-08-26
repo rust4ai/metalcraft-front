@@ -18,9 +18,16 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   const session = byInstance[instanceId]
   const bottom = useRef<HTMLDivElement>(null)
 
+  // Opened on mount, and again whenever the session is *missing* — not only the
+  // first time. A mount-only open has no way back: the transcript lives in the
+  // store, so anything that drops the entry (a close, a reset, a hot reload in
+  // dev) left this pane rendering an empty list for ever, while the agent went
+  // on running turns nobody could see. `open` is a no-op when a session is
+  // already there or already on its way, so this cannot loop.
+  const missing = !session
   useEffect(() => {
-    void open(instanceId)
-  }, [instanceId, open])
+    if (missing) void open(instanceId)
+  }, [instanceId, missing, open])
 
   // Follow the tail as frames land. Cheap and correct while transcripts are
   // short; virtualization comes with the long ones.
@@ -57,6 +64,17 @@ export function SessionView({ instanceId }: { instanceId: string }) {
           <Problem message={session.error} />
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
+            {/* Never nothing. An empty pane with no sentence in it is
+                indistinguishable from a broken one — which is exactly how this
+                view failed before: a dropped session rendered as blank forever,
+                with a perfectly healthy agent behind it. */}
+            {!busy && (session?.transcript.items.length ?? 0) === 0 && (
+              <p className="mx-auto max-w-[85%] text-center text-[12px] leading-relaxed text-ink-3">
+                {session
+                  ? 'Nothing in this conversation yet. Send a message to start it.'
+                  : 'Reconnecting to this conversation…'}
+              </p>
+            )}
             {groupIntoBlocks(session?.transcript.items ?? []).map((block) =>
               block.kind === 'tools' ? (
                 <Trace key={block.id} cards={block.cards} />

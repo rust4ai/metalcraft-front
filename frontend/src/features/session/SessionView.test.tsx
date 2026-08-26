@@ -3,18 +3,25 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { Transport } from '@/rpc/transport'
 import type { ChatEvent } from '@/types'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // The instance -> chat binding outlives a render; a test must not inherit the
+  // conversation the previous one pinned.
+  localStorage.clear()
+})
 
 /**
  * End-to-end through the renderer's half of the event bridge: a frame published
  * on `session://{chat_id}` has to reach the transcript and render. This is the
  * path that a blank-but-running window would silently break.
  */
-async function mountSession() {
+async function mountSession(overrides: Record<string, unknown> = {}) {
   vi.resetModules()
+  localStorage.clear()
   const listeners: Record<string, (p: unknown) => void> = {}
   const transport: Transport = {
     call: vi.fn(async (method: string) => {
+      if (method in overrides) return overrides[method] as never
       switch (method) {
         case 'list_chats':
           return [{ id: 'c1', instance_id: 'i1', created_at: '2026-08-01T00:00:00Z' }] as never
@@ -40,9 +47,10 @@ async function mountSession() {
   const t = await import('@/rpc/transport')
   t.setTransport(transport)
   const { SessionView } = await import('./SessionView')
+  const { useSessions } = await import('@/stores/sessions')
   render(<SessionView instanceId="i1" />)
   const emit = (ev: ChatEvent) => listeners['session://c1']?.(ev)
-  return { emit, transport }
+  return { emit, transport, useSessions }
 }
 
 describe('SessionView', () => {
@@ -130,5 +138,26 @@ describe('SessionView', () => {
     emit({ kind: 'done', status: 'failed' })
     await waitFor(() => expect(screen.getByText('You are out of credits.')).toBeTruthy())
     expect(screen.getByText(/out_of_credits/)).toBeTruthy()
+  })
+  it('reopens a conversation whose session was dropped, rather than going blank', async () => {
+    // The failure this exists for: the transcript lives in the store, so
+    // anything that drops the entry used to leave a blank pane for ever — no
+    // spinner, no error, no way back — while the agent went on running turns
+    // that only the debug drawer could see.
+    const { useSessions } = await mountSession()
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+
+    useSessions.getState().close('i1')
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+    expect(useSessions.getState().byInstance.i1?.chatId).toBe('c1')
+  })
+
+  it('says an empty conversation is empty', async () => {
+    // An empty pane with no sentence in it is indistinguishable from a broken
+    // one, which is exactly how this view failed.
+    await mountSession({ get_chat: { id: 'c1', instance_id: 'i1', messages: [] } })
+    await waitFor(() =>
+      expect(screen.getByText(/Nothing in this conversation yet/)).toBeTruthy(),
+    )
   })
 })

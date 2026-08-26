@@ -25,6 +25,26 @@ describe('newestChat', () => {
     expect(newestChat([chat('a', 'i1', '2026-08-01T00:00:00Z')], 'fresh')).toBeUndefined()
   })
 
+  it('prefers a conversation that has been spoken in over a newer empty one', () => {
+    // The trap this closes: a stray `create` mints an empty chat that is newer
+    // than the real transcript, and time-only ranking then hands the agent a
+    // blank pane and buries everything it had said.
+    const all: ChatSummary[] = [
+      { id: 'real', instance_id: 'i1', created_at: '2026-08-01T00:00:00Z', turn_count: 12 },
+      { id: 'stray', instance_id: 'i1', created_at: '2026-08-26T00:00:00Z', turn_count: 0 },
+    ]
+    expect(newestChat(all, 'i1')?.id).toBe('real')
+  })
+
+  it('does not read a pod silence about turns as an empty chat', () => {
+    // Pods older than `turn_count` send nothing, and nothing is not zero.
+    const all: ChatSummary[] = [
+      { id: 'old', instance_id: 'i1', created_at: '2026-08-01T00:00:00Z' },
+      { id: 'new', instance_id: 'i1', created_at: '2026-08-26T00:00:00Z' },
+    ]
+    expect(newestChat(all, 'i1')?.id).toBe('new')
+  })
+
   it('falls back to created_at when a chat has never been updated', () => {
     const all: ChatSummary[] = [
       { id: 'a', instance_id: 'i1', created_at: '2026-08-01T00:00:00Z' },
@@ -261,5 +281,143 @@ describe('stop', () => {
     const { useSessions, calls } = await mount({ interrupt_turn: true })
     await useSessions.getState().stop('i1')
     expect(calls).toEqual([])
+  })
+})
+
+/**
+ * Opening, with nothing seeded — the path that decides *which* conversation an
+ * agent comes back to. Kept apart from `mount` above, which pre-seeds a session
+ * and would make `open` a no-op.
+ */
+async function mountOpen(
+  overrides: Record<string, unknown> = {},
+  /** Publish a frame the instant the channel is attached — the pod does exactly
+   *  this when a turn is already running elsewhere. */
+  onAttach?: (emit: (ev: unknown) => void) => void,
+) {
+  vi.resetModules()
+  localStorage.clear()
+  const calls: Array<{ method: string; args?: Record<string, unknown> }> = []
+  const responses: Record<string, unknown> = {
+    list_chats: [],
+    watch_chat: undefined,
+    scheduled_followups: [],
+    ...overrides,
+  }
+  const transport = await import('@/rpc/transport')
+  transport.setTransport({
+    call: async (method: string, args?: Record<string, unknown>) => {
+      calls.push({ method, args })
+      const r = typeof responses[method] === 'function'
+        ? (responses[method] as (a?: Record<string, unknown>) => unknown)(args)
+        : responses[method]
+      if (r instanceof Error) throw r
+      return r as never
+    },
+    listen: async (_channel: string, cb: (p: never) => void) => {
+      onAttach?.(cb as (ev: unknown) => void)
+      return () => {}
+    },
+  })
+  const { useSessions } = await import('./sessions')
+  return {
+    useSessions,
+    calls,
+    methods: () => calls.map((c) => c.method),
+    session: () => useSessions.getState().byInstance.i1,
+  }
+}
+
+const summary = (id: string, created: string) => ({ id, instance_id: 'i1', created_at: created })
+
+describe('open', () => {
+  it('reuses the instance existing chat rather than starting another', async () => {
+    const { useSessions, methods, session } = await mountOpen({
+      list_chats: [summary('c1', '2026-08-01T00:00:00Z')],
+      get_chat: { id: 'c1', instance_id: 'i1', messages: [{ role: 'user', content: 'earlier' }] },
+    })
+    await useSessions.getState().open('i1')
+    expect(session()?.chatId).toBe('c1')
+    expect(session()?.transcript.items).toHaveLength(1)
+    // The one call that must never happen when the agent already has a
+    // conversation: a second chat outranks the real one by creation time, and
+    // the transcript with all the history stops being reachable.
+    expect(methods()).not.toContain('create_chat')
+  })
+
+  it('comes back to the chat it was last on, not the most recently created one', async () => {
+    // The pod's chat list has never sent `updated_at`, so "newest" is really
+    // "newest created". Without the remembered id, one stray empty chat becomes
+    // the agent's conversation for good.
+    const { useSessions, session } = await mountOpen({
+      list_chats: [summary('older', '2026-08-01T00:00:00Z'), summary('stray', '2026-08-26T00:00:00Z')],
+      get_chat: (args?: Record<string, unknown>) => ({
+        id: args?.id,
+        instance_id: 'i1',
+        messages: [{ role: 'user', content: `in ${String(args?.id)}` }],
+      }),
+    })
+    await useSessions.getState().open('i1')
+    expect(session()?.chatId).toBe('stray')
+
+    useSessions.getState().close('i1')
+    localStorage.setItem('mc.chats', JSON.stringify({ i1: 'older' }))
+    await useSessions.getState().open('i1')
+    expect(session()?.chatId).toBe('older')
+  })
+
+  it('re-derives when the remembered chat is gone', async () => {
+    // Deleted from another client, or a pod that has never heard of it. An id
+    // that no longer resolves must not strand the agent.
+    const { useSessions, session } = await mountOpen({
+      list_chats: [summary('c1', '2026-08-01T00:00:00Z')],
+      get_chat: (args?: Record<string, unknown>) =>
+        args?.id === 'deleted'
+          ? new Error("404 Not Found /chats/deleted: chat 'deleted' not found")
+          : { id: 'c1', instance_id: 'i1', messages: [] },
+    })
+    // `mountOpen` clears storage, so the binding is written after it.
+    localStorage.setItem('mc.chats', JSON.stringify({ i1: 'deleted' }))
+    await useSessions.getState().open('i1')
+    expect(session()?.chatId).toBe('c1')
+  })
+
+  it('ignores a remembered chat that now belongs to another agent', async () => {
+    const { useSessions, session } = await mountOpen({
+      list_chats: [summary('c1', '2026-08-01T00:00:00Z')],
+      get_chat: (args?: Record<string, unknown>) => ({
+        id: args?.id,
+        instance_id: args?.id === 'moved' ? 'i2' : 'i1',
+        messages: [],
+      }),
+    })
+    localStorage.setItem('mc.chats', JSON.stringify({ i1: 'moved' }))
+    await useSessions.getState().open('i1')
+    expect(session()?.chatId).toBe('c1')
+  })
+
+  it('starts one only when the pod says the agent has none', async () => {
+    const { useSessions, methods, session } = await mountOpen({
+      list_chats: [],
+      create_chat: { id: 'fresh', instance_id: 'i1', messages: [] },
+    })
+    await useSessions.getState().open('i1')
+    expect(methods()).toContain('create_chat')
+    expect(session()?.chatId).toBe('fresh')
+  })
+
+  it('takes frames that land while the stream is being attached', async () => {
+    // The session entry is written *before* the subscription, because `apply`
+    // drops frames for an instance it has no session for — and a turn already
+    // running elsewhere starts sending the moment the channel is attached.
+    const { useSessions, session } = await mountOpen(
+      {
+        list_chats: [summary('c1', '2026-08-01T00:00:00Z')],
+        get_chat: { id: 'c1', instance_id: 'i1', messages: [] },
+      },
+      (emit) => emit({ kind: 'reply', content: 'mid-turn' }),
+    )
+    await useSessions.getState().open('i1')
+    expect(session()?.transcript.items.at(-1)).toMatchObject({ content: 'mid-turn' })
   })
 })
