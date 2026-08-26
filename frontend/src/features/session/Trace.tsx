@@ -42,9 +42,14 @@ export function Trace({ cards }: { cards: ToolCard[] }) {
         />
       </button>
 
-      <ul className={cn('flex flex-wrap gap-1.5 px-3 pb-2.5', open && 'flex-col')}>
+      {/* `flex-wrap` only in the collapsed row. Wrapping a *column* makes each
+          flex line size its cross-axis — the width — to its contents, so an
+          expanded chip stretched to its widest JSON line and pushed the whole
+          transcript into a horizontal scroll. Down this axis the payload's own
+          box is the only thing allowed to scroll sideways. */}
+      <ul className={cn('flex gap-1.5 px-3 pb-2.5', open ? 'flex-col' : 'flex-wrap')}>
         {cards.map((card) => (
-          <li key={card.id}>
+          <li key={card.id} className="min-w-0">
             <Chip card={card} expanded={open} />
           </li>
         ))}
@@ -76,7 +81,9 @@ function Chip({ card, expanded }: { card: ToolCard; expanded: boolean }) {
           <Check className="h-3 w-3 shrink-0 text-green" />
         )}
         <span className={cn('shrink-0 font-medium', running ? 'text-ink-2' : 'text-ink')}>{verb}</span>
-        {target && <span className="truncate font-mono text-ink-2">{truncateTarget(target)}</span>}
+        {target && (
+          <span className="min-w-0 truncate font-mono text-ink-2">{truncateTarget(target)}</span>
+        )}
         {card.durationMs !== undefined && (
           <span className="tnum ml-auto shrink-0 font-mono text-[10.5px] text-ink-3">
             {card.durationMs}ms
@@ -98,7 +105,7 @@ function Payload({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="mb-0.5 text-[10px] uppercase tracking-wide text-ink-3">{label}</div>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-chip bg-page p-2 font-mono text-[11px] text-ink-2">
+      <pre className="max-h-64 overflow-auto overscroll-contain whitespace-pre-wrap break-words rounded-chip bg-page p-2 font-mono text-[11px] text-ink-2">
         {value}
       </pre>
     </div>
