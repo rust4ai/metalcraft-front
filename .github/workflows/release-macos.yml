@@ -87,10 +87,16 @@ jobs:
             exit 1
           fi
           echo "path=$path" >> "$GITHUB_OUTPUT"
+          # The note is chosen from what the artefact turned out to be, not
+          # from what the secrets imply — signing can fail open, and a download
+          # page silent about Gatekeeper sends people to a "damaged and can't be
+          # opened" dialog with no idea why.
           if codesign -dv --verbose=2 "$path" 2>&1 | grep -q "Authority"; then
             echo "signed: yes"
+            : > RELEASE_NOTES.md
           else
             echo "::warning::This .dmg is UNSIGNED. Gatekeeper will refuse to open it on any Mac but this runner. Set the APPLE_* secrets before linking it from metalcraftai.com."
+            cp .github/release-note-unsigned.md RELEASE_NOTES.md
           fi
 
       - uses: actions/upload-artifact@v4
@@ -105,6 +111,8 @@ jobs:
         with:
           files: ${{ steps.dmg.outputs.path }}
           generate_release_notes: true
+          # Prepended to the generated notes; empty file when the build is signed.
+          body_path: RELEASE_NOTES.md
           # Unsigned builds are marked pre-release, so nobody lands on one from
           # /releases/latest expecting a .dmg that just opens. Add the APPLE_*
           # secrets and the next tag promotes itself to a full release.
