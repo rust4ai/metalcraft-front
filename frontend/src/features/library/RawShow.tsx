@@ -1,4 +1,9 @@
+import { ArrowUpCircle, Loader2 } from 'lucide-react'
 import { useLibrary } from '@/stores/library'
+import { usePacks } from '@/stores/packs'
+import { useFleet } from '@/stores/fleet'
+import { usePackUpdate } from '@/features/packs/updates'
+import { Button } from '@/components/ui/Button'
 import { refKey, type Ref } from './refs'
 import {
   Badge,
@@ -127,6 +132,51 @@ function ApiTool({ name, doc }: { name: string; doc: Record<string, unknown> }) 
  * own, so the page is mostly links: this is the one screen that answers "what
  * did installing this actually put on my pod".
  */
+/**
+ * The newer version of this pack, when the registry it came from has one.
+ *
+ * Updating from here rather than sending someone to the shop, because this page
+ * is where the question comes up: you open a pack to see what it provides, and
+ * "there is a newer one" is part of that answer. The button is the same store
+ * action the browser's is, so it goes through the pod's update endpoint and
+ * reconciles live agents — a second path that quietly installed instead would be
+ * the original bug growing back in a different tab.
+ */
+function PackUpdate({ id }: { id: string }) {
+  const update = usePackUpdate(id)
+  const apply = usePacks((s) => s.apply)
+  const installing = usePacks((s) => s.installing)
+  const loadLibrary = useLibrary((s) => s.load)
+  const loadFleet = useFleet((s) => s.load)
+  if (!update) return null
+  const busy = !!installing[update.hit.reference]
+
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-card bg-accent-tint px-4 py-3">
+      <ArrowUpCircle className="h-4 w-4 shrink-0 text-accent" />
+      <p className="min-w-0 flex-1 text-[12.5px] text-ink-2">
+        <span className="font-medium text-ink">Version {update.to} is available.</span> This pod is
+        on {update.from}, from{' '}
+        <span className="font-mono text-[11px]">{update.hit.reference}</span>.
+      </p>
+      <Button
+        size="sm"
+        disabled={busy}
+        onClick={async () => {
+          if (!(await apply(update.hit))) return
+          // Both lists are now stale: the library holds the old version's
+          // artifacts, and a preset the new version added is spawnable.
+          void loadLibrary()
+          void loadFleet()
+        }}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpCircle className="h-3.5 w-3.5" />}
+        Update
+      </Button>
+    </div>
+  )
+}
+
 function Pack({ id, doc }: { id: string; doc: Record<string, unknown> }) {
   const provides = obj(doc.provides)
   const domains = strArray(doc.domains)
@@ -145,6 +195,8 @@ function Pack({ id, doc }: { id: string; doc: Record<string, unknown> }) {
           </>
         }
       />
+
+      <PackUpdate id={id} />
 
       <RefChips kind="preset" title="Agents it provides" ids={strArray(doc.presets)} />
       <RefChips kind="persona" ids={strArray(provides?.personas)} />

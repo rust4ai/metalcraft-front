@@ -348,6 +348,19 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
                     .unwrap_or(false),
             )
             .await),
+        // Mirrored for the same reason as install, and one more: this is the call
+        // whose *absence* was the bug — the browser offered "Update" and sent an
+        // install. A bridge that cannot exercise it cannot show that it now does.
+        "update_pack" => j(app
+            .conn(None)?
+            .update_agent_pack(
+                need(args, "id")?,
+                need(args, "reference")?,
+                args.get("allowUnverified")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            )
+            .await),
 
         other => Err(format!("dev bridge does not mirror '{other}'")),
     }

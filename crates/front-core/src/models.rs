@@ -378,6 +378,63 @@ pub struct InstalledAgentPack {
     pub manifest: Option<AgentPackFields>,
 }
 
+/// What updating an installed pack did — to the pack, and to the agents made from
+/// it.
+///
+/// The second half is the reason `POST /agent-packs/{id}/update` exists and
+/// `install` is not a substitute for it. Installing over a pack replaces files;
+/// updating reconciles what was already running against them: an agent whose
+/// persona the new version withdrew is moved to the preset's default rather than
+/// left pointing at a persona that is gone, an agent whose *preset* was withdrawn
+/// keeps working from a frozen copy instead of resolving to nothing, and every
+/// affected agent's memory base is repointed so the change is live on the next
+/// turn rather than after a restart.
+///
+/// All three are silent when they happen. Carrying them back means the person who
+/// pressed Update is told which of their agents changed underneath them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PackUpdateReport {
+    pub id: String,
+    #[serde(default)]
+    pub from_version: String,
+    #[serde(default)]
+    pub to_version: String,
+    /// Live agents whose persona was withdrawn, and what they fell back to.
+    #[serde(default)]
+    pub personas_fell_back: Vec<PersonaFallback>,
+    /// Live agents whose preset the new version no longer ships.
+    #[serde(default)]
+    pub orphaned: Vec<OrphanedAgent>,
+    /// Agents now resolving against the new version's shipped knowledge.
+    #[serde(default)]
+    pub memory_bases_repointed: Vec<String>,
+    /// The install underneath, for the requirements the new version added.
+    #[serde(default)]
+    pub install: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonaFallback {
+    pub instance: String,
+    #[serde(default)]
+    pub name: String,
+    /// The persona the new version no longer provides.
+    pub from: String,
+    /// The preset's default, which it now uses instead.
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrphanedAgent {
+    pub instance: String,
+    #[serde(default)]
+    pub name: String,
+    pub agent_preset: String,
+    /// Personas and skills copied into the user-local layer so it still runs.
+    #[serde(default)]
+    pub frozen: Vec<String>,
+}
+
 /// The subset of a pack's manifest the desktop reads.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentPackFields {

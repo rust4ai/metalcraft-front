@@ -1,6 +1,6 @@
-import { AlertTriangle, BadgeCheck, Check, Download, ExternalLink, Loader2, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpCircle, BadgeCheck, Check, Download, ExternalLink, Loader2, X } from 'lucide-react'
 import { usePacks } from '@/stores/packs'
-import { isInstalled } from './registryState'
+import { isInstalled, updateAvailable } from './registryState'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import type { PackManifest, SearchHit } from '@/types'
@@ -21,7 +21,7 @@ import type { PackManifest, SearchHit } from '@/types'
  * service it was built around.
  */
 export function PackDetail() {
-  const { viewing, manifests, manifestError, packIds, podKeys, installing, installed, error: installError, view, install } =
+  const { viewing, manifests, manifestError, packIds, podKeys, installing, installed, error: installError, view, apply } =
     usePacks()
   if (!viewing) return null
 
@@ -33,6 +33,11 @@ export function PackDetail() {
   // the id in its own manifest — this sheet would offer Install forever, and each
   // press would quietly reinstall a pack that was already there.
   const already = isInstalled(viewing, installed, packIds)
+  // This sheet used to end at "✓ Installed" — which made it the one screen that
+  // showed you what a new version contains and the one screen you could not act
+  // from. The card behind it said "Update"; opening it to find out what changed
+  // took the button away.
+  const upgrade = updateAvailable(viewing, installed, packIds)
 
   return (
     <>
@@ -99,10 +104,10 @@ export function PackDetail() {
 
         <footer className="flex items-center gap-3 border-t border-line px-5 py-3">
           <span className="tnum text-[11.5px] text-ink-3">
-            {viewing.version ? `v${viewing.version}` : ''}
+            {upgrade ? `v${upgrade.from} → v${upgrade.to}` : viewing.version ? `v${viewing.version}` : ''}
             {viewing.install_count ? ` · ${viewing.install_count.toLocaleString()} installs` : ''}
           </span>
-          {already ? (
+          {already && !upgrade ? (
             <span className="ml-auto flex items-center gap-1 text-[12.5px] text-green">
               <Check className="h-4 w-4" /> Installed
             </span>
@@ -111,10 +116,16 @@ export function PackDetail() {
               className="ml-auto"
               size="sm"
               disabled={busy}
-              onClick={() => void install(viewing, !viewing.verified)}
+              onClick={() => void apply(viewing, !viewing.verified)}
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              Install
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : upgrade ? (
+                <ArrowUpCircle className="h-4 w-4" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {upgrade ? `Update to ${upgrade.to}` : 'Install'}
             </Button>
           )}
         </footer>

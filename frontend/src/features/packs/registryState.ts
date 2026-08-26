@@ -90,15 +90,75 @@ export function isInstalled(
   return !!findInstalled(hit, installed, aliases)
 }
 
-/** Version on the pod, when it differs from what the host is offering. */
+/**
+ * The update this host is offering for a pack the pod already has, or `null`.
+ *
+ * **Newer, not merely different.** A host serving an older version than the pod
+ * holds is not an update, and offering one produced a button that promised an
+ * upgrade and delivered a refusal: the pod declines a downgrade outright
+ * (`agent pack 'x' v0.1.1 is older than the installed v0.2.0`), so the only thing
+ * a difference-based check bought was an error somebody had to interpret. It
+ * happens for real — a pack sideloaded ahead of the registry, or a host rolled
+ * back after a bad publish.
+ */
 export function updateAvailable(
   hit: SearchHit,
   installed: InstalledPack[],
   aliases?: Record<string, string>,
-): string | null {
+): { from: string; to: string; id: string } | null {
   const mine = findInstalled(hit, installed, aliases)
   if (!mine?.version || !hit.version) return null
-  return mine.version === hit.version ? null : mine.version
+  if (compareVersions(hit.version, mine.version) <= 0) return null
+  return { from: mine.version, to: hit.version, id: mine.id }
+}
+
+/**
+ * Every hit that is an update to something the pod already has.
+ *
+ * Shared rather than inlined at each call site: the sidebar's count and the
+ * catalogue's pinned section must be the same set, or the badge sends people
+ * looking for a row that is not there.
+ */
+export function pendingUpdates(
+  hits: SearchHit[],
+  installed: InstalledPack[],
+  aliases?: Record<string, string>,
+): SearchHit[] {
+  return hits.filter((hit) => updateAvailable(hit, installed, aliases))
+}
+
+/**
+ * Compare two versions the way a person reads them: `0.10.0` is newer than
+ * `0.9.0`, which string comparison gets backwards.
+ *
+ * Numeric segments compare as numbers, and a shorter version is padded rather
+ * than treated as smaller, so `1.2` and `1.2.0` are the same version. A
+ * pre-release suffix (`1.0.0-rc.1`) is ordered below the release it precedes,
+ * per semver — but nothing here *depends* on full semver: a version this cannot
+ * parse falls back to string inequality, because a pack with an odd version
+ * scheme should still be updatable.
+ */
+export function compareVersions(a: string, b: string): number {
+  const pa = parseVersion(a)
+  const pb = parseVersion(b)
+  if (!pa || !pb) return a === b ? 0 : a > b ? 1 : -1
+  for (let i = 0; i < Math.max(pa.nums.length, pb.nums.length); i++) {
+    const d = (pa.nums[i] ?? 0) - (pb.nums[i] ?? 0)
+    if (d !== 0) return d < 0 ? -1 : 1
+  }
+  // Same numbers: a pre-release is below the plain release, and two
+  // pre-releases fall back to comparing their tags.
+  if (pa.pre === pb.pre) return 0
+  if (!pa.pre) return 1
+  if (!pb.pre) return -1
+  return pa.pre < pb.pre ? -1 : 1
+}
+
+function parseVersion(v: string): { nums: number[]; pre: string } | null {
+  const m = /^v?(\d+(?:\.\d+)*)(?:[-+](.+))?$/.exec(v.trim())
+  const digits = m?.[1]
+  if (!digits) return null
+  return { nums: digits.split('.').map(Number), pre: m?.[2] ?? '' }
 }
 
 /** An id with its separators removed: `buildr-space`, `buildr_space` and

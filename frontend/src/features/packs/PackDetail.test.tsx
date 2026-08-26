@@ -98,12 +98,68 @@ describe('PackDetail', () => {
     // someone who had already installed it three times.
     const store = await mount({ registry_manifest: manifest, list_keys: [] })
     store.setState({
-      installed: [{ id: 'buildr-space', version: '0.1.1', presets: ['buildr-space'] }],
+      // Same version as the hit: nothing to offer, so the sheet should settle on
+      // "Installed" rather than on either button.
+      installed: [{ id: 'buildr-space', version: hit.version, presets: ['buildr-space'] }],
       packIds: { 'axoniac:@buildrspace': 'buildr-space' },
       viewing: { ...hit, id: 'buildrspace', reference: 'axoniac:@buildrspace' } as never,
     })
     await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
     expect(screen.queryByRole('button', { name: /Install$/ })).toBeNull()
+  })
+
+  it('offers the update from the sheet, not just from the card behind it', async () => {
+    // This sheet used to end at "✓ Installed" for anything already on the pod, so
+    // opening a pack to read what a new version contains took away the button to
+    // apply it. The one screen that explains the change was the one that could
+    // not make it.
+    const store = await mount({ registry_manifest: manifest, list_keys: [] })
+    store.setState({
+      installed: [{ id: 'amy_kitchen', version: '1.0.0', presets: ['chef'] }],
+      viewing: hit as never,
+    })
+    const button = await screen.findByRole('button', { name: /Update to 1\.2\.0/ })
+    expect(button).toBeTruthy()
+    expect(screen.queryByText('Installed')).toBeNull()
+  })
+
+  it('updates through the pod’s update endpoint, never through install', async () => {
+    // The whole bug: the button said Update and the call said install, so the pod
+    // replaced the files and never reconciled the agents made from them.
+    const calls: string[] = []
+    vi.resetModules()
+    const t = await import('@/rpc/transport')
+    t.setTransport({
+      call: vi.fn(async (method: string) => {
+        calls.push(method)
+        if (method === 'registry_manifest') return manifest as never
+        if (method === 'list_keys') return [] as never
+        if (method === 'update_pack')
+          return {
+            id: 'amy_kitchen',
+            from_version: '1.0.0',
+            to_version: '1.2.0',
+            personas_fell_back: [],
+            orphaned: [],
+            memory_bases_repointed: [],
+          } as never
+        if (method === 'list_installed_packs')
+          return [{ id: 'amy_kitchen', version: '1.2.0', presets: ['chef'] }] as never
+        throw new Error(`unstubbed: ${method}`)
+      }),
+      listen: vi.fn(async () => () => {}),
+    } as Transport)
+    const { usePacks } = await import('@/stores/packs')
+    const { PackDetail } = await import('./PackDetail')
+    usePacks.setState({
+      installed: [{ id: 'amy_kitchen', version: '1.0.0', presets: ['chef'] }],
+      viewing: hit as never,
+    })
+    render(<PackDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /Update to/ }))
+    await waitFor(() => expect(calls).toContain('update_pack'))
+    expect(calls).not.toContain('install_pack')
   })
 
   it('shows a failed install instead of going quiet', async () => {

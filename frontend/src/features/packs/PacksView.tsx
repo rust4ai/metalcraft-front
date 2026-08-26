@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
-import { BadgeCheck, Check, Download, ExternalLink, Loader2, Search } from 'lucide-react'
+import { ArrowUpCircle, BadgeCheck, Check, Download, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react'
 import { usePacks } from '@/stores/packs'
 import { useFleet } from '@/stores/fleet'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/lib/cn'
-import { blockedByTrust, canConnect, describeConnection, isInstalled, updateAvailable } from './registryState'
+import { blockedByTrust, canConnect, describeConnection, isInstalled, pendingUpdates, updateAvailable } from './registryState'
 import { PackDetail } from './PackDetail'
 import type { SearchHit } from '@/types'
 
@@ -17,7 +17,7 @@ import type { SearchHit } from '@/types'
  * social discovery host; packs.metalcraftai.com is a peer, not an upstream.
  */
 export function PacksView() {
-  const { registries, active, connection, results, installed, packIds, query, loading, installing, error, load, select, search, connect, install, view } =
+  const { registries, active, connection, results, extraHits, installed, packIds, query, loading, checking, installing, error, load, select, search, connect, apply, checkUpdates, view } =
     usePacks()
   const loadFleet = useFleet((s) => s.load)
 
@@ -26,6 +26,29 @@ export function PacksView() {
   }, [load])
 
   const status = connection ? describeConnection(connection) : null
+
+  // An update the host has and the pod does not, whether or not the pack is on
+  // this page: `extraHits` is what the check found beyond the current search.
+  const upgradable = pendingUpdates([...results, ...extraHits], installed, packIds)
+  // Shown above the catalogue rather than left to be scrolled for. A pack you
+  // already run changing underneath you is the thing worth surfacing; a pack you
+  // have never heard of can wait until you look.
+  const pinned = upgradable.filter((h) => !results.includes(h))
+
+  // One place the card is wired, because it is rendered twice — a pinned update
+  // and a catalogue row are the same card, and two copies of this drift.
+  const cardProps = (hit: SearchHit) => ({
+    onOpen: () => void view(hit),
+    installed: isInstalled(hit, installed, packIds),
+    upgrade: updateAvailable(hit, installed, packIds),
+    blocked: blockedByTrust(connection?.trust, hit.verified),
+    busy: !!installing[hit.reference],
+    onApply: async (allowUnverified: boolean) => {
+      // A pack's presets only become spawnable once the pod has it, so the
+      // fleet's roster is refreshed on success.
+      if (await apply(hit, allowUnverified)) void loadFleet()
+    },
+  })
 
   return (
     <div className="flex h-full flex-col">
@@ -36,6 +59,26 @@ export function PacksView() {
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {upgradable.length > 0 && (
+            <span className="flex items-center gap-1 rounded-chip bg-accent-tint px-2 py-1 text-[11.5px] text-ink">
+              <ArrowUpCircle className="h-3.5 w-3.5 text-accent" />
+              {upgradable.length} update{upgradable.length === 1 ? '' : 's'}
+            </span>
+          )}
+          {/* A re-check, not the only check: the sweep also runs when a registry
+              opens, so the count is there before anyone thinks to ask. What stays
+              manual is *applying* — the pod's rule is that nothing changes under a
+              running agent because somebody published. */}
+          <button
+            type="button"
+            onClick={() => void checkUpdates()}
+            disabled={checking || installed.length === 0}
+            title="Ask this registry whether anything installed has a newer version"
+            className="flex items-center gap-1 rounded-chip px-2 py-1 text-[11.5px] text-ink-2 transition-colors duration-150 hover:bg-hover disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} />
+            Check for updates
+          </button>
           {registries?.registries.map((r) => (
             <button
               key={r.name}
@@ -99,6 +142,17 @@ export function PacksView() {
         {error && <p className="mb-3 text-[13px] text-red">{error}</p>}
         {/* A failed browse is not an empty catalogue. Saying both at once invites
             the reader to believe the reassuring one. */}
+        {pinned.length > 0 && (
+          <section className="mb-5">
+            <h2 className="mb-2 text-[11.5px] font-medium text-ink-2">Installed, and newer here</h2>
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
+              {pinned.map((hit, i) => (
+                <PackCard key={hit.reference} hit={hit} index={i} {...cardProps(hit)} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {results.length === 0 && !loading && !error ? (
           <p className="py-16 text-center text-[13px] text-ink-3">
             {query ? `Nothing on ${active} matches “${query}”.` : 'This registry has nothing to show yet.'}
@@ -106,21 +160,7 @@ export function PacksView() {
         ) : (
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
             {results.map((hit, i) => (
-              <PackCard
-                key={hit.reference}
-                hit={hit}
-                index={i}
-                onOpen={() => void view(hit)}
-                installed={isInstalled(hit, installed, packIds)}
-                previousVersion={updateAvailable(hit, installed, packIds)}
-                blocked={blockedByTrust(connection?.trust, hit.verified)}
-                busy={!!installing[hit.reference]}
-                onInstall={async (allowUnverified) => {
-                  // A pack's presets only become spawnable once the pod has it,
-                  // so the fleet's roster is refreshed on success.
-                  if (await install(hit, allowUnverified)) void loadFleet()
-                }}
-              />
+              <PackCard key={hit.reference} hit={hit} index={i} {...cardProps(hit)} />
             ))}
           </div>
         )}
@@ -135,20 +175,21 @@ function PackCard({
   hit,
   index,
   installed,
-  previousVersion,
+  upgrade,
   blocked,
   busy,
   onOpen,
-  onInstall,
+  onApply,
 }: {
   hit: SearchHit
   index: number
   installed: boolean
-  previousVersion: string | null
+  /** Set when this host has a newer version than the pod holds. */
+  upgrade: { from: string; to: string } | null
   blocked: boolean
   busy: boolean
   onOpen: () => void
-  onInstall: (allowUnverified: boolean) => void
+  onApply: (allowUnverified: boolean) => void
 }) {
   return (
     // The card opens the manifest; only the button installs. A reference is
@@ -194,24 +235,32 @@ function PackCard({
         role="presentation"
       >
         <span className="tnum text-[11px] text-ink-3">
-          {hit.version ? `v${hit.version}` : ''}
+          {/* Both numbers, not just the host's: "update" means nothing without
+              what you are updating from. */}
+          {upgrade ? `v${upgrade.from} → v${upgrade.to}` : hit.version ? `v${hit.version}` : ''}
           {hit.install_count ? ` · ${hit.install_count.toLocaleString()} installs` : ''}
         </span>
 
-        {installed && !previousVersion ? (
+        {installed && !upgrade ? (
           <span className="flex items-center gap-1 text-[11.5px] text-green">
             <Check className="h-3.5 w-3.5" /> Installed
           </span>
         ) : blocked ? (
           // Say it before the button is pressed: this pod takes only packs its
           // host vouches for, and installing anyway is a deliberate override.
-          <Button size="sm" variant="outline" onClick={() => onInstall(true)} disabled={busy}>
-            Install unverified
+          <Button size="sm" variant="outline" onClick={() => onApply(true)} disabled={busy}>
+            {upgrade ? 'Update unverified' : 'Install unverified'}
           </Button>
         ) : (
-          <Button size="sm" onClick={() => onInstall(false)} disabled={busy}>
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {previousVersion ? `Update from ${previousVersion}` : 'Install'}
+          <Button size="sm" onClick={() => onApply(false)} disabled={busy}>
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : upgrade ? (
+              <ArrowUpCircle className="h-3.5 w-3.5" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            {upgrade ? `Update to ${upgrade.to}` : 'Install'}
           </Button>
         )}
       </div>

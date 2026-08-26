@@ -40,7 +40,11 @@ async function mount(over: Record<string, unknown> = {}) {
     call: vi.fn(async (method: string, args?: Record<string, unknown>) => {
       calls.push({ method, args })
       if (!(method in responses)) throw new Error(`unstubbed: ${method}`)
-      const value = responses[method]
+      const stub = responses[method]
+      // A stub may depend on what it was asked — the update sweep searches per
+      // installed pack, and the point of it is that those results differ from the
+      // page the tab opened on.
+      const value = typeof stub === 'function' ? (stub as (a?: Record<string, unknown>) => unknown)(args) : stub
       if (value instanceof Error) throw value
       return value as never
     }),
@@ -116,6 +120,40 @@ describe('PacksView', () => {
     await mount({ list_installed_packs: [{ id: 'amy_kitchen', version: '1.2.0', presets: ['amy'] }] })
     await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
     expect(screen.queryByRole('button', { name: /^install$/i })).toBeNull()
+  })
+
+  it('offers an update, in both versions, when the host has a newer one', async () => {
+    await mount({ list_installed_packs: [{ id: 'amy_kitchen', version: '1.0.0', presets: ['amy'] }] })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Update to 1\.2\.0/ })).toBeTruthy())
+    // Both numbers: "update" says nothing without what you are updating from.
+    expect(screen.getByText(/v1\.0\.0 → v1\.2\.0/)).toBeTruthy()
+    expect(screen.getByText(/1 update$/)).toBeTruthy()
+  })
+
+  it('does not offer an update when the host is behind the pod', async () => {
+    // The pod refuses a downgrade, so this button could only ever produce an error.
+    await mount({ list_installed_packs: [{ id: 'amy_kitchen', version: '2.0.0', presets: ['amy'] }] })
+    await waitFor(() => expect(screen.getByText('Installed')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /Update/ })).toBeNull()
+  })
+
+  it('finds an update to a pack the current page never showed', async () => {
+    // Browsing lists a page of the catalogue. A pack installed from this host but
+    // outside that page was invisible, and so was any update to it — which is the
+    // case that matters, because it is the pack you actually run.
+    const offPage = { ...HIT, reference: 'axoniac:@buildrspace', id: 'buildrspace', name: 'buildr.space', version: '0.2.0' }
+    const { calls } = await mount({
+      list_installed_packs: [{ id: 'buildr-space', version: '0.1.1', presets: ['buildr-space'] }],
+      // The catalogue page is empty; the pack only turns up when asked for by name.
+      registry_search: (args?: Record<string, unknown>) => (args?.query ? [offPage] : []),
+    })
+    // No click: the sweep runs when the registry opens, because a button nobody
+    // presses is not detection.
+    await waitFor(() => expect(screen.getByText('Installed, and newer here')).toBeTruthy())
+    expect(screen.getByText(/nothing to show yet/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Update to 0\.2\.0/ })).toBeTruthy()
+    // Asked by the id the POD holds, which is the only name it knows.
+    expect(calls.some((c) => c.method === 'registry_search' && c.args?.query === 'buildr-space')).toBe(true)
   })
 
   it('names the real problem when the pod predates the registry proxy', async () => {

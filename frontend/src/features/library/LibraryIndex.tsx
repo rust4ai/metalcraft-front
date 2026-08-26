@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { KIND_LABEL, KIND_ORDER, matches, type ArtifactKind, type Ref } from './refs'
 import { Badge, KindIcon, Note } from './parts'
+import { usePackUpdate } from '@/features/packs/updates'
 
 /** One row in the index, flattened out of whichever list it came from so the
  *  search and the grouping are written once instead of seven times. */
@@ -146,6 +147,10 @@ export function LibraryIndex() {
 }
 
 function Row({ entry, index, onOpen }: { entry: Entry; index: number; onOpen: () => void }) {
+  // Only a pack can be out of date — a persona or a skill is out of date because
+  // the pack that shipped it is, and saying so on each of them would put the
+  // same sentence on twenty rows.
+  const update = usePackUpdate(entry.ref.kind === 'pack' ? entry.ref.id : null)
   return (
     <button
       type="button"
@@ -157,7 +162,14 @@ function Row({ entry, index, onOpen }: { entry: Entry; index: number; onOpen: ()
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium text-ink">{entry.title}</span>
-          {entry.badge && <Badge tone="accent">{entry.badge}</Badge>}
+          {update ? (
+            // The version it is on and the one waiting, rather than a bare dot:
+            // this row is the answer to "what is on this pod", and "v0.1.1, and
+            // 0.2.0 exists" is a fuller answer than either half.
+            <Badge tone="warn">v{update.from} → {update.to}</Badge>
+          ) : (
+            entry.badge && <Badge tone="accent">{entry.badge}</Badge>
+          )}
         </span>
         <span className="mt-0.5 line-clamp-2 block text-[11.5px] text-ink-2">
           {entry.description || <span className="text-ink-3">No description</span>}

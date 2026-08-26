@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 afterEach(() => {
@@ -285,6 +285,43 @@ describe('App', () => {
     await mount({ session: new Promise(() => {}) })
     await waitFor(() => expect(screen.getByText('Looking for your pod')).toBeTruthy())
     expect(screen.queryByText('Sign in with Metalcraft ID')).toBeNull()
+  })
+
+  it('counts pack updates in the sidebar without anyone opening the shop', async () => {
+    // The tab is called "Browse agent presets", and before this the only way to
+    // learn that a pack you run had a new version was to go browsing. A pod's
+    // packs are checked once it is connected, and the count sits on the row.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
+      connect_pod: { name: 'metalcraft-agent', version: '0.31.0' },
+      active_pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
+      list_instances: [],
+      list_presets: [],
+      list_keys: [],
+      list_registries: {
+        origins: ['https://axoniac.com'],
+        default: 'axoniac',
+        registries: [{ name: 'axoniac', url: 'https://axoniac.com', is_default: true }],
+      },
+      list_installed_packs: [{ id: 'buildr-space', version: '0.1.1', presets: ['buildr-space'] }],
+      registry_status: { registry: 'axoniac', url: 'https://axoniac.com', state: 'no_token' },
+      registry_search: [
+        {
+          reference: 'axoniac:@buildrspace',
+          id: 'buildrspace',
+          name: 'buildr.space',
+          version: '0.2.0',
+          tags: [],
+          verified: true,
+        },
+      ],
+    })
+    // Scoped to the sidebar's nav: the command palette lists the same
+    // destination, and only the nav row carries the count.
+    const nav = await screen.findByRole('navigation')
+    const row = within(nav).getByRole('button', { name: /Browse agent presets/ })
+    await waitFor(() => expect(row.textContent).toMatch(/1$/))
   })
 
   it('does not sell a pod to an account that has already paid for one', async () => {

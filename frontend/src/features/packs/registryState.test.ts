@@ -6,6 +6,7 @@ import {
   describeRegistryError,
   isInstalled,
   updateAvailable,
+  compareVersions,
 } from './registryState'
 import type { InstalledPack, RegistryConnection, SearchHit } from '@/types'
 
@@ -99,17 +100,64 @@ describe('installed state', () => {
     expect(isInstalled(hit({ id: 'amy_garden', reference: 'axoniac:@amy_garden' }), podHas)).toBe(false)
   })
 
-  it('reports the installed version only when it differs', () => {
-    expect(updateAvailable(hit({ version: '1.1.0' }), installed)).toBe('1.0.0')
+  it('reports both versions when the host has a newer one', () => {
+    expect(updateAvailable(hit({ version: '1.1.0' }), installed)).toMatchObject({
+      from: '1.0.0',
+      to: '1.1.0',
+    })
     expect(updateAvailable(hit({ version: '1.0.0' }), installed)).toBeNull()
     // Nothing to compare is not an update.
     expect(updateAvailable(hit(), installed)).toBeNull()
   })
 
-  it('offers an update for a pack matched through its alias', () => {
+  it('does not call an older version on the host an update', () => {
+    // The pod refuses a downgrade outright, so offering one only ever produced a
+    // button that promised an upgrade and delivered an error.
+    const podHas: InstalledPack[] = [{ id: 'amy_kitchen', version: '0.2.0', presets: [] }]
+    expect(updateAvailable(hit({ version: '0.1.1' }), podHas)).toBeNull()
+  })
+
+  it('names the id the POD filed the pack under, not the host handle', () => {
+    // The update endpoint is keyed on the pod's id. Sending the handle would 404
+    // for exactly the packs whose two names differ.
     const podHas: InstalledPack[] = [{ id: 'buildr-space', version: '0.1.0', presets: [] }]
     const listed = hit({ id: 'buildrspace', reference: 'axoniac:@buildrspace', version: '0.1.1' })
-    expect(updateAvailable(listed, podHas, { 'axoniac:@buildrspace': 'buildr-space' })).toBe('0.1.0')
+    expect(updateAvailable(listed, podHas, { 'axoniac:@buildrspace': 'buildr-space' })).toMatchObject({
+      from: '0.1.0',
+      to: '0.1.1',
+      id: 'buildr-space',
+    })
+  })
+})
+
+describe('compareVersions', () => {
+  it('reads versions as numbers, not as strings', () => {
+    // The bug this exists for: '0.10.0' < '0.9.0' is true of strings and false of
+    // versions, so a tenth release would have looked like a downgrade.
+    expect(compareVersions('0.10.0', '0.9.0')).toBe(1)
+    expect(compareVersions('1.0.0', '1.0.0')).toBe(0)
+    expect(compareVersions('0.9.0', '0.10.0')).toBe(-1)
+  })
+
+  it('treats a missing segment as zero rather than as smaller', () => {
+    expect(compareVersions('1.2', '1.2.0')).toBe(0)
+    expect(compareVersions('1.2.1', '1.2')).toBe(1)
+  })
+
+  it('orders a pre-release below the release it precedes', () => {
+    expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBe(-1)
+    expect(compareVersions('1.0.0', '1.0.0-rc.1')).toBe(1)
+    expect(compareVersions('1.0.0-rc.2', '1.0.0-rc.1')).toBe(1)
+  })
+
+  it('falls back to inequality for a version it cannot parse', () => {
+    // An odd version scheme should still be updatable, just not ordered cleverly.
+    expect(compareVersions('nightly', 'nightly')).toBe(0)
+    expect(compareVersions('nightly-b', 'nightly-a')).toBe(1)
+  })
+
+  it('tolerates a leading v', () => {
+    expect(compareVersions('v2.0.0', '1.9.9')).toBe(1)
   })
 })
 

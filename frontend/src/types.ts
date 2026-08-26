@@ -211,6 +211,43 @@ export interface Registries {
   registries: Registry[]
 }
 
+/**
+ * What updating a pack did — to the pack, and to the agents made from it.
+ *
+ * The second half is why the pod has a separate `update` endpoint at all. An
+ * agent whose persona the new version withdrew is moved to the preset's default;
+ * one whose *preset* was withdrawn keeps running from a frozen copy; and every
+ * affected agent's shipped knowledge is repointed at the new version so the
+ * change is live on the next turn. All three happen silently, which is exactly
+ * why they are worth showing to whoever pressed Update.
+ */
+export interface PackUpdateReport {
+  id: string
+  from_version: string
+  to_version: string
+  personas_fell_back: PersonaFallback[]
+  orphaned: OrphanedAgent[]
+  memory_bases_repointed: string[]
+  install?: unknown
+}
+
+export interface PersonaFallback {
+  instance: string
+  name: string
+  /** The persona the new version no longer provides. */
+  from: string
+  /** The preset's default, used instead. */
+  to: string
+}
+
+export interface OrphanedAgent {
+  instance: string
+  name: string
+  agent_preset: string
+  /** Personas and skills copied into the user-local layer so it still runs. */
+  frozen: string[]
+}
+
 export interface InstalledPack {
   id: string
   name?: string | null

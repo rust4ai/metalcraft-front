@@ -16,6 +16,7 @@ import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
 import { useConnection } from '@/stores/connection'
 import { DIAG_POLL_MS, unseen, useDiagnostics } from '@/stores/diagnostics'
+import { usePackUpdateCount } from '@/features/packs/updates'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
 import { partitionByActivity } from '@/features/fleet/activity'
 import { Nudges } from './Nudges'
@@ -112,6 +113,7 @@ export function Sidebar() {
           label="Browse agent presets"
           selected={activeKey === 'packs'}
           onClick={() => go({ kind: 'packs' })}
+          count={usePackUpdateCount()}
         />
       </nav>
 
@@ -300,11 +302,14 @@ function NavRow({
   label,
   selected,
   onClick,
+  count,
 }: {
   icon: React.ReactNode
   label: string
   selected: boolean
   onClick: () => void
+  /** Shown as a pill when non-zero. Absent for rows that never carry one. */
+  count?: number
 }) {
   return (
     <button
@@ -318,6 +323,13 @@ function NavRow({
     >
       <span className="shrink-0 text-ink-3">{icon}</span>
       <span className="truncate">{label}</span>
+      {!!count && (
+        // A number, not a dot: "something to look at" is not the same message as
+        // "six of your agents have a newer version waiting".
+        <span className="tnum ml-auto shrink-0 rounded-chip bg-accent-tint px-1.5 text-[10.5px] text-ink">
+          {count}
+        </span>
+      )}
     </button>
   )
 }

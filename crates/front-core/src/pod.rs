@@ -922,6 +922,37 @@ impl PodConnection {
         .await
     }
 
+    /// Update an installed pack to what a registry now serves.
+    ///
+    /// Deliberately not `install_agent_pack` against the same reference. The pod
+    /// draws the distinction, and it is not cosmetic: `install` replaces files,
+    /// while `update` afterwards reconciles the agents already made from the pack
+    /// — falling back a persona the new version withdrew, freezing a withdrawn
+    /// preset so an existing agent keeps running, and evicting the memory base so
+    /// the change takes effect on the next turn instead of after a restart. Going
+    /// through `install` skipped all of that and reported none of it.
+    ///
+    /// No version gate is needed: this landed in metalcraft-agent 0.29.0, and
+    /// browsing a registry at all needs 0.30.0, so any pod that could show an
+    /// update can apply one.
+    pub async fn update_agent_pack(
+        &self,
+        id: &str,
+        reference: &str,
+        allow_unverified: bool,
+    ) -> anyhow::Result<PackUpdateReport> {
+        self.post_query(
+            &format!("/agent-packs/{id}/update"),
+            &[
+                // `ref`, not `reference` — the same rename that hid on the install
+                // path for months. See `install_agent_pack`.
+                ("ref", reference.to_string()),
+                ("allow_unverified", allow_unverified.to_string()),
+            ],
+        )
+        .await
+    }
+
     /// POST with query parameters and no body — the shape the pod uses for
     /// installs and registry connections.
     async fn post_query<T: DeserializeOwned>(

@@ -111,6 +111,14 @@ async function mount(over: Record<string, unknown> = {}) {
       flow_templates: [],
       requires_env: ['OCTAWEAVE_API_KEY'],
     },
+    agent_pack_detail: {
+      id: 'amy_kitchen',
+      name: "Amy's Kitchen",
+      version: '1.2.0',
+      description: 'A cook.',
+      presets: ['amy'],
+      provides: { personas: ['amy-host'], skills: ['plan-a-menu'] },
+    },
     api_tool_detail: {
       name: 'octaweave_create_note',
       description: 'Write a note.',
@@ -266,5 +274,64 @@ describe('LibraryView', () => {
     await waitFor(() => expect(screen.queryByText('Amy — host')).toBeNull())
     expect(screen.getByText('plan-a-menu')).toBeTruthy()
     expect(screen.getByText('Plan next week')).toBeTruthy()
+  })
+
+  it('says when an installed pack has a newer version, without going shopping', async () => {
+    // The Library is where someone looks at what a pod holds with no intention of
+    // opening a registry. Before this it showed the version and stopped, so the
+    // one screen that answers "what is on this pod" could not answer "and is it
+    // current".
+    await mount()
+    const { usePacks } = await import('@/stores/packs')
+    usePacks.setState({
+      installed: [{ id: 'amy_kitchen', version: '1.2.0', presets: ['amy'] }],
+      results: [
+        {
+          reference: 'axoniac:@amy_kitchen',
+          id: 'amy_kitchen',
+          name: "Amy's Kitchen",
+          version: '1.4.0',
+          tags: [],
+          verified: true,
+        },
+      ],
+    })
+    await waitFor(() => expect(screen.getByText(/v1\.2\.0 → 1\.4\.0/)).toBeTruthy())
+  })
+
+  it('updates a pack from its own page, through the update endpoint', async () => {
+    // A second path that quietly installed instead would be the original bug
+    // growing back in a different tab.
+    const { calls } = await mount({
+      update_pack: {
+        id: 'amy_kitchen',
+        from_version: '1.2.0',
+        to_version: '1.4.0',
+        personas_fell_back: [],
+        orphaned: [],
+        memory_bases_repointed: [],
+      },
+    })
+    const { usePacks } = await import('@/stores/packs')
+    usePacks.setState({
+      installed: [{ id: 'amy_kitchen', version: '1.2.0', presets: ['amy'] }],
+      results: [
+        {
+          reference: 'axoniac:@amy_kitchen',
+          id: 'amy_kitchen',
+          name: "Amy's Kitchen",
+          version: '1.4.0',
+          tags: [],
+          verified: true,
+        },
+      ],
+    })
+
+    await userEvent.click(await screen.findByText("Amy's Kitchen"))
+    await waitFor(() => expect(screen.getByText(/Version 1\.4\.0 is available/)).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: 'Update' }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'update_pack')).toBe(true))
+    expect(calls.some((c) => c.method === 'install_pack')).toBe(false)
   })
 })

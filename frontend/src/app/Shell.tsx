@@ -9,7 +9,9 @@ import { LibraryView } from '@/features/library/LibraryView'
 import { InterfaceSourceView } from '@/features/onboarding/InterfaceSourceView'
 import { LaunchpadView } from '@/features/onboarding/LaunchpadView'
 import { NewAgentDialog } from '@/features/fleet/NewAgentDialog'
+import { UpdateReportDialog } from '@/features/packs/UpdateReportDialog'
 import { useFleet } from '@/stores/fleet'
+import { usePacks } from '@/stores/packs'
 import { useLayout } from '@/stores/layout'
 import { activeView, useUi } from '@/stores/ui'
 import { Sidebar } from './Sidebar'
@@ -35,6 +37,7 @@ export function Shell() {
   const instances = useFleet((s) => s.instances)
   const fleetLoaded = useFleet((s) => s.loaded)
   const prune = useUi((s) => s.prune)
+  const loadPacks = usePacks((s) => s.load)
 
   // A restored tab can outlive the agent it pointed at — the instance may have
   // been deleted from another client while this one was closed.
@@ -46,6 +49,20 @@ export function Shell() {
   useEffect(() => {
     if (fleetLoaded) prune(instances.map((i) => i.id))
   }, [fleetLoaded, instances, prune])
+
+  // Ask the pod's registries whether anything it has installed is out of date.
+  // Here rather than in `App`, because the question only exists once there is a
+  // pod — and this frame is exactly the "there is a pod" case, so a window that
+  // never gets one never loads any of it.
+  //
+  // Detecting is not applying: the pod's rule is that nothing changes under a
+  // running agent because somebody published. But a pack you run every day
+  // should not go a year out of date because the shop was a tab you never
+  // opened, so the sidebar carries the count and pressing anything stays a
+  // decision.
+  useEffect(() => {
+    void loadPacks()
+  }, [loadPacks])
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   useShortcuts(setPaletteOpen)
@@ -101,6 +118,10 @@ export function Shell() {
       {/* One dialog for the whole shell: the sidebar, the tab strip, the palette
           and the fleet's own button all open the same thing. */}
       <NewAgentDialog />
+      {/* At the frame, not inside the registry browser: a pack can now be updated
+          from the Library too, and an account of which agents that changed must
+          not depend on which tab you happened to press the button in. */}
+      <UpdateReportDialog />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   )

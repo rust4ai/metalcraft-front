@@ -333,6 +333,30 @@ Each host publishes a signing key; the pod verifies content hashes on install (a
 does hash-verify — see the `flows-requires-and-pack-versioning` work). The UI surfaces the
 verified/unverified state rather than hiding it.
 
+**Updates are a first-class flow, not a second install.** The pod has a separate endpoint —
+`POST /api/v1/agent-packs/{id}/update` — because the consequences differ: installing replaces
+files, updating then reconciles the agents already made from the pack. An agent whose persona
+the new version withdrew is moved to the preset's default; one whose *preset* was withdrawn
+keeps running from a frozen copy rather than resolving to nothing; and every affected agent's
+memory base is repointed so the change is live on the next turn instead of after a restart.
+The desktop routes through that endpoint and renders the report it returns, because all three
+of those happen silently and one of them may be to the agent someone talks to daily.
+
+The same update is offered wherever the question comes up, through one store action so a
+second path cannot quietly install instead. That means the registry browser's card, its
+detail sheet, and the **Library** — a pack's own page carries the newer version and the
+button, because you open it to see what a pack provides and "there is a newer one" is part
+of that answer. The Library's index says so on the row too, on packs only: a persona is out
+of date because the pack that shipped it is, and repeating that on every artifact would put
+the same sentence on twenty rows.
+
+Detection is separate from application. When a registry opens, the pod's installed packs are
+checked against it — one search per pack, so a pack outside the catalogue's first page is not
+invisible — and the count sits on the sidebar row. Nothing is ever applied automatically: the
+pod's own rule is that nothing changes under a running agent because somebody published, and
+this UI keeps pressing the button a decision. Only a *newer* version counts as an update; the
+pod refuses a downgrade, so offering one is a promise the pod will break.
+
 ### 9.5 Done → Fleet
 The wizard ends by spawning the first instance (from a just-installed pack, or the default
 preset) and dropping the user into its session. Re-runnable any time from Settings; each

@@ -152,6 +152,7 @@ fn main() {
             rpc::packs::registry_manifest,
             rpc::packs::list_installed_packs,
             rpc::packs::install_pack,
+            rpc::packs::update_pack,
             rpc::chat::list_chats,
             rpc::chat::create_chat,
             rpc::chat::get_chat,

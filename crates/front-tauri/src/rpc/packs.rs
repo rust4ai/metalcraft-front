@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use front_core::{InstalledAgentPack, Registries, RegistryConnection, SearchHit};
+use front_core::{InstalledAgentPack, PackUpdateReport, Registries, RegistryConnection, SearchHit};
 
 use crate::state::AppState;
 
@@ -92,6 +92,26 @@ pub async fn list_installed_packs(state: State<'_>) -> Result<Vec<InstalledAgent
     state
         .conn(None)?
         .list_agent_packs()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Update an installed pack to the version a registry now serves.
+///
+/// A separate command from `install_pack` because the pod treats them as separate
+/// operations: install replaces the files, update then reconciles the agents made
+/// from the pack against them. The report names every agent that changed, which is
+/// the whole point — those changes are otherwise silent.
+#[tauri::command]
+pub async fn update_pack(
+    id: String,
+    reference: String,
+    allow_unverified: Option<bool>,
+    state: State<'_>,
+) -> Result<PackUpdateReport, String> {
+    state
+        .conn(None)?
+        .update_agent_pack(&id, &reference, allow_unverified.unwrap_or(false))
         .await
         .map_err(|e| e.to_string())
 }

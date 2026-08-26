@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
+import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -256,6 +256,11 @@ export const packs = {
   installed: () => call<InstalledPack[]>('list_installed_packs'),
   install: (reference: string, allowUnverified = false) =>
     call<unknown>('install_pack', { reference, allowUnverified }),
+  /** Update an installed pack. Not `install` against the same reference: the pod
+   *  reconciles live agents against the new version here and nowhere else, and
+   *  the report is the only account of what it changed. */
+  update: (id: string, reference: string, allowUnverified = false) =>
+    call<PackUpdateReport>('update_pack', { id, reference, allowUnverified }),
 }
 
 export const chats = {
