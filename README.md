@@ -7,13 +7,7 @@ OpenRouter · custom), optionally connect an Octaweave workspace or a buildr.spa
 account, and install agent packs from Axoniac Prime — then work a fleet of agent
 instances running on your pod.
 
-Where Orca is `Electron → node-pty → CLI → git worktree`, this is
-`Tauri → HTTPS + SSE → pod /api/v1/* → agent instances`.
-
-**Plan: [`PLAN.md`](PLAN.md)** — user story in §9, phases in §11, upstream dependencies in §12.
-**[`LAUNCHPAD_PLAN.md`](LAUNCHPAD_PLAN.md)** — the app with no pod: connecting one you run,
-and the funnel to one we host.
-
+ 
 <img width="2594" height="1596" alt="image" src="https://github.com/user-attachments/assets/353106ec-7bec-4cf2-871f-0fedb89548b4" />
 
 ## Layout
