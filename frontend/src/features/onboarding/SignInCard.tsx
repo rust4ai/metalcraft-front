@@ -18,6 +18,12 @@ import type { DeviceLogin } from '@/types'
  * Device flow: the browser does the authenticating, we poll. The verify URL is
  * always shown as copyable text, because a failed `open` must not dead-end the
  * only way in.
+ *
+ * **It says that signing in is also signing up**, because for a brand-new reader
+ * "Sign in with Metalcraft ID" is a wall: they know they do not have one. There
+ * is genuinely no registration step — the hub's Google callback upserts the
+ * account on first arrival — so the only thing missing was saying so, and the
+ * only thing standing between a stranger and a pod was a sentence.
  */
 export function SignInCard() {
   const setSession = useConnection((s) => s.setSession)
@@ -80,9 +86,14 @@ export function SignInCard() {
       </header>
 
       {!login ? (
-        <Button size="sm" className="mt-4" onClick={start}>
-          Sign in with Metalcraft ID
-        </Button>
+        <>
+          <Button size="sm" className="mt-4" onClick={start}>
+            Sign in with Metalcraft ID
+          </Button>
+          <p className="mt-2 text-[11px] text-ink-3">
+            No account yet? Signing in with Google makes one. There is no form to fill in.
+          </p>
+        </>
       ) : (
         <div className="mt-4 space-y-3">
           <p className="text-[12.5px] text-ink-2">Approve this sign-in in your browser. Waiting…</p>

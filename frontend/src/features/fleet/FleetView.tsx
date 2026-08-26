@@ -4,6 +4,7 @@ import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { partitionByActivity } from './activity'
 import { cn } from '@/lib/cn'
@@ -11,7 +12,7 @@ import type { AgentInstance, InstanceOrigin } from '@/types'
 
 /** PLAN §10.1 — the home screen: every agent on the pod, at a glance. */
 export function FleetView() {
-  const { instances, presets, status, loading, error, load } = useFleet()
+  const { instances, presets, status, loading, loaded, error, load } = useFleet()
   const { go, setNewAgentOpen } = useUi()
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -29,8 +30,13 @@ export function FleetView() {
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Fleet</h1>
+          {/* A count of a list nobody has read is not zero — it is nothing to
+              say yet, and saying "0 agents on this pod" to somebody with twelve
+              of them is the first thing they see after connecting. */}
           <p className="text-sm text-ink-2">
-            {instances.length} agent{instances.length === 1 ? '' : 's'} on this pod
+            {loaded
+              ? `${instances.length} agent${instances.length === 1 ? '' : 's'} on this pod`
+              : 'Asking the pod what is running…'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -51,7 +57,12 @@ export function FleetView() {
 
       {error && <p className="mb-4 text-sm text-red">{error}</p>}
 
-      {instances.length === 0 && !loading ? (
+      {/* `loaded`, not `!loading`: both are true in the beat before the first
+          load starts, which is exactly when the pod's agents are least known and
+          an empty-state is most wrong. */}
+      {!loaded ? (
+        <LoadingFleet />
+      ) : instances.length === 0 ? (
         <EmptyFleet presetCount={presets.length} />
       ) : (
         <>
@@ -195,6 +206,16 @@ function OriginBadge({ origin }: { origin: InstanceOrigin }) {
     <span className="shrink-0 rounded-chip bg-inset px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-3">
       {label}
     </span>
+  )
+}
+
+/** The same frame the grid will fill, so connecting to a pod does not collapse
+ *  the page height and push everything back down a moment later. */
+function LoadingFleet() {
+  return (
+    <div className="grid place-items-center rounded-card border border-dashed border-line bg-canvas py-20">
+      <LoadingState label="Loading your agents" />
+    </div>
   )
 }
 

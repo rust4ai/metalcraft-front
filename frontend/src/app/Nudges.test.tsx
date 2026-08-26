@@ -20,7 +20,9 @@ async function mount(state: {
    *  whether somebody is self-hosting. */
   pod?: { slug: string; url: string } | null
   pods?: { id: string; slug: string; url: string }[]
-  ready?: boolean
+  /** Whether that list has been answered. An unanswered one is an empty array
+   *  that means nothing, which is what the mid-boot case is about. */
+  podsLoaded?: boolean
 }) {
   vi.resetModules()
   const { useConnection } = await import('@/stores/connection')
@@ -32,9 +34,10 @@ async function mount(state: {
   useConnection.setState({
     info: (state.info ?? { name: 'agent', version: '1' }) as never,
     session: { email: 'a@b.c', premium: state.premium ?? false },
-    ready: state.ready ?? true,
+    ready: true,
     pod: (state.pod ?? null) as never,
     pods: (state.pods ?? []) as never,
+    podsLoaded: state.podsLoaded ?? true,
   })
   useFleet.setState({
     presets: (state.presets ?? []) as never,
@@ -191,14 +194,16 @@ describe('Nudges', () => {
   it('waits for the pod list before deciding somebody is self-hosting', async () => {
     // Mid-boot the account's pods are an empty array, which is indistinguishable
     // from having none — and nudging on that would flash a sales pitch at a
-    // paying customer on every launch.
+    // paying customer on every launch. `ready` is *true* here on purpose: the
+    // window knows who you are well before it knows what you own, and it was the
+    // first of those it used to wait for.
     await mount({
       presets: [{ slug: 'p' }],
       instances: [{ id: 'i' }],
       premium: false,
       pod: { slug: 'amy', url: 'https://amy.metalcraftai.com' },
       pods: [],
-      ready: false,
+      podsLoaded: false,
     })
     expect(screen.queryByText('Premium adds two things to this pod')).toBeNull()
   })

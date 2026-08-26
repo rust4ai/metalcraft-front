@@ -263,6 +263,30 @@ describe('App', () => {
     expect(screen.getByText('Get a pod')).toBeTruthy()
   })
 
+  it('waits on the pod list instead of announcing an account has no pod', async () => {
+    // `list_pods` never answers. Everything on this screen that speaks about
+    // pods is a claim about a list nobody has read yet, so none of it is said —
+    // and the one door that needs no list at all stays open the whole time.
+    await mount({
+      session: { email: 'a@b.com', premium: true },
+      list_pods: new Promise(() => {}),
+    })
+    await waitFor(() => expect(screen.getByText('Checking this account for pods…')).toBeTruthy())
+    expect(screen.queryByText('No pod on this account yet.')).toBeNull()
+    expect(screen.queryByText('Premium is on this account')).toBeNull()
+    expect(screen.getByText('A pod you run')).toBeTruthy()
+  })
+
+  it('says what it is doing while the core has not answered at all', async () => {
+    // The window used to be blank here — `return null` for however long the core
+    // took to say who we are, which on a cold start is the first thing anyone
+    // sees. It cannot show the Launchpad (it does not know there is no pod) or
+    // the shell (it does not know there is one), so it names the question.
+    await mount({ session: new Promise(() => {}) })
+    await waitFor(() => expect(screen.getByText('Looking for your pod')).toBeTruthy())
+    expect(screen.queryByText('Sign in with Metalcraft ID')).toBeNull()
+  })
+
   it('does not sell a pod to an account that has already paid for one', async () => {
     // Premium with no pod is a provisioning problem, not a sales one. An upgrade
     // button here would be the app failing to notice it had been paid.

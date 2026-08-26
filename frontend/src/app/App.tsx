@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useConnection } from '@/stores/connection'
 import { LaunchpadView } from '@/features/onboarding/LaunchpadView'
+import { BootScreen } from '@/features/onboarding/WaitScreen'
 import { useUi } from '@/stores/ui'
 import { Gallery } from '@/dev/Gallery'
 import { Shell } from './Shell'
@@ -32,7 +33,16 @@ export function App() {
   // sign-in a gate: a pod you run yourself needs no Metalcraft account, and the
   // one screen that could connect it sat behind a demand for an identity that pod
   // never needed.
-  if (!ready) return null
-  if (!info) return <LaunchpadView />
-  return <Shell />
+  //
+  // Three states, not two. `!ready` is not "no pod" — it is *no answer yet*, and
+  // rendering the Launchpad through it would put "No pod on this account" in
+  // front of someone whose pod is about to appear. It gets its own screen.
+  //
+  // `info` is tested first because boot resolves it first: the core is asked what
+  // it is already connected to *before* who we are, so a window that reloads onto
+  // a live pod goes straight back to it without waiting on an account lookup it
+  // no longer needs an answer to.
+  if (info) return <Shell />
+  if (!ready) return <BootScreen />
+  return <LaunchpadView />
 }

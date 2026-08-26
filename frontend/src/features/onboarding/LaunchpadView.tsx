@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, ExternalLink, Loader2, ServerCog, Sparkles } from 'lucide-react'
+import { Check, ExternalLink, Loader2, RefreshCw, ServerCog, Sparkles } from 'lucide-react'
 import { useConnection } from '@/stores/connection'
 import { billing, pods as podsRpc } from '@/rpc'
 import type { Plan } from '@/types'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { OwnPodCard } from './OwnPodCard'
 import { SignInCard } from './SignInCard'
+import { WaitScreen } from './WaitScreen'
 
 /**
  * The app without a pod — and the way out of it (`LAUNCHPAD_PLAN.md`).
@@ -28,18 +29,55 @@ import { SignInCard } from './SignInCard'
  * `info` is the only thing that tells it which situation it is in.
  */
 export function LaunchpadView() {
-  const { pods, connect, connecting, waking, error, refreshPods, session, info, pod } =
-    useConnection()
+  const {
+    pods,
+    podsLoaded,
+    podsLoading,
+    podsError,
+    connect,
+    connecting,
+    waking,
+    error,
+    boot,
+    recheck,
+    session,
+    info,
+    pod,
+  } = useConnection()
 
   // Exactly as narrow as it has always been: one pod on the account and nothing
   // connected yet. A picker for a list of one is a speed bump — but a Launchpad
   // that auto-connects while you are trying to reach the pod you run yourself
   // would be worse, so `info` gates it and the in-shell tab never fires it.
+  //
+  // `podsLoaded` is not redundant with `pods.length === 1`: it is what makes the
+  // *render* below able to tell that this is about to fire.
+  const autoConnecting = !info && podsLoaded && pods.length === 1 && !error
   useEffect(() => {
-    if (!info && pods.length === 1 && !connecting && !error) void connect()
-  }, [pods.length, info]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (autoConnecting && !connecting) void connect()
+  }, [autoConnecting]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (connecting) return <Connecting waking={waking} />
+  // Both are the same wait to the person watching. Without `autoConnecting` the
+  // list of one paints for a frame and is snatched away by the effect that was
+  // always going to connect it — a flash of a screen nobody was offered.
+  //
+  // Three waits, because three different things are happening. `waking` is only
+  // ever set by a hosted connect, so the middle line is what a pod you run looks
+  // like — there is no token to mint for one of those, and saying so was the
+  // screen describing a step it was not taking.
+  if (connecting || autoConnecting) {
+    return (
+      <Connecting
+        detail={
+          waking
+            ? 'If it was asleep this takes a moment — it has to be scheduled and start up.'
+            : connecting
+              ? 'Opening a connection with the address and key you gave.'
+              : 'Minting a connection token…'
+        }
+      />
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto px-8 py-10">
@@ -68,11 +106,18 @@ export function LaunchpadView() {
             <>
               <PodsCard
                 pods={pods}
+                loaded={podsLoaded}
+                loading={podsLoading}
+                failed={podsError}
                 activeSlug={pod?.slug}
                 onConnect={(id) => void connect(id)}
-                onRefresh={() => void refreshPods()}
+                onRefresh={() => void recheck()}
               />
-              <GetAPodCard premium={session.premium} hasPod={pods.length > 0} />
+              {/* Held back until the list is in. Both faces of this card are
+                  claims about a pod that does not exist — a sales pitch, or a
+                  provisioning failure — and neither is a thing to say to someone
+                  whose pod we simply have not looked for yet. */}
+              {podsLoaded && <GetAPodCard premium={session.premium} hasPod={pods.length > 0} />}
             </>
           ) : (
             <SignInCard />
@@ -84,7 +129,15 @@ export function LaunchpadView() {
         {error && (
           <div className="mt-4 rounded-card bg-red-tint px-4 py-3">
             <p className="text-[12.5px] text-red">{error}</p>
-            <Button variant="outline" size="sm" className="mt-2" onClick={() => void connect()}>
+            {/* Retries what broke. Without a session this banner is a boot that
+                failed, and offering to connect to a pod we never managed to ask
+                about just produces a second, different error. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => (session ? void connect() : void boot())}
+            >
               Try again
             </Button>
           </div>
@@ -99,33 +152,32 @@ export function LaunchpadView() {
  * healthy backend, so this is a stated wait with an explanation rather than a
  * spinner that looks broken.
  */
-function Connecting({ waking }: { waking: boolean }) {
-  return (
-    <div className="grid h-full place-items-center p-8">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-card bg-surface shadow-card">
-          <Loader2 className="h-6 w-6 animate-spin text-accent" />
-        </div>
-        <h2 className="text-lg font-semibold">Connecting to your pod</h2>
-        <p className="mt-2 text-sm text-ink-2">
-          {waking
-            ? 'If it was asleep this takes a moment — it has to be scheduled and start up.'
-            : 'Minting a connection token…'}
-        </p>
-      </div>
-    </div>
-  )
+function Connecting({ detail }: { detail: string }) {
+  return <WaitScreen title="Connecting to your pod" detail={detail} />
 }
 
 /** The pods on the account. One list, and the self-hosted ones join it at L2 —
- *  to the person reading it they are the same object, and `AppState` agrees. */
+ *  to the person reading it they are the same object, and `AppState` agrees.
+ *
+ *  Three answers, and emptiness is only one of them. "No pod on this account
+ *  yet" is a fact about an account, and this card used to say it about a list
+ *  nobody had fetched — every first paint after sign-in told the truth by
+ *  accident or lied for a moment, depending on the network. So the empty array
+ *  is read through `loaded`, and a list that came back broken says so instead of
+ *  reporting zero. */
 function PodsCard({
   pods,
+  loaded,
+  loading,
+  failed,
   activeSlug,
   onConnect,
   onRefresh,
 }: {
   pods: { id: string; slug: string; status?: string | null }[]
+  loaded: boolean
+  loading: boolean
+  failed: string | null
   activeSlug?: string
   onConnect: (id: string) => void
   onRefresh: () => void
@@ -135,16 +187,30 @@ function PodsCard({
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold">On your account</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-2">
-            {pods.length === 0
-              ? 'No pod on this account yet.'
-              : 'Hosted, backed up, and woken on demand.'}
-          </p>
+          {!loaded ? (
+            <p className="mt-0.5 flex items-center gap-2 text-[12.5px] text-ink-3">
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              Checking this account for pods…
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[12.5px] text-ink-2">
+              {failed
+                ? 'Could not read the pod list, so there may well be one.'
+                : pods.length === 0
+                  ? 'No pod on this account yet.'
+                  : 'Hosted, backed up, and woken on demand.'}
+            </p>
+          )}
         </div>
-        <Button size="sm" variant="ghost" onClick={onRefresh}>
+        <Button size="sm" variant="ghost" onClick={onRefresh} disabled={loading}>
+          {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
           Check again
         </Button>
       </header>
+
+      {/* Verbatim: the reason a list failed is the only thing that tells someone
+          whether to retry, sign in again, or check their network. */}
+      {loaded && failed && <p className="mt-2 text-[11.5px] text-red">{failed}</p>}
 
       {pods.length > 0 && (
         <ul className="mt-3 space-y-1.5">
@@ -207,14 +273,33 @@ function money(minor: number, currency = 'usd'): string {
  * rather than spin forever.
  */
 function GetAPodCard({ premium, hasPod }: { premium: boolean; hasPod: boolean }) {
-  const [plan, setPlan] = useState<Plan | null>(null)
+  // `undefined` is "not asked yet", `null` is "asked, no answer" — the button
+  // must not name a price it is about to change, and must not stay dumb about
+  // one that is on its way.
+  const [plan, setPlan] = useState<Plan | null | undefined>(undefined)
   useEffect(() => {
-    void billing.plan().then(setPlan).catch(() => {})
+    let answered = false
+    // A hub that hangs must not leave a dead button behind a spinner: past this,
+    // the offer stands at its price-free label and a late answer still lands.
+    const giveUp = setTimeout(() => !answered && setPlan(null), PRICE_WAIT_MS)
+    void billing
+      .plan()
+      .then((p) => setPlan(p ?? null))
+      .catch(() => setPlan(null))
+      .finally(() => {
+        answered = true
+        clearTimeout(giveUp)
+      })
+    return () => clearTimeout(giveUp)
   }, [])
 
   if (hasPod) return null
   return premium ? <PremiumNoPod /> : <Upgrade plan={plan} />
 }
+
+/** Long enough for a hub round-trip, short enough that nobody wonders whether
+ *  the button is broken. */
+const PRICE_WAIT_MS = 3000
 
 /**
  * How long to keep watching after the browser opens, and how often.
@@ -222,20 +307,25 @@ function GetAPodCard({ premium, hasPod }: { premium: boolean; hasPod: boolean })
  * The user is in a checkout flow, so five seconds is invisible traffic and quick
  * enough to feel immediate when they come back. Five minutes is past the point
  * where "they are still typing a card number" is likelier than "they closed the
- * tab" — and giving up costs nothing, because the pods list re-checks on its own
- * and the account keeps whatever was bought.
+ * tab".
+ *
+ * Stopping is a thing that *happened*, and the card says so when it does — the
+ * account keeps whatever was bought either way, but a screen that silently goes
+ * back to selling premium is a screen telling somebody who just paid that
+ * nothing did.
  */
 const POLL_MS = 5000
 const POLL_LIMIT_MS = 300_000
 
-function Upgrade({ plan }: { plan: Plan | null }) {
-  const { refreshPods } = useConnection()
+function Upgrade({ plan }: { plan: Plan | null | undefined }) {
   const [waiting, setWaiting] = useState(false)
+  const [gaveUp, setGaveUp] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   // Survives the polling loop's closure so cancelling actually stops it.
   const live = useRef(false)
 
   const label = (() => {
+    if (plan === undefined) return 'Checking the price…'
     if (!plan) return 'Get Metalcraft premium'
     const per = `${money(plan.amount, plan.currency)}/${plan.interval ?? 'mo'}`
     if (plan.promo.eligible && plan.promo.first_month_amount !== null) {
@@ -249,20 +339,32 @@ function Upgrade({ plan }: { plan: Plan | null }) {
     for (let i = 0; i < POLL_LIMIT_MS / POLL_MS; i++) {
       await new Promise((r) => setTimeout(r, POLL_MS))
       if (!live.current) return
-      // `refresh` re-reads the account, which is what turns a completed checkout
-      // into `premium: true` here; `refreshPods` is what notices the pod the hub
-      // provisioned behind it. The store's own auto-connect takes it from there.
-      await useConnection.getState().boot()
-      await refreshPods().catch(() => {})
+      // Re-reads the account, which is what turns a completed checkout into
+      // `premium: true` here, *and* the pods, which is what notices the one the
+      // hub provisioned behind it. The auto-connect above takes it from there.
+      await useConnection.getState().recheck()
       const { session, pods } = useConnection.getState()
-      if (session?.premium && pods.length > 0) break
+      // Either one is an answer and ends the watch. Premium means this card is
+      // about to become `PremiumNoPod`, which waits for the pod itself; a pod
+      // means the auto-connect above is about to take the window.
+      if (session?.premium || pods.length > 0) {
+        live.current = false
+        setWaiting(false)
+        return
+      }
     }
     live.current = false
     setWaiting(false)
-  }, [refreshPods])
+    // Giving up used to be silent: the card went back to selling premium to
+    // somebody who may well have just bought it, with no account of the several
+    // minutes it had spent watching. Whatever happened, the person deserves the
+    // sentence.
+    setGaveUp(true)
+  }, [])
 
   const start = async () => {
     setWaiting(true)
+    setGaveUp(false)
     try {
       setUrl(await billing.checkout())
     } catch {
@@ -315,14 +417,25 @@ function Upgrade({ plan }: { plan: Plan | null }) {
         </div>
       </header>
 
+      {gaveUp && (
+        <p className="mt-3 rounded-card bg-inset px-3 py-2 text-[11.5px] text-ink-2">
+          We watched for {POLL_LIMIT_MS / 60_000} minutes and did not see an upgrade land. If you
+          finished checkout since, <b>Check again</b> above will find it — a subscription and the
+          pod that follows it can take a moment. If you did not, the offer is still here.
+        </p>
+      )}
+
       <ul className="mt-3 space-y-1 text-[12.5px] text-ink-2">
         <Perk>Thinking billed to your credits, so no provider key of your own</Perk>
         <Perk>WhatsApp and SMS, which need an account the pod can be linked to</Perk>
         <Perk>Registry identity for installing packs</Perk>
       </ul>
 
-      <Button size="sm" className="mt-4" onClick={() => void start()}>
-        {label} <ExternalLink className="h-3.5 w-3.5" />
+      {/* Disabled only while the price is unknown — a button that would open a
+          checkout for a figure it is one tick away from correcting. */}
+      <Button size="sm" className="mt-4" disabled={plan === undefined} onClick={() => void start()}>
+        {plan === undefined ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        {label} {plan !== undefined && <ExternalLink className="h-3.5 w-3.5" />}
       </Button>
       <p className="mt-3 text-[11px] text-ink-3">
         Opens in your browser. Your pod is provisioned for you when it goes through.
@@ -343,6 +456,7 @@ function PremiumNoPod() {
   const { refreshPods } = useConnection()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  useWatchForPod()
 
   const ask = async () => {
     setBusy(true)
@@ -375,6 +489,45 @@ function PremiumNoPod() {
       </Button>
     </section>
   )
+}
+
+/**
+ * Ask again, slowly, while this card is on screen.
+ *
+ * This is the one state on the Launchpad where the answer changes with nobody
+ * touching anything: the pod is provisioned by a Stripe webhook this app never
+ * sees, through a control plane that retries on its own schedule. The card says
+ * *your pod is started for you* and then never looked again — so a pod that
+ * landed ninety seconds later sat there unclaimed until the user thought to
+ * press something, which is the app being wrong about the only thing it is
+ * claiming to know.
+ *
+ * Twenty seconds is slower than the checkout watch because nothing is being
+ * waited on in a browser tab; twenty minutes of it is past the point where more
+ * waiting is the answer, and the button that asks directly is already on the
+ * card. Hidden windows do not count against the budget and do not ask — this
+ * reaches the hub's database, and a laptop asleep with the app open should not
+ * be keeping it awake.
+ */
+const POD_WATCH_MS = 20_000
+const POD_WATCH_TRIES = 60
+
+function useWatchForPod() {
+  const refreshPods = useConnection((s) => s.refreshPods)
+  useEffect(() => {
+    let left = POD_WATCH_TRIES
+    const id = setInterval(() => {
+      if (document.visibilityState === 'hidden') return
+      if (left-- <= 0) {
+        clearInterval(id)
+        return
+      }
+      // Quietly: this is the app asking, not the user, and a refresh button that
+      // disables itself every twenty seconds eats the click that lands on one.
+      void refreshPods(true)
+    }, POD_WATCH_MS)
+    return () => clearInterval(id)
+  }, [refreshPods])
 }
 
 function Perk({ children }: { children: React.ReactNode }) {

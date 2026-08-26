@@ -34,9 +34,10 @@ interface Nudge {
  */
 export function Nudges() {
   const info = useConnection((s) => s.info)
+  const session = useConnection((s) => s.session)
   const premium = useConnection((s) => s.session?.premium ?? false)
-  const ready = useConnection((s) => s.ready)
   const pods = useConnection((s) => s.pods)
+  const podsLoaded = useConnection((s) => s.podsLoaded)
   const pod = useConnection((s) => s.pod)
   const { instances, presets, loading } = useFleet()
   const { ownSource, inference, go, setNewAgentOpen } = useUi()
@@ -91,7 +92,12 @@ export function Nudges() {
     // those words, and their thinking is billed to a provider key they pay for
     // themselves. It points at the Launchpad rather than restating the offer,
     // because the price lives there and is quoted by the hub.
-    if (ready && pod && !premium && !pods.some((p) => p.slug === pod.slug)) {
+    // `podsLoaded`, not `ready`: the window is ready the moment it knows who you
+    // are, which is *before* it knows what you own — and in that window `pods` is
+    // an empty array that means nothing. Signed out there is no list to wait for
+    // and never will be, which is itself the answer.
+    const knowWhatTheAccountOwns = !session || podsLoaded
+    if (knowWhatTheAccountOwns && pod && !premium && !pods.some((p) => p.slug === pod.slug)) {
       out.push({
         key: 'self-hosted-premium',
         icon: MessageCircle,
@@ -102,7 +108,19 @@ export function Nudges() {
       })
     }
     return out
-  }, [go, inference, instances.length, ownSource, pod, pods, premium, presets.length, ready, setNewAgentOpen])
+  }, [
+    go,
+    inference,
+    instances.length,
+    ownSource,
+    pod,
+    pods,
+    podsLoaded,
+    premium,
+    presets.length,
+    session,
+    setNewAgentOpen,
+  ])
 
   // A dismissal only lasts as long as the thing it dismissed. Once a condition
   // resolves, forget that it was waved away, so it can speak again if it recurs.
