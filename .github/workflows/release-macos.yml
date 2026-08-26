@@ -61,7 +61,22 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx --yes @tauri-apps/cli@^2 build --target universal-apple-darwin --bundles dmg
+        run: |
+          # A secret that does not exist arrives as the empty string, not as an
+          # absent variable — and the bundler asks whether APPLE_CERTIFICATE is
+          # *set*, not whether it is useful. Left as "", it takes the signing
+          # path and dies importing a zero-byte certificate:
+          #
+          #   security: SecKeychainItemImport: One or more parameters … not valid
+          #   failed to bundle project: failed codesign application
+          #
+          # Dropping the empties is what makes the unsigned path reachable, and
+          # keeps signing automatic the moment real secrets are added.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD \
+                   APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          npx --yes @tauri-apps/cli@^2 build --target universal-apple-darwin --bundles dmg
 
       - name: Report what came out
         id: dmg
@@ -90,3 +105,7 @@ jobs:
         with:
           files: ${{ steps.dmg.outputs.path }}
           generate_release_notes: true
+          # Unsigned builds are marked pre-release, so nobody lands on one from
+          # /releases/latest expecting a .dmg that just opens. Add the APPLE_*
+          # secrets and the next tag promotes itself to a full release.
+          prerelease: ${{ secrets.APPLE_SIGNING_IDENTITY == '' }}

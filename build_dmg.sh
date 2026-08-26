@@ -43,6 +43,15 @@ npm --prefix frontend run build
 # Signing and notarisation switch on only when the environment supplies them.
 # Set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 # APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID to produce a distributable build.
+#
+# Set-but-empty is the trap: the bundler asks whether these are *set*, so an
+# empty APPLE_CERTIFICATE sends it down the signing path to fail importing a
+# zero-byte certificate. Drop the empties so the unsigned path stays reachable.
+for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD \
+         APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+  [[ -n "${!v:-}" ]] || unset "$v"
+done
+
 if [[ -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
   echo "build_dmg.sh: no APPLE_SIGNING_IDENTITY — this .dmg will be UNSIGNED."
 fi
