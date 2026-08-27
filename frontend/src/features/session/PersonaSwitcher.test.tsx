@@ -12,7 +12,6 @@ const instance = {
   name: 'Amy',
   persona: 'chef',
   origin: { kind: 'workshop' },
-  persistent: true,
   created_at: '',
   last_active_at: '',
 } as AgentInstance

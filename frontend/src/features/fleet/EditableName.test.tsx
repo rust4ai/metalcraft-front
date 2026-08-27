@@ -12,7 +12,6 @@ const instance = {
   name: 'Amy',
   persona: 'chef',
   origin: { kind: 'workshop' },
-  persistent: false,
   created_at: '',
   last_active_at: '',
 } as AgentInstance
@@ -43,14 +42,14 @@ async function type(name: string) {
 
 describe('EditableName', () => {
   it('renames on Enter', async () => {
-    const call = await mount({ rename_instance: { ...instance, name: 'Bea', persistent: true } })
+    const call = await mount({ rename_instance: { ...instance, name: 'Bea' } })
     await type('Bea')
     await userEvent.keyboard('{Enter}')
     await waitFor(() => expect(call).toHaveBeenCalledWith('rename_instance', { id: 'i1', name: 'Bea' }))
   })
 
   it('renames on blur — clicking away is the common path, not a cancel', async () => {
-    const call = await mount({ rename_instance: { ...instance, name: 'Bea', persistent: true } })
+    const call = await mount({ rename_instance: { ...instance, name: 'Bea' } })
     await type('Bea')
     await userEvent.tab()
     await waitFor(() => expect(call).toHaveBeenCalledWith('rename_instance', { id: 'i1', name: 'Bea' }))

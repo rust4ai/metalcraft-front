@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -130,7 +130,8 @@ export const fleet = {
   presets: () => call<AgentPreset[]>('list_presets'),
   create: (preset: string, name?: string) => call<AgentInstance>('create_instance', { preset, name }),
   remove: (id: string) => call<void>('delete_instance', { id }),
-  /** The name only. Whether an agent is kept is `persistent`, and this never touches it. */
+  /** The name only — a label. Nothing about an agent's lifetime follows from it,
+   *  and nothing deletes an agent on a timer. */
   rename: (id: string, name: string) => call<AgentInstance>('rename_instance', { id, name }),
   setPersona: (id: string, persona: string) =>
     call<AgentInstance>('set_instance_persona', { id, persona }),
@@ -143,7 +144,15 @@ export const fleet = {
  * this object is named for the surface it drives.
  */
 export const automations = {
+  /** The flows — the *work*. When each runs is `scheduled()`. */
   list: () => call<Flow[]>('list_flows'),
+  /** One flow *with its graph* — what `list()` leaves out. */
+  get: (flowId: string) => call<SavedFlow>('get_flow', { flowId }),
+  /** Check a graph without saving it. An invalid graph resolves with
+   *  `valid: false`; only an unreachable pod rejects. */
+  validate: (flow: SavedFlow) => call<FlowValidation>('validate_flow', { flow }),
+  /** Everything this pod will do on its own. Joined to `list()` by `flow_id`. */
+  scheduled: () => call<ScheduledFlow[]>('list_scheduled_flows'),
   /** Persisted runs — mostly the paused ones, which are the ones that need a human. */
   runs: () => call<FlowRun[]>('list_flow_runs'),
   /** What arming would permit: personas, domains, keys, which tools mutate. */
@@ -156,12 +165,15 @@ export const automations = {
    *  conversation it paused in. */
   resume: (runId: string, handle: string) =>
     call<FlowRunSummary>('resume_flow_run', { runId, handle }),
-  /** Arming is what creates the agent. Pass `instanceId` to attach to one instead. */
-  arm: (flowId: string, scheduleId: string, instanceId?: string) =>
-    call<AgentInstance>('arm_schedule', { flowId, scheduleId, instanceId }),
-  /** Stops the timer. Keeps the agent and everything it remembers. */
-  disarm: (flowId: string, scheduleId: string) =>
-    call<void>('disarm_schedule', { flowId, scheduleId }),
+  /** Scheduling a flow is what creates the agent. Pass `instanceId` to attach to
+   *  an existing one instead. */
+  arm: (flowId: string, schedule: ScheduleSpec, instanceId?: string) =>
+    call<ScheduledFlow>('arm_schedule', { flowId, schedule, instanceId }),
+  /** Pause or resume without deleting — the agent and its memory stay either way. */
+  setEnabled: (scheduledId: string, enabled: boolean) =>
+    call<ScheduledFlow>('update_schedule', { scheduledId, enabled }),
+  /** Stops the timer for good. Keeps the agent and everything it remembers. */
+  disarm: (scheduledId: string) => call<void>('disarm_schedule', { scheduledId }),
 }
 
 /**
@@ -290,8 +302,11 @@ export const chats = {
   /** Compact now, whatever the size — the pod's automatic rule only fires at 60%
    *  of the window, long after someone can feel a conversation getting heavy. */
   compact: (chatId: string) => call<ChatCompacted>('compact_chat', { chatId }),
-  /** Drop the conversation, keep the chat. Distinct from deleting it. */
+  /** Reset the agent's context, keep the conversation. Distinct from `remove`. */
   clear: (chatId: string) => call<ChatContext>('clear_chat', { chatId }),
+  /** Delete a conversation. The agent and its memory survive — deleting the
+   *  agent is `instances.remove`, and that keeps the transcripts. */
+  remove: (chatId: string) => call<void>('delete_chat', { chatId }),
   /** Ask the running turn to stop. Resolves when the pod took the request, not
    *  when the agent stopped — the `done` frame on `session://{chatId}` is what
    *  says that, and it is what unlocks the composer.

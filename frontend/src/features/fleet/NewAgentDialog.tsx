@@ -67,7 +67,7 @@ export function NewAgentDialog() {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Name it (optional — naming makes it persistent)"
+        placeholder="Name it (optional)"
         className="mt-3 w-full rounded-control bg-field px-3 py-2 text-[13px] caret-accent outline-none placeholder:text-ink-3 shadow-btn"
       />
 

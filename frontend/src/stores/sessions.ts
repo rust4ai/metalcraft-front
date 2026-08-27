@@ -45,8 +45,20 @@ export interface Session {
 interface SessionsState {
   byInstance: Record<string, Session>
   opening: Record<string, boolean>
+  /** Every conversation each agent has had, newest activity first. Loaded when
+   *  the list is asked for rather than on every open — most sessions never ask. */
+  conversations: Record<string, ChatSummary[]>
+  loadingConversations: Record<string, boolean>
 
   open: (instanceId: string) => Promise<void>
+  /** List this agent's conversations. */
+  loadConversations: (instanceId: string) => Promise<void>
+  /** Open one of this agent's other conversations, in place. */
+  resume: (instanceId: string, chatId: string) => Promise<void>
+  /** Start another conversation with this agent, keeping its memory. */
+  startConversation: (instanceId: string) => Promise<void>
+  /** Delete one of this agent's other conversations. Refuses the open one. */
+  deleteConversation: (instanceId: string, chatId: string) => Promise<void>
   send: (instanceId: string, message: string) => Promise<void>
   /** Send, unless the text is a slash command — then act on the conversation
    *  instead of continuing it. The composer's only entry point. */
@@ -66,11 +78,11 @@ interface SessionsState {
  * Which chat each instance was last opened on, by id, across restarts.
  *
  * The heuristic below cannot carry this on its own. `newestChat` ranks by
- * `updated_at ?? created_at`, and the pod's chat list has never sent
- * `updated_at` — so "most recent" really means *most recently created*, and one
- * accidental empty chat becomes the instance's conversation for good. Pinning
- * the id is what makes reopening a conversation an identity question instead of
- * a ranking question.
+ * `updated_at ?? created_at` — the pod sends `updated_at` now, so "most recent"
+ * finally means most recently *spoken in* rather than most recently created, but
+ * that still answers the wrong question when someone deliberately went back to an
+ * older conversation. Pinning the id is what makes reopening one an identity
+ * question instead of a ranking question.
  */
 const CHATS_KEY = 'mc.chats'
 
@@ -134,6 +146,16 @@ async function resolveChat(instanceId: string): Promise<ChatDetail> {
  */
 const spokenIn = (c: ChatSummary) => (c.turn_count == null || c.turn_count > 0 ? 1 : 0)
 
+/**
+ * When a conversation was last touched.
+ *
+ * Last activity, not creation: a conversation someone has been in all day
+ * belongs above one they opened this morning and abandoned. `updated_at` is
+ * absent on pods older than the session list, where creation is the best
+ * available answer.
+ */
+export const recency = (c: ChatSummary) => c.updated_at ?? c.created_at
+
 export function newestChat(all: ChatSummary[], instanceId: string): ChatSummary | undefined {
   const mine = all.filter((c) => c.instance_id === instanceId)
   // `sort` rather than `toSorted`: the build targets safari15 for older macOS
@@ -142,7 +164,7 @@ export function newestChat(all: ChatSummary[], instanceId: string): ChatSummary 
   return mine.sort(
     (a, b) =>
       spokenIn(b) - spokenIn(a) ||
-      Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at),
+      Date.parse(recency(b)) - Date.parse(recency(a)),
   )[0]
 }
 
@@ -192,6 +214,8 @@ function detach(instanceId: string) {
 export const useSessions = create<SessionsState>((set, get) => ({
   byInstance: {},
   opening: {},
+  conversations: {},
+  loadingConversations: {},
 
   open: async (instanceId) => {
     if (get().byInstance[instanceId] || get().opening[instanceId]) return
@@ -261,6 +285,106 @@ export const useSessions = create<SessionsState>((set, get) => ({
     await get().refreshFollowups(instanceId)
   },
 
+  loadConversations: async (instanceId) => {
+    set({ loadingConversations: { ...get().loadingConversations, [instanceId]: true } })
+    try {
+      // Filtered from the full list rather than fetched per agent: the core has
+      // no per-instance chat call, and this is the same list `newestChat` already
+      // ranks — one shape, one sort, no second way for the two to disagree.
+      const mine = (await chats.list()).filter((c) => c.instance_id === instanceId)
+      // oxlint-disable-next-line unicorn/no-array-sort
+      mine.sort((a, b) => Date.parse(recency(b)) - Date.parse(recency(a)))
+      set({ conversations: { ...get().conversations, [instanceId]: mine } })
+    } catch (e) {
+      // A list that will not load is not a conversation that will not load — the
+      // one on screen is still live, so this reports on the session and stops.
+      const session = get().byInstance[instanceId]
+      if (session) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, error: String(e) } } })
+      }
+    } finally {
+      const { [instanceId]: _, ...rest } = get().loadingConversations
+      set({ loadingConversations: rest })
+    }
+  },
+
+  resume: async (instanceId, chatId) => {
+    const current = get().byInstance[instanceId]
+    if (!current || current.chatId === chatId) return
+    set({ opening: { ...get().opening, [instanceId]: true } })
+    try {
+      const detail = await chats.get(chatId)
+      // Deliberate, unlike the guarded pin in `open`: going back to a
+      // conversation on purpose is exactly the signal the ranking heuristic
+      // cannot see, so it is remembered even when the transcript is empty.
+      rememberChat(instanceId, detail.id)
+      // The stream is per-conversation. Leaving the old one attached would
+      // splice another conversation's frames into this transcript.
+      detach(instanceId)
+      set({
+        byInstance: {
+          ...get().byInstance,
+          [instanceId]: {
+            instanceId,
+            chatId: detail.id,
+            modelName: detail.model_name,
+            transcript: fromMessages(detail.messages ?? []),
+            sending: false,
+            stopping: false,
+            error: null,
+            followups: null,
+          },
+        },
+      })
+      const unlisten = await chats.onEvent(detail.id, (ev) => get().apply(instanceId, ev))
+      listeners[instanceId] = unlisten
+      await chats.watch(detail.id)
+      const opened = get().byInstance[instanceId]
+      if (opened?.chatId === detail.id) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...opened, unlisten } } })
+      }
+    } catch (e) {
+      const session = get().byInstance[instanceId]
+      if (session) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, error: String(e) } } })
+      }
+    } finally {
+      const { [instanceId]: _, ...rest } = get().opening
+      set({ opening: rest })
+    }
+    await get().refreshFollowups(instanceId)
+  },
+
+  startConversation: async (instanceId) => {
+    try {
+      const created = await chats.create({ instanceId })
+      await get().resume(instanceId, created.id)
+      await get().loadConversations(instanceId)
+    } catch (e) {
+      const session = get().byInstance[instanceId]
+      if (session) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, error: String(e) } } })
+      }
+    }
+  },
+
+  deleteConversation: async (instanceId, chatId) => {
+    // Refuses the open one: deleting what you are reading would leave the pane
+    // pointing at nothing, and "close it first" is a rule nobody can discover
+    // from an empty screen.
+    if (get().byInstance[instanceId]?.chatId === chatId) return
+    try {
+      await chats.remove(chatId)
+      const rest = (get().conversations[instanceId] ?? []).filter((c) => c.id !== chatId)
+      set({ conversations: { ...get().conversations, [instanceId]: rest } })
+    } catch (e) {
+      const session = get().byInstance[instanceId]
+      if (session) {
+        set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, error: String(e) } } })
+      }
+    }
+  },
+
   send: async (instanceId, message) => {
     const session = get().byInstance[instanceId]
     if (!session || !session.chatId) return
@@ -302,9 +426,6 @@ export const useSessions = create<SessionsState>((set, get) => ({
           ...get().byInstance,
           [instanceId]: {
             ...current,
-            // A cleared conversation keeps the notice that says so — an empty
-            // pane with no explanation reads as a bug.
-            transcript: result.cleared ? emptyTranscript() : current.transcript,
             sending: false,
           },
         },

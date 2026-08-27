@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Clock, Loader2, PauseCircle, Play, RefreshCw, Zap } from 'lucide-react'
+import {
+  AlertTriangle,
+  Clock,
+  Loader2,
+  PauseCircle,
+  Play,
+  Plus,
+  RefreshCw,
+  Zap,
+} from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
 import { ArmDialog } from './ArmDialog'
 import { useFleet } from '@/stores/fleet'
@@ -7,7 +16,8 @@ import { useUi } from '@/stores/ui'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { relative } from '@/features/fleet/FleetView'
-import type { Flow, FlowRun, FlowSchedule } from '@/types'
+import { cn } from '@/lib/cn'
+import type { Flow, FlowRun, ScheduledFlow } from '@/types'
 
 /**
  * PLAN §10.7 — what this pod is set up to do on its own.
@@ -15,15 +25,19 @@ import type { Flow, FlowRun, FlowSchedule } from '@/types'
  * Two sections, and the split is the design (UI_PLAN S9): **an armed automation
  * is an agent** and lives in the fleet, so this view is not a second agent list.
  * It holds the two things the fleet structurally cannot show — flows nobody has
- * armed yet (which is most of them: packs ship flows disabled), and **runs**,
- * which are neither flow nor agent and can sit waiting on a human indefinitely.
+ * scheduled yet (which is most of them: packs install flows scheduling nothing),
+ * and **runs**, which are neither flow nor agent and can sit waiting on a human
+ * indefinitely.
+ *
+ * The pod keeps the work and the timing apart, and so does this: a flow card is
+ * the work, and each row under it is one schedule pointing at it.
  */
 export function AutomationsView() {
   const { flows, runs, loading, error, load } = useAutomations()
   // Held here rather than per-row so the dialog survives the list re-rendering
   // underneath it — arming reloads the flows, and a row-owned modal would
   // unmount itself mid-confirm.
-  const [arming, setArming] = useState<{ flow: Flow; schedule: FlowSchedule } | null>(null)
+  const [arming, setArming] = useState<Flow | null>(null)
 
   useEffect(() => {
     void load()
@@ -38,10 +52,10 @@ export function AutomationsView() {
           <h1 className="text-lg font-semibold">Automations</h1>
           <p className="text-sm text-ink-2">
             {flows.length === 0
-              ? 'Nothing scheduled on this pod'
+              ? 'Nothing on this pod'
               : `${flows.length} automation${flows.length === 1 ? '' : 's'}, ${
-                  flows.filter((f) => f.armed).length
-                } armed`}
+                  flows.filter((f) => f.enabled_count > 0).length
+                } running on a timer`}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
@@ -75,11 +89,7 @@ export function AutomationsView() {
         </div>
       )}
 
-      <ArmDialog
-        flow={arming?.flow ?? null}
-        schedule={arming?.schedule ?? null}
-        onClose={() => setArming(null)}
-      />
+      <ArmDialog flow={arming} onClose={() => setArming(null)} />
 
       {runs.length > waiting.length && (
         <section className="mt-8">
@@ -98,16 +108,11 @@ export function AutomationsView() {
   )
 }
 
-function FlowCard({
-  flow,
-  onArm,
-}: {
-  flow: Flow
-  onArm: (target: { flow: Flow; schedule: FlowSchedule }) => void
-}) {
-  const { run, busy } = useAutomations()
+function FlowCard({ flow, onArm }: { flow: Flow; onArm: (flow: Flow) => void }) {
+  const { run, busy, schedulesOf } = useAutomations()
   const go = useUi((s) => s.go)
   const running = busy[flow.id] ?? false
+  const schedules = schedulesOf(flow.id)
 
   return (
     <Card className="p-0">
@@ -115,11 +120,12 @@ function FlowCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{flow.name}</span>
-            {/* Disabled is a state, not an absence — a pack ships its flows off
-                and someone has to turn them on deliberately. */}
-            {!flow.enabled && (
+            {/* Unscheduled is a state, not an absence — a pack installs its
+                flows scheduling nothing, and someone schedules them
+                deliberately. Distinct from "scheduled but paused", below. */}
+            {schedules.length === 0 && (
               <span className="shrink-0 rounded-chip bg-inset px-1.5 py-px text-[10px] text-ink-3">
-                off
+                not scheduled
               </span>
             )}
             {!flow.v2 && (
@@ -141,7 +147,7 @@ function FlowCard({
           disabled={running}
           onClick={() =>
             void run(flow.id).then((summary) => {
-              const armed = flow.schedules.find((s) => s.instance_id)?.instance_id
+              const armed = schedules.find((s) => s.instance_id)?.instance_id
               if (summary?.chat_id && armed) go({ kind: 'session', instanceId: armed })
             })
           }
@@ -151,30 +157,29 @@ function FlowCard({
         </Button>
       </div>
       <div className="mt-3 divide-y divide-line border-t border-line">
-        {flow.schedules.map((s) => (
-          <ScheduleRow key={s.id} flow={flow} schedule={s} onArm={onArm} />
+        {schedules.map((s) => (
+          <ScheduleRow key={s.id} schedule={s} />
         ))}
+        <button
+          type="button"
+          onClick={() => onArm(flow)}
+          className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-[12.5px] text-ink-3 hover:bg-hover hover:text-ink-2"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {schedules.length === 0 ? 'Run this on a schedule' : 'Add another schedule'}
+        </button>
       </div>
     </Card>
   )
 }
 
-function ScheduleRow({
-  flow,
-  schedule,
-  onArm,
-}: {
-  flow: Flow
-  schedule: FlowSchedule
-  onArm: (target: { flow: Flow; schedule: FlowSchedule }) => void
-}) {
-  const { disarm, busy } = useAutomations()
+function ScheduleRow({ schedule }: { schedule: ScheduledFlow }) {
+  const { disarm, setEnabled, busy } = useAutomations()
   const go = useUi((s) => s.go)
   const instances = useFleet((s) => s.instances)
-  const working = busy[`${flow.id}:${schedule.id}`] ?? false
-  const armed = Boolean(schedule.instance_id)
-  // The pod names an armed schedule's agent, but the fleet holds the current
-  // name — an agent renamed after arming should not read stale here.
+  const working = busy[schedule.id] ?? false
+  // The pod names the schedule's agent, but the fleet holds the current name —
+  // an agent renamed after arming should not read stale here.
   const agentName =
     instances.find((i) => i.id === schedule.instance_id)?.name ?? schedule.instance_name
 
@@ -182,7 +187,15 @@ function ScheduleRow({
     <div className="flex items-center gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[13px]">
-          <span className="truncate">{schedule.name ?? schedule.id}</span>
+          {/* Never the id, which is deliberately meaningless (`sf_9c31a4`). */}
+          <span className={cn('truncate', !schedule.enabled && 'text-ink-3')}>
+            {schedule.schedule.name || schedule.description}
+          </span>
+          {!schedule.enabled && (
+            <span className="shrink-0 rounded-chip bg-inset px-1.5 py-px text-[10px] text-ink-3">
+              paused
+            </span>
+          )}
           {schedule.description.startsWith('Invalid') && (
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red" />
           )}
@@ -196,7 +209,7 @@ function ScheduleRow({
         </div>
       </div>
 
-      {armed ? (
+      {schedule.instance_id && (
         <button
           type="button"
           onClick={() =>
@@ -207,22 +220,26 @@ function ScheduleRow({
         >
           {agentName ?? 'its agent'}
         </button>
-      ) : (
-        <span className="shrink-0 text-[11.5px] text-ink-3">not armed</span>
       )}
 
-      {/* Asymmetric on purpose: arming asks first, because it is the moment
-          this pod agrees to act unwatched. Disarming just stops a timer and
-          keeps the agent, so it needs no ceremony. */}
+      {/* Pause is the reversible one and sits first. Both keep the agent and
+          everything it has learned — the difference is only whether the
+          schedule survives, which is why neither needs a confirmation. */}
       <Button
         variant="ghost"
         size="sm"
         disabled={working}
-        onClick={() =>
-          armed ? void disarm(flow.id, schedule.id) : onArm({ flow, schedule })
-        }
+        onClick={() => void setEnabled(schedule.id, !schedule.enabled)}
       >
-        {working ? '…' : armed ? 'Disarm' : 'Arm'}
+        {working ? '…' : schedule.enabled ? 'Pause' : 'Resume'}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={working}
+        onClick={() => void disarm(schedule.id)}
+      >
+        Remove
       </Button>
     </div>
   )
@@ -305,8 +322,8 @@ function Empty() {
       <div>
         <p className="text-sm font-medium">No automations on this pod</p>
         <p className="mt-1 max-w-md text-[12.5px] text-ink-2">
-          An automation is an agent doing scheduled work — a flow bound to an agent preset.
-          Agent packs bring them; arming one is what creates the agent that runs it.
+          An automation is an agent doing scheduled work — a flow, plus a time to run it.
+          Agent packs bring the flows; scheduling one is what creates the agent that runs it.
         </p>
       </div>
       <Button size="sm" onClick={() => go({ kind: 'packs' })}>

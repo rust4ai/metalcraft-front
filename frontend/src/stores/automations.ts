@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { automations } from '@/rpc'
 import { useFleet } from './fleet'
-import type { AgentInstance, Flow, FlowBinding, FlowRun, FlowRunSummary } from '@/types'
+import type {
+  Flow,
+  FlowBinding,
+  FlowRun,
+  FlowRunSummary,
+  ScheduleSpec,
+  ScheduledFlow,
+} from '@/types'
 
 /**
  * Automations: the pod's flows, and the runs they leave behind.
@@ -13,10 +20,13 @@ import type { AgentInstance, Flow, FlowBinding, FlowRun, FlowRunSummary } from '
  */
 interface AutomationsState {
   flows: Flow[]
+  /** What the pod will do on its own. Separate from `flows` because the pod
+   *  keeps them separate: a flow is the work, a scheduled flow is the plan. */
+  scheduled: ScheduledFlow[]
   runs: FlowRun[]
   loading: boolean
   error: string | null
-  /** Per-schedule in-flight marker, keyed `flowId:scheduleId`. */
+  /** In-flight marker, keyed by flow id (running) or scheduled-flow id (arming). */
   busy: Record<string, boolean>
   /** What arming each flow would permit, cached per flow. Fetched when the arm
    *  dialog opens — it is the pod's answer, never assembled here. */
@@ -24,14 +34,37 @@ interface AutomationsState {
 
   load: () => Promise<void>
   loadBinding: (flowId: string) => Promise<void>
-  /** Returns the new agent, or null with `error` set — the pod's refusal names
-   *  the persona and the roster it is missing from, so it is worth showing. */
-  arm: (flowId: string, scheduleId: string, instanceId?: string) => Promise<AgentInstance | null>
-  disarm: (flowId: string, scheduleId: string) => Promise<void>
+  /** The schedules of one flow, from the loaded list. */
+  schedulesOf: (flowId: string) => ScheduledFlow[]
+  /** Returns the new schedule (agent included), or null with `error` set — the
+   *  pod's refusal names the persona and the roster it is missing from, so it is
+   *  worth showing. */
+  arm: (
+    flowId: string,
+    schedule: ScheduleSpec,
+    instanceId?: string,
+  ) => Promise<ScheduledFlow | null>
+  /** Delete a schedule. The agent and the flow both stay. */
+  disarm: (scheduledId: string) => Promise<void>
+  /** Pause or resume a schedule without deleting it. */
+  setEnabled: (scheduledId: string, enabled: boolean) => Promise<void>
   /** Run now, and return what it did. Null with `error` set on refusal. */
   run: (flowId: string) => Promise<FlowRunSummary | null>
   /** Answer a paused run. `handle` is one of its `resume_handles`. */
   resume: (runId: string, handle: string) => Promise<FlowRunSummary | null>
+}
+
+/** A pod that predates the flow/schedule split has no `/scheduled-flows`, and its
+ *  404 would otherwise read as a transport failure — leaving someone to conclude
+ *  the pod is broken when it is merely older than this app.
+ *
+ *  Deliberately not a fallback to the old endpoints: they are gone, and quietly
+ *  half-working against an old pod would hide the one action that fixes it. */
+function describeLoadFailure(e: unknown): string {
+  const text = String(e)
+  return /404|not found/i.test(text)
+    ? 'This pod is older than this app: it does not have scheduled flows yet. Update the pod to manage automations here.'
+    : text
 }
 
 /** Paused outranks failed outranks everything else: the first needs a person,
@@ -50,6 +83,7 @@ export function pausedFirst(runs: FlowRun[]): FlowRun[] {
 
 export const useAutomations = create<AutomationsState>((set, get) => ({
   flows: [],
+  scheduled: [],
   runs: [],
   loading: false,
   error: null,
@@ -59,12 +93,18 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
   load: async () => {
     set({ loading: true, error: null })
     try {
-      const [flows, runs] = await Promise.all([automations.list(), automations.runs()])
-      set({ flows, runs, loading: false })
+      const [flows, scheduled, runs] = await Promise.all([
+        automations.list(),
+        automations.scheduled(),
+        automations.runs(),
+      ])
+      set({ flows, scheduled, runs, loading: false })
     } catch (e) {
-      set({ loading: false, error: String(e) })
+      set({ loading: false, error: describeLoadFailure(e) })
     }
   },
+
+  schedulesOf: (flowId) => get().scheduled.filter((s) => s.flow_id === flowId),
 
   loadBinding: async (flowId) => {
     try {
@@ -78,11 +118,11 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
     }
   },
 
-  arm: async (flowId, scheduleId, instanceId) => {
-    const key = `${flowId}:${scheduleId}`
+  arm: async (flowId, schedule, instanceId) => {
+    const key = `arm:${flowId}`
     set({ busy: { ...get().busy, [key]: true }, error: null })
     try {
-      const agent = await automations.arm(flowId, scheduleId, instanceId)
+      const armed = await automations.arm(flowId, schedule, instanceId)
       // Reload rather than patch: arming can mint an agent *or* attach to an
       // existing one, and it also flips the flow's `armed`. Re-reading is one
       // call and cannot disagree with the pod.
@@ -94,7 +134,7 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
       // clicking Arm against a real pod; no stubbed test caught it, because the
       // stub had no fleet to be stale.
       await Promise.all([get().load(), useFleet.getState().load()])
-      return agent
+      return armed
     } catch (e) {
       set({ error: String(e) })
       return null
@@ -143,17 +183,30 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
     }
   },
 
-  disarm: async (flowId, scheduleId) => {
-    const key = `${flowId}:${scheduleId}`
-    set({ busy: { ...get().busy, [key]: true }, error: null })
+  disarm: async (scheduledId) => {
+    set({ busy: { ...get().busy, [scheduledId]: true }, error: null })
     try {
-      await automations.disarm(flowId, scheduleId)
+      await automations.disarm(scheduledId)
       await get().load()
     } catch (e) {
       set({ error: String(e) })
     } finally {
       const busy = { ...get().busy }
-      delete busy[key]
+      delete busy[scheduledId]
+      set({ busy })
+    }
+  },
+
+  setEnabled: async (scheduledId, enabled) => {
+    set({ busy: { ...get().busy, [scheduledId]: true }, error: null })
+    try {
+      await automations.setEnabled(scheduledId, enabled)
+      await get().load()
+    } catch (e) {
+      set({ error: String(e) })
+    } finally {
+      const busy = { ...get().busy }
+      delete busy[scheduledId]
       set({ busy })
     }
   },

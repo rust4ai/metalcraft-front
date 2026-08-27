@@ -21,7 +21,7 @@ export interface CommandResult {
   /** A line to show in the transcript. Empty means the command showed nothing. */
   notice: string
   /** The conversation was reset, so the transcript should be emptied with it. */
-  cleared?: boolean
+
 }
 
 export interface Command {
@@ -75,12 +75,15 @@ export const COMMANDS: Command[] = [
   },
   {
     name: 'clear',
-    summary: 'Forget this conversation, keeping the agent and its memory',
+    summary: 'Start the agent fresh here, keeping the conversation and its memory',
     run: async (chatId) => {
       await chats.clear(chatId)
-      // Worth naming what survives: an agent instance's memory is a separate
-      // store, and someone clearing a chat should not fear they wiped it.
-      return { notice: 'Conversation cleared. The agent keeps its memory.', cleared: true }
+      // Deliberately leaves the transcript alone. This used to empty it, which
+      // matched a pod that really did delete the history — it does not any more,
+      // so emptying would show a conversation as gone while it sat intact on the
+      // pod, waiting to reappear on the next open. The divider marking the reset
+      // arrives on the event stream, the same way a flow's 3am reset does.
+      return { notice: 'The agent is starting fresh here. Nothing was deleted.' }
     },
   },
   {

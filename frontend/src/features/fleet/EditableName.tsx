@@ -17,7 +17,7 @@ import type { AgentInstance } from '@/types'
  * clicked away" is the common path, not the exception; only Escape discards.
  *
  * A rename is only a rename — whether an agent survives the reaper is
- * `persistent`, and nothing here touches it. An empty name is still refused
+ * a lifetime, and there is no lifetime to touch. An empty name is still refused
  * locally rather than sent: it would leave the agent under a blank label that
  * nothing in the fleet could identify.
  */

@@ -27,12 +27,8 @@ fn pod() -> Option<PodConnection> {
 }
 
 const FLOW: &str = r#"{
-  "spec_version": "2", "id": "live-probe", "name": "Live probe",
+  "spec_version": "3", "id": "live-probe", "name": "Live probe",
   "created_at": "2026-08-23T00:00:00Z", "updated_at": "2026-08-23T00:00:00Z",
-  "enabled": true,
-  "schedules": [
-    { "id": "hourly", "name": "Hourly", "type": "hours", "interval": 1, "enabled": true }
-  ],
   "flow": { "nodes": [
       { "id": "entry", "node_type": "entry", "data": { "persona": "research-agent" }, "position": [0,0] },
       { "id": "fin", "node_type": "end", "data": { "status": "completed" }, "position": [1,0] }
@@ -128,35 +124,27 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
     // Start from a known state. A run that failed mid-way leaves this flow armed,
     // and the next run then fails on an unrelated assertion — a test that only
     // passes on a pristine pod is a test people learn to ignore.
-    let _ = pod.disarm_schedule("live-probe", "hourly").await;
+    for sf in pod.list_scheduled_flows().await.unwrap_or_default() {
+        if sf.flow_id == "live-probe" {
+            let _ = pod.disarm_schedule(&sf.id).await;
+        }
+    }
 
     let flows = pod.list_flows().await.expect("GET /flows");
     let probe = flows
         .iter()
         .find(|f| f.id == "live-probe")
         .expect("the flow we just wrote is in the listing");
-    assert!(probe.v2, "a spec_version 2 flow reads as v2");
+    assert!(probe.v2, "a spec_version 3 flow runs on the state machine");
     assert!(
         !probe.preset.is_empty(),
         "an unbound flow still resolves an agent"
     );
-    let schedule = probe.schedules.first().expect("its schedule");
-    // The fields the UI renders, from a pod rather than from a fixture: the
-    // flattened spec, and the pod's own rendering of the trigger.
     assert_eq!(
-        schedule.kind, "hours",
-        "the flattened spec keeps its `type` tag"
+        probe.scheduled_count, 0,
+        "writing a flow schedules nothing: {probe:?}"
     );
-    assert_eq!(schedule.interval, Some(1));
-    assert!(
-        !schedule.description.is_empty(),
-        "the pod describes its own trigger"
-    );
-    assert!(
-        schedule.next_fire_at.is_some(),
-        "an interval trigger projects a next run"
-    );
-    assert!(schedule.instance_id.is_none(), "nothing armed it yet");
+    assert!(!probe.is_armed());
 
     // The arm dialog's payload.
     let binding = pod
@@ -187,27 +175,70 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
 
     // Arming is what creates the agent.
     let agent = pod
-        .arm_schedule("live-probe", "hourly", None)
+        .arm_schedule(
+            "live-probe",
+            &front_core::ScheduleSpec {
+                kind: "hours".into(),
+                name: Some("Hourly".into()),
+                interval: Some(1),
+                ..Default::default()
+            },
+            None,
+        )
         .await
-        .expect("POST …/arm");
-    assert!(agent.persistent, "an armed schedule's agent is kept");
+        .expect("POST /scheduled-flows");
+    let scheduled_id = agent.id.clone();
+    let agent_id = agent
+        .instance_id
+        .clone()
+        .expect("arming mints the agent it runs as");
+    // Straight from the fleet listing, which is also the assertion that it shows
+    // up there — an agent doing work on a timer that nobody can see is the
+    // failure this pair is guarding.
+    let agent = pod
+        .list_instances()
+        .await
+        .expect("GET /agents/instances")
+        .into_iter()
+        .find(|i| i.id == agent_id)
+        .expect("the agent arming just minted is in the fleet");
     assert!(
-        pod.list_instances()
-            .await
-            .unwrap()
-            .iter()
-            .any(|i| i.id == agent.id),
-        "and it shows up in the fleet"
+        matches!(&agent.origin, front_core::InstanceOrigin::Flow { .. }),
+        "the agent scheduling minted belongs to the flow: {:?}",
+        agent.origin
+    );
+
+    // The fields the UI renders, from a pod rather than a fixture.
+    let scheduled = pod
+        .list_scheduled_flows()
+        .await
+        .expect("GET /scheduled-flows");
+    let sf = scheduled
+        .iter()
+        .find(|s| s.id == scheduled_id)
+        .expect("the schedule we just created");
+    assert_eq!(sf.flow_id, "live-probe");
+    assert_eq!(sf.schedule.kind, "hours", "the trigger keeps its `type` tag");
+    assert_eq!(sf.schedule.interval, Some(1));
+    assert!(sf.enabled);
+    assert!(
+        !sf.description.is_empty(),
+        "the pod describes its own trigger"
+    );
+    assert!(
+        sf.next_fire_at.is_some(),
+        "an interval trigger projects a next run"
+    );
+    assert_eq!(
+        sf.instance_id.as_deref(),
+        Some(agent.id.as_str()),
+        "the listing reports which agent the schedule runs as"
     );
 
     let armed = pod.list_flows().await.unwrap();
     let probe = armed.iter().find(|f| f.id == "live-probe").unwrap();
-    assert!(probe.armed);
-    assert_eq!(
-        probe.schedules[0].instance_id.as_deref(),
-        Some(agent.id.as_str()),
-        "the listing reports which agent the schedule runs as"
-    );
+    assert!(probe.is_armed());
+    assert_eq!(probe.scheduled_count, 1);
 
     // Run it. This flow has no prompt node, so it needs no model and no key —
     // what is under test is the request/response shape, not inference.
@@ -274,9 +305,9 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
 
     // Disarm keeps the agent; that is the promise the UI makes when it offers a
     // one-click disarm with no confirmation.
-    pod.disarm_schedule("live-probe", "hourly")
+    pod.disarm_schedule(&scheduled_id)
         .await
-        .expect("DELETE …/arm");
+        .expect("DELETE /scheduled-flows/{id}");
     assert!(
         pod.list_instances()
             .await
@@ -287,17 +318,16 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
     );
 
     // Rename it before cleanup. A name patch changes the name and nothing else:
-    // the pod used to set `persistent` alongside it, so the gesture for "call it
-    // something I recognise" silently changed how long the pod kept it.
+    // the pod used to set a `persistent` flag alongside it, so the gesture for
+    // "call it something I recognise" silently changed how long the pod kept it.
+    // There is no such flag now — nothing deletes an agent on a timer — so the
+    // only thing left for a rename to get wrong is the name.
     let renamed = pod
         .rename_instance(&agent.id, "live-probe renamed")
         .await
         .expect("PATCH …/instances/{id} with a name");
     assert_eq!(renamed.name, "live-probe renamed");
-    assert_eq!(
-        renamed.persistent, agent.persistent,
-        "a rename must not move an agent's lifetime"
-    );
+    assert_eq!(renamed.id, agent.id);
 
     // Clean up the agent this run minted. Not just tidiness: arming mints a new
     // one every time, so without this a pod accumulates a "General Agent —

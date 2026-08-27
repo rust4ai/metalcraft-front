@@ -95,7 +95,7 @@ export function Gallery() {
                 </div>
                 <p className="mt-1 font-mono text-[11px] text-ink-2">amy_kitchen · chef</p>
                 <div className="mt-3 flex justify-between text-[11.5px] text-ink-3">
-                  <span>persistent · 4 conversations</span>
+                  <span>4 conversations</span>
                   <span className="tnum">2h ago</span>
                 </div>
               </Card>

@@ -185,10 +185,12 @@ function InstanceCard({
 
       <div className="mt-3 flex items-center justify-between text-[11.5px] text-ink-3">
         <span>
-          {instance.persistent ? 'persistent' : 'ephemeral'}
+          {/* No lifetime to report any more: the pod keeps every agent until
+              somebody deletes it, so the only number here is the one that says
+              how much has been said. */}
           {instance.conversation_count
-            ? ` · ${instance.conversation_count} conversation${instance.conversation_count === 1 ? '' : 's'}`
-            : ''}
+            ? `${instance.conversation_count} conversation${instance.conversation_count === 1 ? '' : 's'}`
+            : 'no conversations yet'}
         </span>
         <span className="tnum">{relative(instance.last_active_at || instance.created_at)}</span>
       </div>

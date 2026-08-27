@@ -85,6 +85,76 @@ describe('SessionView', () => {
     expect(screen.getByText('Ran 1 tool')).toBeTruthy()
   })
 
+  it('offers the options of a question as chips, and sends the one clicked', async () => {
+    // `ask_user` ends the turn waiting on the user. The options are a shortcut
+    // for answering, so clicking one has to send exactly that text as the next
+    // message — otherwise the chips are decoration.
+    const { emit, transport } = await mountSession()
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+
+    emit({
+      kind: 'reply',
+      content: 'Report the drift, or fix the page?',
+      awaiting_reply: true,
+      options: ['Just report it', 'Report and fix'],
+    })
+    emit({ kind: 'done', status: 'completed' })
+
+    const chip = await waitFor(() => screen.getByText('Report and fix'))
+    // The chips must not read as the whole answer space.
+    expect(screen.getByText('Or answer in your own words below.')).toBeTruthy()
+
+    fireEvent.click(chip)
+    await waitFor(() =>
+      expect(transport.call).toHaveBeenCalledWith(
+        'send_turn',
+        expect.objectContaining({ message: 'Report and fix' }),
+      ),
+    )
+  })
+
+  it('does not offer chips on a question the conversation has moved past', async () => {
+    // Re-answering a settled question would send a message about work already
+    // done, so the chips belong to the newest item only.
+    const { emit } = await mountSession()
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+
+    emit({
+      kind: 'reply',
+      content: 'Report the drift, or fix the page?',
+      awaiting_reply: true,
+      options: ['Just report it'],
+    })
+    emit({ kind: 'reply', content: 'Fixed 4 stale claims.' })
+    emit({ kind: 'done', status: 'completed' })
+
+    await waitFor(() => expect(screen.getByText('Fixed 4 stale claims.')).toBeTruthy())
+    expect(screen.queryByText('Just report it')).toBeNull()
+  })
+
+  it('makes a bare URL in a reply a link, and opens it outside the app', async () => {
+    // A preview URL is the whole point of the message it arrives in, and a link
+    // nobody can click is a string to retype by hand.
+    const { emit, transport } = await mountSession({ open_url: null })
+    await waitFor(() => expect(screen.getByText('earlier')).toBeTruthy())
+
+    emit({ kind: 'reply', content: 'Updated preview: https://2rycrfq356gm.livepreview.space/' })
+    emit({ kind: 'done', status: 'completed' })
+
+    const link = await waitFor(() => screen.getByText('https://2rycrfq356gm.livepreview.space/'))
+    expect(link.tagName).toBe('A')
+    expect(link.getAttribute('href')).toBe('https://2rycrfq356gm.livepreview.space/')
+
+    // Through the core, not the webview: an in-window navigation would take the
+    // app to the page with no way back.
+    fireEvent.click(link)
+    await waitFor(() =>
+      expect(transport.call).toHaveBeenCalledWith('open_url', {
+        url: 'https://2rycrfq356gm.livepreview.space/',
+      }),
+    )
+  })
+
   it('says which silent phase it is in, not just that it is thinking', async () => {
     // The six-minute "Thinking": compaction and recall happen before the model
     // is reached and emit nothing else, so the wait used to have no explanation.

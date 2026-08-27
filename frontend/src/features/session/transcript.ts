@@ -41,6 +41,11 @@ export type TranscriptItem =
    *  transcript because that is where the user is looking, but it is this
    *  client talking, not the agent. */
   | { kind: 'notice'; id: string; content: string }
+  /** Where the agent's context was reset: everything above stays readable, and
+   *  the agent can no longer see any of it. Drawn rather than hidden because it
+   *  is the answer to the only question the gap provokes — "it knew that a
+   *  minute ago, why not now?" */
+  | { kind: 'reset'; id: string; at: string; reason: string }
   | ToolCard
 
 export interface TranscriptState {
@@ -152,6 +157,8 @@ export function fromMessages(messages: ChatMessage[]): TranscriptState {
       const card: ToolCard = { kind: 'tool', id: m.id, name: m.name, args: m.args, status: 'done' }
       cardsByCall.set(callKey(m), card)
       items.push(card)
+    } else if (m.role === 'reset') {
+      items.push({ kind: 'reset', id: `m${i}`, at: m.at, reason: m.reason })
     } else if (m.role === 'tool_result') {
       if (spoken.has(callKey(m))) continue
       const card = cardsByCall.get(callKey(m))
@@ -262,6 +269,17 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
             message: ev.message,
             retryable: ev.retryable,
           },
+        ],
+      }
+
+    case 'reset':
+      // Arrives outside any turn — a flow resets before its 3am run — so it
+      // touches neither `busy` nor `thinking`.
+      return {
+        ...state,
+        items: [
+          ...state.items,
+          { kind: 'reset', id: `x${state.items.length}`, at: ev.at, reason: ev.reason },
         ],
       }
 

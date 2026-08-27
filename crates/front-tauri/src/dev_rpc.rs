@@ -146,6 +146,12 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "open_checkout" | "provision_pod" => {
             Err("the dev bridge has no account to upgrade or provision for".into())
         }
+        // Not a pod call, but the browser the bridge is being driven from
+        // cannot follow a transcript link on its own either — the renderer
+        // routes every link click through this one name.
+        "open_url" => crate::rpc::system::open_url(need(args, "url")?.to_string())
+            .await
+            .map(|()| Value::Null),
         "list_pods" => ok(json!([])),
         "connect_pod_url" => {
             let url = need(args, "url")?.trim().trim_end_matches('/').to_string();
@@ -267,6 +273,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "chat_context" => j(app.conn(None)?.chat_context(need(args, "chatId")?).await),
         "compact_chat" => j(app.conn(None)?.compact_chat(need(args, "chatId")?).await),
         "clear_chat" => j(app.conn(None)?.clear_chat(need(args, "chatId")?).await),
+        "delete_chat" => j(app.conn(None)?.delete_chat(need(args, "chatId")?).await),
         "interrupt_turn" => j(app.conn(None)?.interrupt_chat(need(args, "chatId")?).await),
         "pod_diagnostics" => j(app.conn(None)?.diagnostics_sessions().await),
         "pod_diagnostics_session" => {
@@ -299,6 +306,16 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
 
         // Automations.
         "list_flows" => j(app.conn(None)?.list_flows().await),
+        "get_flow" => j(app.conn(None)?.get_flow(need(args, "flowId")?).await),
+        // The graph is a whole object, not a string field, so it comes out of
+        // `args` directly — `need`/`arg` only reach string values.
+        "validate_flow" => j(app
+            .conn(None)?
+            .validate_flow(
+                args.get("flow")
+                    .ok_or_else(|| "missing argument 'flow'".to_string())?,
+            )
+            .await),
         "list_flow_runs" => j(app.conn(None)?.list_flow_runs().await),
         "flow_binding" => j(app.conn(None)?.flow_binding(need(args, "flowId")?).await),
         "run_flow" => j(app
@@ -465,7 +482,6 @@ mod tests {
             // Not a pod call.
             "connect_pod",
             "bind_interface_source",
-            "delete_chat",
         ];
 
         let handlers: Vec<&str> = main

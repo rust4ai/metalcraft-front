@@ -132,12 +132,16 @@ describe('submit', () => {
     expect(lastNotice()).toContain('~24k → ~6.8k')
   })
 
-  it('empties the transcript when the conversation is cleared, but says why', async () => {
-    // An empty pane with no explanation reads as a bug.
+  it('keeps the conversation when the agent is reset, and says what happened', async () => {
+    // `/clear` resets the agent's context; it does not delete anything. Emptying
+    // the pane here would show the conversation as gone while it sat intact on
+    // the pod, waiting to reappear on the next open. The divider marking the
+    // reset arrives on the event stream, not from this command.
     const { useSessions, items } = await mount()
+    const before = items().length
     await useSessions.getState().submit('i1', '/clear')
-    expect(items()).toHaveLength(1)
-    expect(items()[0]).toMatchObject({ kind: 'notice' })
+    expect(items()).toHaveLength(before + 1)
+    expect(items().at(-1)).toMatchObject({ kind: 'notice' })
   })
 
   it('names a command-shaped miss without touching the pod', async () => {
@@ -329,6 +333,84 @@ async function mountOpen(
 }
 
 const summary = (id: string, created: string) => ({ id, instance_id: 'i1', created_at: created })
+
+const conversation = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  instance_id: 'i1',
+  created_at: '2026-08-01T00:00:00Z',
+  turn_count: 2,
+  ...over,
+})
+
+describe('conversations', () => {
+  it('lists only this agent conversations, most recently spoken in first', async () => {
+    const { useSessions } = await mountOpen({
+      list_chats: [
+        conversation('older', { updated_at: '2026-08-20T00:00:00Z' }),
+        conversation('someone-else', { instance_id: 'i2', updated_at: '2026-08-27T00:00:00Z' }),
+        conversation('newest', { updated_at: '2026-08-26T00:00:00Z' }),
+      ],
+    })
+    await useSessions.getState().loadConversations('i1')
+    // Ranked by last activity, not creation: all three were created at the same
+    // moment here, which is exactly the case `created_at` cannot order.
+    expect(useSessions.getState().conversations.i1?.map((c) => c.id)).toEqual(['newest', 'older'])
+  })
+
+  it('switching conversations reattaches the stream to the new one', async () => {
+    const { useSessions, calls, session } = await mountOpen({
+      list_chats: [conversation('c1'), conversation('c2')],
+      get_chat: (args?: Record<string, unknown>) => ({
+        id: args?.id,
+        instance_id: 'i1',
+        messages: [{ role: 'user', content: `in ${String(args?.id)}` }],
+      }),
+    })
+    await useSessions.getState().open('i1')
+    await useSessions.getState().resume('i1', 'c2')
+    expect(session()?.chatId).toBe('c2')
+    expect(session()?.transcript.items[0]).toMatchObject({ content: 'in c2' })
+    // The stream is per-conversation: without a fresh watch the pane would show
+    // c2 while still receiving c1's frames.
+    expect(calls.filter((c) => c.method === 'watch_chat').map((c) => c.args?.chatId)).toEqual(['c1', 'c2'])
+  })
+
+  it('remembers a conversation gone back to on purpose, even an empty one', async () => {
+    // The ranking heuristic cannot see this: an empty conversation loses to any
+    // other on every tiebreak, so only the pin can bring someone back to it.
+    const { useSessions } = await mountOpen({
+      list_chats: [conversation('c1'), conversation('empty', { turn_count: 0 })],
+      get_chat: (args?: Record<string, unknown>) => ({ id: args?.id, instance_id: 'i1', messages: [] }),
+    })
+    await useSessions.getState().open('i1')
+    await useSessions.getState().resume('i1', 'empty')
+    expect(JSON.parse(localStorage.getItem('mc.chats') ?? '{}')).toMatchObject({ i1: 'empty' })
+  })
+
+  it('refuses to delete the conversation being read', async () => {
+    const { useSessions, methods } = await mountOpen({
+      list_chats: [conversation('c1')],
+      get_chat: { id: 'c1', instance_id: 'i1', messages: [] },
+    })
+    await useSessions.getState().open('i1')
+    await useSessions.getState().deleteConversation('i1', 'c1')
+    // Deleting what is on screen would leave the pane pointing at nothing.
+    expect(methods()).not.toContain('delete_chat')
+  })
+
+  it('drops a deleted conversation from the list', async () => {
+    const { useSessions, methods } = await mountOpen({
+      list_chats: [conversation('c1'), conversation('old')],
+      get_chat: { id: 'c1', instance_id: 'i1', messages: [] },
+      delete_chat: undefined,
+    })
+    await useSessions.getState().open('i1')
+    await useSessions.getState().loadConversations('i1')
+    await useSessions.getState().deleteConversation('i1', 'old')
+    expect(methods()).toContain('delete_chat')
+    expect(useSessions.getState().conversations.i1?.map((c) => c.id)).toEqual(['c1'])
+  })
+})
 
 describe('open', () => {
   it('reuses the instance existing chat rather than starting another', async () => {

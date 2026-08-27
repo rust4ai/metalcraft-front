@@ -6,7 +6,7 @@ import { useUi } from '@/stores/ui'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import type { Flow, FlowSchedule } from '@/types'
+import type { Flow, ScheduleSpec } from '@/types'
 
 /**
  * The second consent moment (PLAN §10.7).
@@ -20,45 +20,50 @@ import type { Flow, FlowSchedule } from '@/types'
  * app's summary of one — and the list is *complete* rather than best-effort only
  * because of the containment rule: a flow cannot name a persona outside its
  * preset's roster, so what it can reach is knowable in advance.
+ *
+ * It also picks the *when*, because since the flow/schedule split there is
+ * nothing to select: a schedule does not exist until somebody creates one, and
+ * creating it is the same act as agreeing to it.
  */
 export function ArmDialog({
   flow,
-  schedule,
   onClose,
 }: {
   flow: Flow | null
-  schedule: FlowSchedule | null
   onClose: () => void
 }) {
   const { bindings, loadBinding, arm, busy } = useAutomations()
   const instances = useFleet((s) => s.instances)
   const go = useUi((s) => s.go)
   const [attachTo, setAttachTo] = useState<string | null>(null)
+  const [schedule, setSchedule] = useState<ScheduleSpec>(defaultSchedule)
 
-  const open = Boolean(flow && schedule)
+  const open = Boolean(flow)
   const binding = flow ? bindings[flow.id] : undefined
-  const working = flow && schedule ? (busy[`${flow.id}:${schedule.id}`] ?? false) : false
+  const working = flow ? (busy[`arm:${flow.id}`] ?? false) : false
 
   useEffect(() => {
     if (flow) void loadBinding(flow.id)
   }, [flow, loadBinding])
 
-  // Reset the picker between openings: the last flow's choice must not carry
-  // into the next flow's dialog.
+  // Reset between openings: the last flow's choices must not carry into the
+  // next flow's dialog.
   useEffect(() => {
-    if (!open) setAttachTo(null)
+    if (!open) {
+      setAttachTo(null)
+      setSchedule(defaultSchedule())
+    }
   }, [open])
 
-  if (!flow || !schedule) return null
+  if (!flow) return null
   const consent = binding?.consent
-  const label = schedule.name ?? schedule.id
 
   async function confirm() {
-    if (!flow || !schedule) return
-    const agent = await arm(flow.id, schedule.id, attachTo ?? undefined)
-    if (agent) {
+    if (!flow) return
+    const armed = await arm(flow.id, schedule, attachTo ?? undefined)
+    if (armed?.instance_id) {
       onClose()
-      go({ kind: 'session', instanceId: agent.id })
+      go({ kind: 'session', instanceId: armed.instance_id })
     }
   }
 
@@ -66,8 +71,8 @@ export function ArmDialog({
     <Modal
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={`Arm "${label}"`}
-      description={schedule.description}
+      title={`Schedule "${flow.name}"`}
+      description="This pod will run it on its own, with nobody watching."
     >
       {!binding ? (
         <div className="flex items-center gap-2 py-4 text-sm text-ink-2">
@@ -75,6 +80,10 @@ export function ArmDialog({
         </div>
       ) : (
         <div className="space-y-3">
+          <Line label="When">
+            <ScheduleEditor value={schedule} onChange={setSchedule} />
+          </Line>
+
           <Line label="Runs as">
             <div className="space-y-1.5">
               <button
@@ -187,10 +196,104 @@ export function ArmDialog({
           Cancel
         </Button>
         <Button size="sm" disabled={!binding || working} onClick={() => void confirm()}>
-          {working ? 'Arming…' : 'Arm it'}
+          {working ? 'Scheduling…' : 'Schedule it'}
         </Button>
       </div>
     </Modal>
+  )
+}
+
+/** A daily 8am cron, in the reader's own timezone.
+ *
+ *  Not the pod's: a cron with no zone is evaluated wherever the pod happens to
+ *  run, so "8am" would mean 8am somewhere else. Stating the browser's zone makes
+ *  the common case mean what it says. */
+function defaultSchedule(): ScheduleSpec {
+  return {
+    type: 'cron',
+    cron: '0 0 8 * * *',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }
+}
+
+/** The trigger picker: a kind, and whatever that kind needs.
+ *
+ *  Cron is six fields here (seconds first) because that is what the pod parses —
+ *  a five-field POSIX expression saves and then never fires, which the pod
+ *  reports as `Invalid cron …` but only after the fact. */
+function ScheduleEditor({
+  value,
+  onChange,
+}: {
+  value: ScheduleSpec
+  onChange: (next: ScheduleSpec) => void
+}) {
+  const set = (patch: Partial<ScheduleSpec>) => onChange({ ...value, ...patch })
+  const field =
+    'w-full rounded-control border border-line bg-inset px-2 py-1 text-[13px] outline-none focus:border-accent'
+
+  return (
+    <div className="space-y-1.5">
+      <select
+        className={field}
+        value={value.type}
+        onChange={(e) => {
+          const type = e.target.value
+          onChange(
+            type === 'cron'
+              ? defaultSchedule()
+              : { type, interval: type === 'manual' ? null : 1, name: value.name },
+          )
+        }}
+      >
+        <option value="cron">On a schedule (cron)</option>
+        <option value="hours">Every N hours</option>
+        <option value="minutes">Every N minutes</option>
+        <option value="manual">Only when I run it</option>
+      </select>
+
+      {value.type === 'cron' && (
+        <>
+          <input
+            className={cn(field, 'font-mono')}
+            value={value.cron ?? ''}
+            onChange={(e) => set({ cron: e.target.value })}
+            placeholder="0 0 8 * * *"
+            aria-label="Cron expression"
+          />
+          <p className="text-[11.5px] text-ink-3">
+            Six fields, seconds first — <span className="font-mono">0 0 8 * * *</span> is 8am
+            daily, in {value.timezone ?? 'the pod&apos;s timezone'}.
+          </p>
+        </>
+      )}
+
+      {(value.type === 'minutes' || value.type === 'hours') && (
+        <input
+          className={field}
+          type="number"
+          min={1}
+          value={value.interval ?? 1}
+          onChange={(e) => set({ interval: Math.max(1, Number(e.target.value) || 1) })}
+          aria-label={`Every N ${value.type}`}
+        />
+      )}
+
+      {value.type === 'manual' && (
+        <p className="text-[11.5px] text-ink-3">
+          Nothing fires on its own. This names the agent a hand-run belongs to, so what it
+          learns carries between runs.
+        </p>
+      )}
+
+      <input
+        className={field}
+        value={value.name ?? ''}
+        onChange={(e) => set({ name: e.target.value })}
+        placeholder="Name it (optional) — e.g. Morning brief"
+        aria-label="Schedule name"
+      />
+    </div>
   )
 }
 

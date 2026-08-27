@@ -238,4 +238,33 @@ describe('fromMessages (a chat reopened after a restart)', () => {
     expect(s.busy).toBe(false)
     expect(s.thinking).toBe(false)
   })
+
+  it('draws a reset without losing what came before it', () => {
+    const s = fromMessages([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+      { role: 'reset', at: '2026-08-27T04:00:00Z', reason: 'reset' },
+      { role: 'user', content: 'who am i' },
+    ])
+    // The whole point of the divider: the history is still there to read, and
+    // the line says where the agent stopped being able to see it.
+    expect(s.items.map((i) => i.kind)).toEqual(['user', 'reply', 'reset', 'user'])
+    expect(s.items[2]).toMatchObject({ kind: 'reset', reason: 'reset' })
+  })
+
+  it('agrees with the stream about where a reset goes', () => {
+    // The pod stores the divider in the transcript and also broadcasts it, so
+    // the two paths have to agree — reopening must not move the line or lose it.
+    const onDisk = fromMessages([
+      { role: 'user', content: 'hi' },
+      { role: 'reset', at: '2026-08-27T04:00:00Z', reason: 'reset' },
+    ])
+    let live = emptyTranscript()
+    live = reduce(live, { kind: 'turn_started', turn_index: 0, user_message: 'hi' })
+    live = reduce(live, { kind: 'done', status: 'completed' })
+    live = reduce(live, { kind: 'reset', at: '2026-08-27T04:00:00Z', reason: 'reset' })
+    expect(live.items.map((i) => i.kind)).toEqual(onDisk.items.map((i) => i.kind))
+    // A reset is not a turn, so it must not leave the composer locked.
+    expect(live.busy).toBe(false)
+  })
 })

@@ -11,7 +11,6 @@ function agent(id: string, fields: Partial<AgentInstance> = {}): AgentInstance {
     name: id,
     persona: 'default',
     origin: { kind: 'ui' },
-    persistent: true,
     created_at: new Date(NOW).toISOString(),
     last_active_at: new Date(NOW).toISOString(),
     ...fields,

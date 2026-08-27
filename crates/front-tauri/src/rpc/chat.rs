@@ -80,12 +80,27 @@ pub async fn compact_chat(chat_id: String, state: State<'_>) -> Result<ChatCompa
         .map_err(|e| e.to_string())
 }
 
-/// Drop the conversation, keep the chat — `/clear`.
+/// Reset the agent's context, keep the conversation — `/clear`.
 #[tauri::command]
 pub async fn clear_chat(chat_id: String, state: State<'_>) -> Result<ChatContext, String> {
     state
         .conn(None)?
         .clear_chat(&chat_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a conversation.
+///
+/// The agent and its memory survive: they are not the conversation, and an agent
+/// accumulates several — one per gateway conversation, one per flow firing — so
+/// throwing away a transcript must not cost the relationship behind it. Deleting
+/// the *agent* is `delete_instance`, and that keeps the transcripts.
+#[tauri::command]
+pub async fn delete_chat(chat_id: String, state: State<'_>) -> Result<(), String> {
+    state
+        .conn(None)?
+        .delete_chat(&chat_id)
         .await
         .map_err(|e| e.to_string())
 }

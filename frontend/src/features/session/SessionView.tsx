@@ -9,8 +9,10 @@ import { Composer } from './Composer'
 import { Followups } from './Followups'
 import { DebugButton, DebugDrawer } from './DebugDrawer'
 import { LoadingState } from '@/components/ui/LoadingState'
+import { Linkified } from '@/components/ui/Linkified'
 import { groupIntoBlocks } from './blocks'
 import { EditableName } from '@/features/fleet/EditableName'
+import { ConversationPicker } from './ConversationPicker'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
@@ -39,6 +41,8 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   const busy = session?.transcript.busy ?? false
   const stopping = session?.stopping ?? false
   const phase = session?.transcript.phase
+  const items = session?.transcript.items ?? []
+  const lastItemId = items.at(-1)?.id
 
   return (
     <div className="flex h-full flex-col">
@@ -56,6 +60,9 @@ export function SessionView({ instanceId }: { instanceId: string }) {
             {instance ? `${instance.agent_preset} · ${instance.persona}` : ''}
           </div>
         </div>
+        {/* An agent has several conversations — one per gateway gap, one per
+            flow firing — and this is the only way to any but the newest. */}
+        <ConversationPicker instanceId={instanceId} />
         {/* Opened against the live turn when there is one, and against this
             agent's last recorded run when there is not — which is when someone
             comes looking, after something already took too long. */}
@@ -86,7 +93,15 @@ export function SessionView({ instanceId }: { instanceId: string }) {
               block.kind === 'tools' ? (
                 <Trace key={block.id} cards={block.cards} />
               ) : (
-                <Item key={block.item.id} item={block.item} />
+                <Item
+                  key={block.item.id}
+                  item={block.item}
+                  /* Only the newest question is still open. Chips on an
+                     answered one would offer to re-answer something the
+                     conversation has already moved past. */
+                  live={block.item.id === lastItemId && !busy}
+                  onAnswer={(m) => void submit(instanceId, m)}
+                />
               ),
             )}
             {/* Only ever one waiting indicator, and never alongside output.
@@ -122,11 +137,21 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   )
 }
 
-function Item({ item }: { item: Exclude<TranscriptItem, ToolCard> }) {
+function Item({
+  item,
+  live,
+  onAnswer,
+}: {
+  item: Exclude<TranscriptItem, ToolCard>
+  /** This is the last thing in the transcript and no turn is running — so a
+   *  question here is the one actually waiting on the user. */
+  live?: boolean
+  onAnswer?: (message: string) => void
+}) {
   if (item.kind === 'user') {
     return (
       <div className="animate-fade-up max-w-[85%] self-end whitespace-pre-wrap rounded-card rounded-br-sm bg-accent px-3.5 py-2 text-[13.5px] text-accent-ink">
-        {item.content}
+        <Linkified text={item.content} linkClassName="text-accent-ink underline" />
       </div>
     )
   }
@@ -135,18 +160,71 @@ function Item({ item }: { item: Exclude<TranscriptItem, ToolCard> }) {
     // as something the agent said.
     return (
       <div className="animate-fade-up mx-auto max-w-[85%] whitespace-pre-wrap text-center text-[12px] leading-relaxed text-ink-3">
-        {item.content}
+        <Linkified text={item.content} />
       </div>
     )
   }
   if (item.kind === 'reply') {
     // Markdown rendering lands with the rest of the P4 polish; the text is the
     // agent's actual reply either way, so it ships readable rather than pending.
+    // Bare URLs are the exception, because a reply that ends "preview:
+    // https://…" is *only* useful if that is something you can click.
+    const choices = live && item.options?.length ? item.options : []
     return (
-      <div className="animate-stream-in whitespace-pre-wrap text-[13.5px] leading-relaxed">{item.content}</div>
+      <div className="animate-stream-in flex flex-col gap-2.5">
+        <div className="whitespace-pre-wrap text-[13.5px] leading-relaxed">
+          <Linkified text={item.content} />
+        </div>
+        {choices.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {choices.map((choice) => (
+              <button
+                key={choice}
+                type="button"
+                onClick={() => onAnswer?.(choice)}
+                className="rounded-full border border-line px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-accent hover:text-ink"
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* The options are a shortcut, never the whole answer space — say so,
+            or a question with chips reads as multiple-choice. */}
+        {choices.length > 0 && (
+          <p className="text-[11.5px] text-ink-3">Or answer in your own words below.</p>
+        )}
+      </div>
     )
   }
+  if (item.kind === 'reset') {
+    return <ResetDivider at={item.at} reason={item.reason} />
+  }
   return <Problem message={item.message} code={item.code} retryable={item.retryable} />
+}
+
+/**
+ * The line where the agent's context ended.
+ *
+ * A rule rather than a bubble, because it is not something anyone said — it is a
+ * fact about the conversation, and drawing it as a message would put words in
+ * the agent's mouth. Everything above it stays readable; the agent simply cannot
+ * see any of it any more, and this is the only place that is stated.
+ */
+function ResetDivider({ at, reason }: { at: string; reason: string }) {
+  const when = new Date(at)
+  // The timestamp is the useful half when scrolling back through a long thread,
+  // so it is kept when the string parses and dropped silently when it does not.
+  const label = Number.isNaN(when.getTime())
+    ? reason
+    : `${reason} · ${when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+  return (
+    <div className="animate-fade-up flex items-center gap-2.5 py-0.5" role="separator" aria-label={`Context reset ${label}`}>
+      <span className="h-px flex-1 bg-accent/35" />
+      <span className="shrink-0 text-[11px] font-medium text-accent">{label}</span>
+      <span className="h-px flex-1 bg-accent/35" />
+    </div>
+  )
 }
 
 /**

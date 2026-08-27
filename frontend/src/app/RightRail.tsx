@@ -119,7 +119,6 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
         <Row label="Pack" value={instance.agent_pack} mono />
         <Row label="Persona" value={<PersonaSwitcher instance={instance} />} />
         <Row label="Origin" value={instance.origin.kind === 'gateway' ? instance.origin.channel : instance.origin.kind} />
-        <Row label="Lifetime" value={instance.persistent ? 'persistent' : 'ephemeral'} />
       </Section>
 
       <Section title="History">

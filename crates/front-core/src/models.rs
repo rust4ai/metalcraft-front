@@ -19,7 +19,7 @@ pub struct AgentInfo {
 }
 
 /// Where an instance came from. Mirrors the agent's `InstanceOrigin`; drives the
-/// origin badge on a fleet card and whether the instance defaults to persistent.
+/// origin badge on a fleet card.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InstanceOrigin {
@@ -47,8 +47,6 @@ pub struct AgentInstance {
     pub persona: String,
     #[serde(default)]
     pub origin: InstanceOrigin,
-    #[serde(default)]
-    pub persistent: bool,
     /// Set when the pack that provided this agent's preset withdrew it. The agent
     /// keeps working against a frozen copy — the UI says so rather than pretending.
     #[serde(default)]
@@ -502,7 +500,7 @@ mod tests {
     #[test]
     fn instance_list_unwraps_and_keeps_the_flattened_count() {
         let json = r#"{"instances":[{"id":"i1","agent_preset":"general-agent","name":"Amy",
-            "persona":"orchestrator-agent","origin":{"kind":"workshop"},"persistent":true,
+            "persona":"orchestrator-agent","origin":{"kind":"workshop"},
             "created_at":"2026-08-01T00:00:00Z","last_active_at":"2026-08-02T00:00:00Z",
             "conversation_count":3}]}"#;
         let list: InstanceList = serde_json::from_str(json).unwrap();
@@ -927,23 +925,17 @@ pub struct FlowTemplateSummary {
 // **Automation**, because what a person arms is not a graph — it is a standing
 // instruction. See `~/ai/metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md` §2.1.
 
-/// One flow on the pod, already joined against its binding by
-/// `GET /flows` — see the agent's `FlowListItem`.
+/// One flow on the pod — the *work*, from `GET /flows` (the agent's `FlowListItem`).
 ///
-/// The join matters: *which agent runs this*, *is it armed*, and *when does it
-/// fire next* live in three different places on the pod (the flow file,
-/// `flow_bindings.json`, a cron projection), and the endpoint exists precisely so
-/// a client does not make four calls per flow to answer them.
+/// **When** it runs is not here. Since spec v3 that is a separate artifact:
+/// [`ScheduledFlow`], listed in one call by `GET /scheduled-flows` and joined
+/// against this by `flow_id`. A flow with `scheduled_count == 0` never runs on its
+/// own, which is the normal state for anything an agent pack just installed.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Flow {
     pub id: String,
     #[serde(default)]
     pub name: String,
-    /// The flow-wide master switch. **Disabled is the normal case** — agent packs
-    /// ship their flows off — so this is a state to render, not a reason to hide
-    /// the row.
-    #[serde(default)]
-    pub enabled: bool,
     #[serde(default)]
     pub node_count: usize,
     #[serde(default)]
@@ -958,49 +950,99 @@ pub struct Flow {
     /// the pod's default agent.
     #[serde(default)]
     pub preset: String,
-    /// Any schedule armed — i.e. this automation has an agent.
+    /// How many schedules point at this flow.
     #[serde(default)]
-    pub armed: bool,
+    pub scheduled_count: usize,
+    /// Of those, how many are enabled. Zero means nothing fires — including when
+    /// `scheduled_count` is not zero, which is a paused automation rather than an
+    /// unscheduled one, and should read differently in the UI.
     #[serde(default)]
-    pub schedules: Vec<FlowSchedule>,
+    pub enabled_count: usize,
 }
 
-/// One schedule of a flow: the stored spec (flattened by the pod) plus what it is
-/// armed to and when it fires next.
+impl Flow {
+    /// Whether this flow will run on its own.
+    pub fn is_armed(&self) -> bool {
+        self.enabled_count > 0
+    }
+}
+
+/// One scheduled flow: *when* a flow runs, as its own artifact on the pod
+/// (`GET /scheduled-flows`).
+///
+/// Creating one is arming — it also creates the agent the runs belong to —
+/// and deleting one is disarming, which keeps that agent and its memory.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FlowSchedule {
+pub struct ScheduledFlow {
+    /// Opaque, pod-generated (`sf_…`). Not for display: use
+    /// [`ScheduledFlow::label`].
     pub id: String,
+    /// The flow this runs.
+    #[serde(default)]
+    pub flow_id: String,
+    /// Name of that flow, absent when it no longer exists — a schedule that can
+    /// never fire, which should read as broken rather than as fine.
+    #[serde(default)]
+    pub flow_name: Option<String>,
+    /// Whether it fires. The only switch there is.
     #[serde(default)]
     pub enabled: bool,
-    /// The trigger tag: `manual` | `minutes` | `hours` | `cron`.
-    #[serde(rename = "type", default)]
-    pub kind: String,
+    /// The trigger and its overrides.
     #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub cron: Option<String>,
-    #[serde(default)]
-    pub interval: Option<u64>,
-    #[serde(default)]
-    pub timezone: Option<String>,
-    /// Persona override for runs from this schedule.
-    #[serde(default)]
-    pub persona: Option<String>,
-    /// The agent this schedule was armed with. `None` means unarmed: it will not
-    /// fire, and no agent accumulates memory from it.
+    pub schedule: ScheduleSpec,
+    /// The agent it runs as, so successive firings remember each other.
     #[serde(default)]
     pub instance_id: Option<String>,
-    /// Absent if the agent was deleted out from under the binding.
+    /// Absent if the agent was deleted out from under it.
     #[serde(default)]
     pub instance_name: Option<String>,
     /// The pod's own rendering of the trigger — `"Every 5 minute(s)"`, or
-    /// `"Invalid cron `0 8 * * *`: …"` when it cannot parse. Show it verbatim: a
+    /// ``"Invalid cron `0 8 * * *`: …"`` when it cannot parse. Show it verbatim: a
     /// schedule that will never fire should look broken rather than merely empty.
     #[serde(default)]
     pub description: String,
     /// Next projected fire, absent for a manual (or unparseable) trigger.
     #[serde(default)]
     pub next_fire_at: Option<String>,
+}
+
+impl ScheduledFlow {
+    /// What to show a person: the schedule's name, else the pod's description of
+    /// the trigger. Never the id, which is deliberately meaningless.
+    pub fn label(&self) -> &str {
+        match self.schedule.name.as_deref() {
+            Some(n) if !n.trim().is_empty() => n,
+            _ => &self.description,
+        }
+    }
+}
+
+/// A trigger plus the overrides applied to the runs it starts.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ScheduleSpec {
+    /// The trigger tag: `manual` | `minutes` | `hours` | `cron`.
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cron: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
+    /// Persona override for runs from this schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona: Option<String>,
+    /// Inputs handed to the flow when this fires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ScheduledFlowList {
+    #[serde(default)]
+    pub scheduled: Vec<ScheduledFlow>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -1124,47 +1166,66 @@ pub struct ArmConsent {
 mod automation_tests {
     use super::*;
 
-    /// The pod flattens each schedule's stored spec into the same object that
-    /// carries `instance_id` / `next_fire_at`, so the wire has one schedule shape
-    /// rather than two. Pinned here because that flattening is easy to break on
-    /// the pod side and the failure would be silent: serde would simply leave
-    /// `kind`/`cron` empty and the UI would render a schedule with no trigger.
+    /// The pod flattens each scheduled flow's stored document into the same object
+    /// that carries `instance_name` / `next_fire_at`, so the wire has one shape
+    /// rather than two. Pinned here because that flattening is easy to break on the
+    /// pod side and the failure would be silent: serde would leave `kind`/`cron`
+    /// empty and the UI would render a schedule with no trigger.
     const LISTING: &str = r#"{
       "flows": [{
-        "id": "brief", "name": "Morning brief", "enabled": true,
+        "id": "brief", "name": "Morning brief",
         "node_count": 2, "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-02T00:00:00Z", "v2": true,
-        "preset": "amy-kitchen", "armed": true,
-        "schedules": [
-          { "id": "morning", "name": "Morning brief", "type": "cron",
-            "cron": "0 0 8 * * *", "enabled": true,
-            "instance_id": "inst_abc", "instance_name": "Amy — Morning brief",
-            "description": "Cron `0 0 8 * * *` (local time)",
-            "next_fire_at": "2026-08-24T08:00:00-04:00" },
-          { "id": "adhoc", "type": "manual", "enabled": true,
-            "description": "Manual (runs only when triggered)" }
-        ]
+        "preset": "amy-kitchen", "scheduled_count": 2, "enabled_count": 1
       }]
     }"#;
 
+    const SCHEDULED: &str = r#"{
+      "scheduled": [
+        { "id": "sf_abc123", "flow_id": "brief", "flow_name": "Morning brief",
+          "enabled": true,
+          "schedule": { "type": "cron", "cron": "0 0 8 * * *", "name": "Morning brief",
+                        "timezone": "America/Detroit" },
+          "instance_id": "inst_abc", "instance_name": "Amy — Morning brief",
+          "description": "Cron `0 0 8 * * *` (America/Detroit)",
+          "next_fire_at": "2026-08-24T08:00:00-04:00" },
+        { "id": "sf_def456", "flow_id": "brief", "flow_name": "Morning brief",
+          "enabled": false,
+          "schedule": { "type": "manual" },
+          "description": "Manual (runs only when triggered)" }
+      ]
+    }"#;
+
     #[test]
-    fn a_listing_carries_the_agent_each_schedule_runs_as() {
+    fn a_flow_listing_says_how_much_is_scheduled_without_saying_when() {
         let list: FlowList = serde_json::from_str(LISTING).expect("parse listing");
         let flow = &list.flows[0];
-        assert!(flow.armed);
         assert_eq!(flow.preset, "amy-kitchen");
+        assert_eq!(flow.scheduled_count, 2);
+        assert_eq!(flow.enabled_count, 1);
+        assert!(flow.is_armed(), "one of the two fires");
+    }
 
-        let armed = &flow.schedules[0];
-        assert_eq!(armed.kind, "cron");
-        assert_eq!(armed.cron.as_deref(), Some("0 0 8 * * *"));
+    #[test]
+    fn a_schedule_carries_the_agent_it_runs_as() {
+        let list: ScheduledFlowList = serde_json::from_str(SCHEDULED).expect("parse schedules");
+        let armed = &list.scheduled[0];
+        assert_eq!(armed.flow_id, "brief");
+        assert_eq!(armed.schedule.kind, "cron");
+        assert_eq!(armed.schedule.cron.as_deref(), Some("0 0 8 * * *"));
         assert_eq!(armed.instance_id.as_deref(), Some("inst_abc"));
         assert!(armed.next_fire_at.is_some());
+        assert_eq!(armed.label(), "Morning brief");
 
-        // Unarmed: no agent, nothing accumulating, and nothing to click through to.
-        let unarmed = &flow.schedules[1];
-        assert_eq!(unarmed.kind, "manual");
-        assert!(unarmed.instance_id.is_none());
-        assert!(unarmed.next_fire_at.is_none());
+        // Paused: it exists, names no agent, and has nothing coming up. Distinct
+        // from "not scheduled at all", which is simply no row here.
+        let paused = &list.scheduled[1];
+        assert!(!paused.enabled);
+        assert_eq!(paused.schedule.kind, "manual");
+        assert!(paused.instance_id.is_none());
+        assert!(paused.next_fire_at.is_none());
+        // Unnamed: falls back to the pod's description, never the opaque id.
+        assert_eq!(paused.label(), "Manual (runs only when triggered)");
     }
 
     #[test]

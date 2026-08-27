@@ -323,11 +323,15 @@ impl PodConnection {
         self.post(&format!("/chats/{id}/compact"), &()).await
     }
 
-    /// Drop the conversation, keep the chat. Distinct from `delete_chat`, which
-    /// removes the chat itself.
+    /// Reset the agent's context, keep the conversation. Distinct from
+    /// [`Self::delete_chat`], which removes the conversation itself.
+    ///
+    /// Hits `/clear` rather than the `/reset` it is now an alias for, so a pod
+    /// older than the rename still answers.
     pub async fn clear_chat(&self, id: &str) -> anyhow::Result<ChatContext> {
         self.post(&format!("/chats/{id}/clear"), &()).await
     }
+
 
     /// Ask a running turn to stop — the stop button.
     ///
@@ -671,19 +675,52 @@ impl PodConnection {
 
     // ---- automations (the pod's flows) -----------------------------------
 
-    /// Every flow on the pod, joined against its binding.
+    /// Every flow on the pod — the *work*, without its timing.
     ///
-    /// Disabled flows come back too, deliberately — they are the majority (packs
-    /// ship them off) and the ones an arm dialog exists to act on.
+    /// Unscheduled flows come back too, deliberately: they are the majority (packs
+    /// install them scheduling nothing) and the ones an arm dialog exists to act
+    /// on. Pair with [`Self::list_scheduled_flows`] and join by `flow_id`.
     pub async fn list_flows(&self) -> anyhow::Result<Vec<Flow>> {
         let wrapped: FlowList = self.get("/flows").await?;
         Ok(wrapped.flows)
+    }
+
+    /// Everything this pod will do on its own, in one call.
+    ///
+    /// The complete answer: nothing else fires a flow on a timer, so an empty list
+    /// means the pod acts only when asked.
+    pub async fn list_scheduled_flows(&self) -> anyhow::Result<Vec<ScheduledFlow>> {
+        let wrapped: ScheduledFlowList = self.get("/scheduled-flows").await?;
+        Ok(wrapped.scheduled)
     }
 
     /// Persisted flow runs, newest first. The pod only persists a run that
     /// **paused**, so this is largely the list of things waiting on a human.
     pub async fn list_flow_runs(&self) -> anyhow::Result<Vec<FlowRun>> {
         self.get("/flow-runs").await
+    }
+
+    /// One flow, graph included.
+    ///
+    /// Raw JSON for the same reason as [`Self::put_flow`]: this client does not
+    /// own the shape, and a viewer that parsed into a narrower type would quietly
+    /// drop the vendor node data (`slack:send_message`) the spec requires be
+    /// preserved verbatim. What comes back is what goes back.
+    pub async fn get_flow(&self, flow_id: &str) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!("/flows/{flow_id}")).await
+    }
+
+    /// Check a graph without saving it.
+    ///
+    /// The editor's live feedback. `put_flow` validates too and stays the
+    /// authority; this only means someone finds out while they can still act on
+    /// it. An invalid graph answers 200 with `valid: false` — a transport error
+    /// is a different thing and must stay distinguishable from a wrong graph.
+    pub async fn validate_flow(
+        &self,
+        flow: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.post("/flows/validate", flow).await
     }
 
     /// Create or replace a flow.
@@ -738,8 +775,9 @@ impl PodConnection {
             .await
     }
 
-    /// Arm a schedule — **the act that creates the agent**. The pod mints a
-    /// persistent instance (or attaches to `instance_id` if given) and returns it.
+    /// Schedule a flow — **the act that creates the agent**. The pod mints a
+    /// persistent instance (or attaches to `instance_id` if given) and returns the
+    /// scheduled flow, agent included.
     ///
     /// Errors carry the pod's own message, which names the offending persona and
     /// the roster it is missing from when the containment rule refuses; that
@@ -747,22 +785,46 @@ impl PodConnection {
     pub async fn arm_schedule(
         &self,
         flow_id: &str,
-        schedule_id: &str,
+        schedule: &ScheduleSpec,
         instance_id: Option<&str>,
-    ) -> anyhow::Result<AgentInstance> {
-        let body = serde_json::json!({ "instance_id": instance_id });
-        self.post(
-            &format!("/flows/{flow_id}/schedules/{schedule_id}/arm"),
-            &body,
+    ) -> anyhow::Result<ScheduledFlow> {
+        let body = serde_json::json!({
+            "flow_id": flow_id,
+            "schedule": schedule,
+            "instance_id": instance_id,
+        });
+        self.post("/scheduled-flows", &body).await
+    }
+
+    /// Change a schedule: a new trigger, or pause/resume it.
+    ///
+    /// Pausing (`enabled: false`) keeps the schedule and its agent — the
+    /// difference between "not now" and "never again", which deleting would erase.
+    pub async fn update_schedule(
+        &self,
+        scheduled_id: &str,
+        schedule: Option<&ScheduleSpec>,
+        enabled: Option<bool>,
+    ) -> anyhow::Result<ScheduledFlow> {
+        let mut body = serde_json::Map::new();
+        if let Some(s) = schedule {
+            body.insert("schedule".into(), serde_json::to_value(s)?);
+        }
+        if let Some(e) = enabled {
+            body.insert("enabled".into(), serde_json::Value::Bool(e));
+        }
+        self.put(
+            &format!("/scheduled-flows/{scheduled_id}"),
+            &serde_json::Value::Object(body),
         )
         .await
     }
 
-    /// Disarm a schedule: stop running it on a timer. **The agent and everything
-    /// it remembers are kept** — disarming is not deletion, and the UI should not
-    /// imply otherwise.
-    pub async fn disarm_schedule(&self, flow_id: &str, schedule_id: &str) -> anyhow::Result<()> {
-        self.delete_path(&format!("/flows/{flow_id}/schedules/{schedule_id}/arm"))
+    /// Disarm: delete the schedule. **The agent and everything it remembers are
+    /// kept** — disarming is not deletion of the agent, and the UI should not
+    /// imply otherwise. The flow stays too, and can still be run by hand.
+    pub async fn disarm_schedule(&self, scheduled_id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/scheduled-flows/{scheduled_id}"))
             .await
     }
 

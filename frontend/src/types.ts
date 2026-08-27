@@ -115,7 +115,9 @@ export interface AgentInfo {
 export type InstanceOrigin =
   | { kind: 'workshop' }
   | { kind: 'cli' }
-  | { kind: 'gateway'; channel: string }
+  /** One person on one channel. `sender` is the normalized key; absent on agents
+   *  minted before this was per-sender, which answered for the whole channel. */
+  | { kind: 'gateway'; channel: string; sender?: string | null }
   | { kind: 'flow'; flow_id: string }
   | { kind: 'unknown' }
 
@@ -126,7 +128,6 @@ export interface AgentInstance {
   name: string
   persona: string
   origin: InstanceOrigin
-  persistent: boolean
   /** The pack that provided this preset withdrew it; the agent runs on a frozen copy. */
   orphaned_from?: string | null
   /** An update withdrew its persona and it fell back to the preset default. */
@@ -263,7 +264,14 @@ export interface ChatSummary {
   persona_slug?: string | null
   model_name?: string | null
   created_at: string
+  /** Last activity, from the chat file's mtime — the clock the pod already uses
+   *  to decide a gateway conversation has gone quiet. Absent on a pod older than
+   *  the session list, where `created_at` is the best available answer. */
   updated_at?: string | null
+  /** The opening line, trimmed — what makes a row identifiable as *this*
+   *  conversation rather than a timestamp beside an id. Absent when nothing has
+   *  been said yet, and on a pod too old to send it. */
+  preview?: string | null
   /** How many turns the conversation holds. Absent from a pod too old to report
    *  it, which is not the same as none and is not ranked as if it were. */
   turn_count?: number | null
@@ -275,6 +283,11 @@ export type ChatMessage =
   | { role: 'reasoning'; id: string; encrypted: string }
   | { role: 'tool_call'; id: string; call_id?: string | null; name: string; args: unknown }
   | { role: 'tool_result'; id: string; call_id?: string | null; name: string; result: string }
+  /** A conversation boundary: everything above it is history the agent no longer
+   *  sees. The one message with no model-side counterpart — a reset ends a
+   *  context, not a session, so the transcript keeps everything and the context
+   *  restarts here. `reason` is short free text shown on the divider. */
+  | { role: 'reset'; at: string; reason: string }
 
 export interface ChatDetail {
   id: string
@@ -333,6 +346,10 @@ export type ChatEvent =
    *  we have never heard of, and rendering its word beats dropping the frame. */
   | { kind: 'phase'; phase: string }
   | { kind: 'done'; status: 'completed' | 'interrupted' | 'failed'; reason?: string | null }
+  /** The context ended — see the `reset` message role. Arrives on its own,
+   *  outside any turn's lifecycle: a flow resets before its 3am run, and a
+   *  session open at the time has to draw the line without being told twice. */
+  | { kind: 'reset'; at: string; reason: string }
   | { kind: 'unknown' }
 
 /**
@@ -614,27 +631,102 @@ export interface GatewayRegistration {
 // so they keep the pod's word — see `metalcraft-agent/docs/FLOWS_AS_AGENTS_PLAN.md`
 // §2.1. Everything a user reads says Automation.
 
-/** One flow, already joined against its binding by `GET /flows`. */
+/** One flow from `GET /flows` — the *work*. When it runs is a `ScheduledFlow`. */
 export interface Flow {
   id: string
   name: string
-  /** The flow-wide switch. Disabled is the *normal* case — packs ship flows off. */
-  enabled: boolean
   node_count: number
   created_at: string
   updated_at: string
-  /** v2 flows run on the state-machine executor; v1 is the legacy prompt list. */
+  /** v2/v3 flows run on the state-machine executor; v1 is the legacy prompt list. */
   v2: boolean
   /** The agent preset it runs as; unbound resolves to the pod's default agent. */
   preset: string
-  /** Any schedule armed — i.e. this automation has an agent. */
-  armed: boolean
-  schedules: FlowSchedule[]
+  /** How many schedules point at this flow. Zero is the *normal* case — packs
+   *  install flows scheduling nothing. */
+  scheduled_count: number
+  /** Of those, how many fire. Zero with a non-zero `scheduled_count` is a paused
+   *  automation, which should read differently from an unscheduled one. */
+  enabled_count: number
 }
 
-export interface FlowSchedule {
+/**
+ * A vertex in a flow graph.
+ *
+ * `data` is deliberately `unknown`: its shape is defined per `node_type` by the
+ * flow spec (§5.1), and thirteen core shapes plus open-ended vendor ones do not
+ * belong in one union. Renderers narrow it per type; anything they do not
+ * understand is carried through untouched.
+ */
+export interface FlowNode {
   id: string
+  /** A core type (`entry`, `prompt`, `conditional`, `branch`, `set_variable`,
+   *  `tool`, `http`, `sub_agent`, `approval`, `wait`, `foreach`, `end`,
+   *  `branch_tool`) or a vendor type like `slack:send_message`. An **open**
+   *  string on purpose — SPEC §5.2 allows any `vendor:name`, and refusing one
+   *  would mean refusing to open a flow the pod runs happily. */
+  node_type: string
+  data: unknown
+  /** `[x, y]` for visual editors. Absent or all-zero on flows written by packs
+   *  and by the agent itself, which is the common case — see `layout()`. */
+  position?: [number, number]
+}
+
+/** A directed arc. `source_handle` names which output port it leaves from, which
+ *  is how a `conditional`/`branch` node's several outcomes are told apart. */
+export interface FlowEdge {
+  id: string
+  source: string
+  target: string
+  source_handle?: string | null
+  target_handle?: string | null
+}
+
+export interface FlowDefinition {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+/** A whole flow document — `GET /flows/{id}`. */
+export interface SavedFlow {
+  spec_version: string
+  id: string
+  name: string
+  created_at: string
+  updated_at: string
+  requires?: unknown
+  flow: FlowDefinition
+}
+
+/** `POST /flows/validate` — what is wrong with a graph, without saving it. */
+export interface FlowValidation {
+  /** Enable a save button on this rather than on an empty `errors`, so a future
+   *  non-fatal warning does not silently start blocking saves. */
+  valid: boolean
+  errors: string[]
+}
+
+/** One scheduled flow from `GET /scheduled-flows` — *when* a flow runs, and as
+ *  which agent. Creating one is arming; deleting one keeps the agent. */
+export interface ScheduledFlow {
+  /** Opaque (`sf_…`). Never shown — use `schedule.name` or `description`. */
+  id: string
+  flow_id: string
+  /** Absent when that flow is gone: a schedule that can never fire. */
+  flow_name?: string | null
   enabled: boolean
+  schedule: ScheduleSpec
+  /** The agent it runs as, so successive firings remember each other. */
+  instance_id?: string | null
+  /** Absent if the agent was deleted out from under it. */
+  instance_name?: string | null
+  /** The pod's own rendering of the trigger — including `Invalid cron …`. Show
+   *  it verbatim: a schedule that will never fire should look broken. */
+  description: string
+  next_fire_at?: string | null
+}
+
+export interface ScheduleSpec {
   /** Trigger tag: `manual` | `minutes` | `hours` | `cron`. */
   type: string
   name?: string | null
@@ -642,14 +734,7 @@ export interface FlowSchedule {
   interval?: number | null
   timezone?: string | null
   persona?: string | null
-  /** The agent this schedule was armed with; absent means it never fires. */
-  instance_id?: string | null
-  /** Absent if the agent was deleted out from under the binding. */
-  instance_name?: string | null
-  /** The pod's own rendering of the trigger — including `Invalid cron …`. Show
-   *  it verbatim: a schedule that will never fire should look broken. */
-  description: string
-  next_fire_at?: string | null
+  inputs?: Record<string, unknown> | null
 }
 
 /** A persisted flow run. The pod only persists runs that **paused**, so this is
@@ -681,7 +766,13 @@ export interface FlowBinding {
   preset: string
   bound: boolean
   personas: { slug: string; allowed: boolean }[]
-  armed: { schedule_id: string; instance_id: string; instance_name?: string | null }[]
+  armed: {
+    schedule_id: string
+    /** The schedule's label, so the dialog can name it without an opaque id. */
+    name: string
+    instance_id: string
+    instance_name?: string | null
+  }[]
   consent: ArmConsent
 }
 
