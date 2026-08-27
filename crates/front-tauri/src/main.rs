@@ -129,6 +129,7 @@ fn main() {
             rpc::gateway::gateway_connect,
             rpc::gateway::gateway_disconnect,
             rpc::gateway::gateway_unregister,
+            rpc::reset::factory_reset,
             rpc::keys::list_keys,
             rpc::keys::inference_status,
             rpc::keys::save_key,

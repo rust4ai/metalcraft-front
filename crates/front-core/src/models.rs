@@ -1220,6 +1220,65 @@ pub struct FlowRunSummary {
 // desktop asks the same endpoints the Workshop did rather than opening a second
 // account-level client of its own.
 
+// ── Factory reset ────────────────────────────────────────────────────────
+
+/// How much of a pod to erase. Mirrors the agent's `ResetScope`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetScope {
+    /// Everything, including the key store. The only scope that genuinely
+    /// replays a first run, so it is the default here as it is on the pod.
+    #[default]
+    Full,
+    /// Everything but `keys.json`, so a bound source survives.
+    KeepKeys,
+}
+
+/// Whether the pod expects to come back by itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestartExpectation {
+    Supervised,
+    /// Nothing is watching the process. It exits, and stays down until someone
+    /// starts it — the case the UI has to warn about *before* the button, not
+    /// after, because afterwards there is no pod left to be told by.
+    Manual,
+}
+
+/// One entry the wipe could not remove.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResetFailure {
+    pub name: String,
+    pub error: String,
+}
+
+/// The pod's last word before it restarts.
+///
+/// Worth carrying through to the renderer in full — this is the only evidence
+/// that will ever exist about what a reset did. The pod that answers the next
+/// request has no memory of having been asked.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResetReport {
+    #[serde(default)]
+    pub scope: ResetScope,
+    #[serde(default)]
+    pub data_dir: String,
+    #[serde(default)]
+    pub removed: Vec<String>,
+    #[serde(default)]
+    pub kept: Vec<String>,
+    /// Non-empty means the pod is *not* factory-fresh, whatever else succeeded.
+    #[serde(default)]
+    pub failed: Vec<ResetFailure>,
+    pub restart: RestartExpectation,
+}
+
+impl ResetReport {
+    pub fn is_clean(&self) -> bool {
+        self.failed.is_empty()
+    }
+}
+
 /// Registration, verification and connection, in one read.
 ///
 /// Four booleans because they are four different failures with four different

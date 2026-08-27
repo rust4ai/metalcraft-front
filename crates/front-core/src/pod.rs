@@ -569,6 +569,39 @@ impl PodConnection {
         Ok(true)
     }
 
+    /// Erase the pod and restart it as a newly-provisioned one.
+    ///
+    /// The confirmation phrase is supplied here rather than taken as an
+    /// argument: it is the pod's guard against an *accidental* call, and a
+    /// deliberate call that has come this far has already passed the UI's
+    /// type-it-out gate. Threading it through the RPC boundary would only give
+    /// the renderer a way to get it wrong.
+    ///
+    /// `Ok(None)` when the pod predates the endpoint (agent < 0.35.0). Same
+    /// reasoning as [`Self::inference_status`]: "this pod cannot do that" and
+    /// "the call failed" want different words, and only one of them should
+    /// suggest trying again.
+    ///
+    /// Expect the connection to die shortly after this returns — that is the
+    /// pod restarting, and it is success, not an error to surface.
+    pub async fn factory_reset(&self, scope: ResetScope) -> anyhow::Result<Option<ResetReport>> {
+        let resp = self
+            .client
+            .post(self.url("/factory-reset"))
+            .bearer_auth(self.bearer())
+            .json(&serde_json::json!({
+                "confirm": "FACTORY RESET",
+                "scope": scope,
+            }))
+            .timeout(CRUD_TIMEOUT)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(Self::decode(resp, "/factory-reset").await?))
+    }
+
     pub async fn list_keys(&self) -> anyhow::Result<Vec<KeyEntry>> {
         self.get("/keys").await
     }

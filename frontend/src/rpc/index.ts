@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowBinding, FlowRunSummary, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -183,6 +183,19 @@ export const gateway = {
   /** Give the number back: unregister at the gateway *and* disconnect here.
    *  `false` = the pod is too old to have the endpoint. */
   unregister: () => call<boolean>('gateway_unregister'),
+}
+
+/**
+ * The destructive one, kept apart from everything else so it is never an
+ * autocomplete away from a call someone meant to make.
+ */
+export const danger = {
+  /** Erase the pod and restart it as a newly-provisioned one. `null` = the pod
+   *  predates the endpoint (agent < 0.35.0); there is no client-side fallback.
+   *
+   *  Expect the pod to stop answering a beat after this resolves. That is the
+   *  restart, and it is success. */
+  factoryReset: (scope: ResetScope) => call<ResetReport | null>('factory_reset', { scope }),
 }
 
 export const keys = {

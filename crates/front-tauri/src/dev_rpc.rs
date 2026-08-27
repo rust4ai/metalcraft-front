@@ -214,6 +214,17 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .map(|_| json!(null))),
         "gateway_unregister" => j(app.conn(None)?.gateway_unregister().await),
 
+        // Factory reset. Scope is optional here so a bare `curl -d '{}'` gets
+        // the same default the pod uses — the full wipe.
+        "factory_reset" => {
+            let scope = match arg(args, "scope") {
+                Some("keep_keys") => front_core::ResetScope::KeepKeys,
+                Some("full") | None => front_core::ResetScope::Full,
+                Some(other) => return Err(format!("unknown reset scope '{other}'")),
+            };
+            j(app.conn(None)?.factory_reset(scope).await)
+        }
+
         // Keys.
         "list_keys" => j(app.conn(None)?.list_keys().await),
         "save_key" => j(app

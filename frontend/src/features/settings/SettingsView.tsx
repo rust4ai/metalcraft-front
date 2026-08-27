@@ -3,6 +3,7 @@ import { useConnection } from '@/stores/connection'
 import { canThink, useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
 import { ConnectionCard } from './ConnectionCard'
+import { DangerZoneCard } from './DangerZoneCard'
 import { GatewayCard } from './GatewayCard'
 import { KeysCard } from './KeysCard'
 
@@ -18,6 +19,10 @@ import { KeysCard } from './KeysCard'
  *
  * The two connection cards are one component twice, in a fixed order — a card
  * that moved when you connected it would be a card you had to re-find.
+ *
+ * Factory reset sits at the bottom, alone. It is the only thing on this surface
+ * that takes something away permanently, and grouping it with the cards that
+ * merely configure things is how it gets pressed by someone aiming at one.
  */
 export function SettingsView() {
   const go = useUi((s) => s.go)
@@ -74,6 +79,13 @@ export function SettingsView() {
         <ConnectionCard service="buildr" />
         <GatewayCard />
         <KeysCard />
+
+        {/* Last, and after a gap: the one control here that destroys something.
+            It is in settings because that is where someone looks for it, and at
+            the bottom because nothing should be reachable by overshooting it. */}
+        <div className="mt-4">
+          <DangerZoneCard />
+        </div>
       </div>
     </div>
   )

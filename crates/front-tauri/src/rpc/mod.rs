@@ -20,3 +20,4 @@ pub mod library;
 pub mod octaweave;
 pub mod packs;
 pub mod pods;
+pub mod reset;

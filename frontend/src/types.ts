@@ -868,3 +868,30 @@ export interface FlowTemplateSummary {
   name: string
   pack_id?: string | null
 }
+
+// ── Factory reset ────────────────────────────────────────────────────────
+
+/** How much of a pod to erase. */
+export type ResetScope = 'full' | 'keep_keys'
+
+/** Whether the pod expects to come back on its own after it exits. `manual`
+ *  means nothing is watching the process — the pod stays down until someone
+ *  starts it, which is a thing to say *before* the button, not after. */
+export type RestartExpectation = 'supervised' | 'manual'
+
+export interface ResetFailure {
+  name: string
+  error: string
+}
+
+/** The pod's last word before it restarts. There is no confirming read to
+ *  follow it with: the pod that answers next has no memory of the request. */
+export interface ResetReport {
+  scope: ResetScope
+  data_dir: string
+  removed: string[]
+  kept: string[]
+  /** Non-empty means the pod is *not* factory-fresh, whatever else succeeded. */
+  failed: ResetFailure[]
+  restart: RestartExpectation
+}
