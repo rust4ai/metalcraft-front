@@ -23,7 +23,10 @@ interface FleetState {
 
   load: () => Promise<void>
   spawn: (preset: string, name?: string) => Promise<AgentInstance | null>
-  remove: (id: string) => Promise<void>
+  /** Delete an agent. Returns the pod's message on refusal, `null` on success —
+   *  the same shape as `rename`, because the surface that asks first has to be
+   *  able to tell "gone" from "the pod said no". */
+  remove: (id: string) => Promise<string | null>
   /** Rename an agent. Returns the pod's message on refusal, `null` on success —
    *  the same shape as `setPersona`, so the surfaces share one error path. */
   rename: (id: string, name: string) => Promise<string | null>
@@ -68,8 +71,18 @@ export const useFleet = create<FleetState>((set, get) => ({
   },
 
   remove: async (id) => {
-    await fleet.remove(id)
-    set({ instances: get().instances.filter((i) => i.id !== id) })
+    try {
+      await fleet.remove(id)
+      // Spliced out rather than reloaded: the list is the only thing that
+      // changed, and a refetch here would blank the fleet for a frame on a pod
+      // that answers slowly.
+      set({ instances: get().instances.filter((i) => i.id !== id) })
+      return null
+    } catch (e) {
+      // Not put in `error`, which the fleet header renders: this one belongs
+      // beside the button that asked, next to the agent that is still there.
+      return String(e)
+    }
   },
 
   rename: async (id, name) => {
@@ -108,3 +121,20 @@ export const useFleet = create<FleetState>((set, get) => ({
     }
   },
 }))
+
+/**
+ * The presets an agent can actually be started as.
+ *
+ * Some presets are libraries: a pack ships one to carry its personas and skills
+ * onto the pod, and the pod refuses to mint an instance from it. Offering one in
+ * a picker is offering a button that returns 400, so every surface that spawns
+ * reads the fleet through here rather than through `presets` — which stays the
+ * full list, because the library view is a browser and a library preset is a
+ * real thing to browse.
+ *
+ * A pod older than the flag omits it, and an absent flag is `false`: everything
+ * stays startable, exactly as before.
+ */
+export function startablePresets(presets: AgentPreset[]): AgentPreset[] {
+  return presets.filter((p) => !p.library)
+}

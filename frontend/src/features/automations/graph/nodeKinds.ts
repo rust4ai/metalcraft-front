@@ -189,6 +189,45 @@ export function look(nodeType: string): NodeLook {
   return { label: nodeType, icon: HelpCircle, kind: 'unknown' }
 }
 
+/**
+ * The output handles a node can actually take, given its `data`.
+ *
+ * `look().handles` is the *fixed* vocabulary of a type (`ok`/`error`); a routing
+ * node's handles are whatever its payload declares, which is why this reads the
+ * data rather than a table. Used to offer an edge the handles its source can
+ * emit — a `branch` whose outputs are declared but whose edges are unlabeled is
+ * a flow the pod refuses, and the names are not guessable from the canvas.
+ *
+ * Advisory, never restrictive: an edge may carry a handle this build cannot
+ * derive (a vendor node's, or one from a newer spec), and that handle is kept.
+ */
+const rows = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : [])
+    .map((r) => (r as Record<string, unknown> | null)?.handle)
+    .filter((h): h is string => typeof h === 'string' && h.length > 0)
+
+export function handlesOf(nodeType: string, data: Record<string, unknown>): string[] {
+  const declared = ((): string[] => {
+    switch (nodeType) {
+      case 'branch':
+        // `error` is reserved and always available, whether or not it is declared
+        // (SPEC §5.4) — an unwired one fails the whole run, so it must be offerable.
+        return [...rows(data.outputs), 'error']
+      case 'conditional':
+        return rows(data.conditions)
+      case 'approval':
+        return Array.isArray(data.choices)
+          ? data.choices.filter((c): c is string => typeof c === 'string')
+          : ['approve', 'reject']
+      default:
+        return look(nodeType).handles ?? []
+    }
+  })()
+
+  const fallback = str(data.default_handle)
+  return [...new Set([...declared, ...(fallback ? [fallback] : [])])]
+}
+
 /** The vendor prefix of a custom type, for the badge on its card. */
 export function vendorOf(nodeType: string): string | undefined {
   const colon = nodeType.indexOf(':')

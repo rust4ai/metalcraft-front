@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Loader2, Plus, Redo2, Save, Undo2 } from 'lucide-react'
 import { automations } from '@/rpc'
 import { FlowGraph } from './FlowGraph'
-import { Inspector } from './Inspector'
+import { EdgeInspector, Inspector } from './Inspector'
 import { CORE_NODES, look } from './nodeKinds'
 import {
   addNode,
@@ -16,6 +16,7 @@ import {
   moveNode,
   redo,
   renameNode,
+  setEdgeHandle,
   undo,
   type History,
 } from './edit'
@@ -44,6 +45,9 @@ export function FlowEditor({
 }) {
   const [history, setHistory] = useState<History>(() => historyOf(initial))
   const [selectedId, setSelectedId] = useState<string>()
+  // A node and an edge are one selection between them — the right pane shows
+  // whichever was clicked last, so picking one clears the other.
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string>()
   const [adding, setAdding] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string>()
@@ -52,6 +56,7 @@ export function FlowEditor({
   const flow = history.present
   const dirty = flow !== initial
   const selected = flow.flow.nodes.find((n) => n.id === selectedId)
+  const selectedEdge = flow.flow.edges.find((e) => e.id === selectedEdgeId)
 
   const edit = useCallback((next: SavedFlow) => setHistory((h) => apply(h, next)), [])
 
@@ -133,6 +138,7 @@ export function FlowEditor({
                 const next = addNode(flow, type, [x, 0])
                 edit(next)
                 setSelectedId(next.flow.nodes.at(-1)?.id)
+                setSelectedEdgeId(undefined)
                 setAdding(false)
               }}
               onClose={() => setAdding(false)}
@@ -180,14 +186,25 @@ export function FlowEditor({
             definition={flow.flow}
             edit={{
               selectedId,
-              onSelect: setSelectedId,
+              selectedEdgeId,
+              onSelect: (id) => {
+                setSelectedId(id)
+                if (id) setSelectedEdgeId(undefined)
+              },
+              onSelectEdge: (id) => {
+                setSelectedEdgeId(id)
+                if (id) setSelectedId(undefined)
+              },
               onMove: (id, to) => edit(moveNode(flow, id, to)),
               onConnect: (source, target) => edit(connect(flow, source, target)),
               onDeleteNode: (id) => {
                 edit(deleteNode(flow, id))
                 setSelectedId((s) => (s === id ? undefined : s))
               },
-              onDeleteEdge: (id) => edit(deleteEdge(flow, id)),
+              onDeleteEdge: (id) => {
+                edit(deleteEdge(flow, id))
+                setSelectedEdgeId((s) => (s === id ? undefined : s))
+              },
             }}
           />
         </div>
@@ -204,6 +221,19 @@ export function FlowEditor({
               onDelete={() => {
                 edit(deleteNode(flow, selected.id))
                 setSelectedId(undefined)
+              }}
+            />
+          </div>
+        )}
+        {!selected && selectedEdge && (
+          <div className="w-80 shrink-0">
+            <EdgeInspector
+              flow={flow}
+              edge={selectedEdge}
+              onHandle={(handle) => edit(setEdgeHandle(flow, selectedEdge.id, handle))}
+              onDelete={() => {
+                edit(deleteEdge(flow, selectedEdge.id))
+                setSelectedEdgeId(undefined)
               }}
             />
           </div>

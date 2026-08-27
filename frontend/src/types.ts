@@ -149,6 +149,12 @@ export interface AgentPreset {
   persona_count?: number
   /** Pack-provided presets cannot be edited on the pod. */
   read_only?: boolean
+  /** **A library, not an agent.** The preset carries a pack's personas and skills
+   *  onto the pod and nothing more — the pod refuses to mint an instance from it.
+   *  Still listed, because it is a real artifact and the library is a browser;
+   *  never offered by anything that starts an agent. Absent on an older pod,
+   *  which reads as `false`. */
+  library?: boolean
 }
 
 export interface KeyEntry {
@@ -940,6 +946,8 @@ export interface AgentPresetDetail {
   requires_env: string[]
   model?: ModelFloor | null
   memories?: MemoriesRef | null
+  /** See {@link AgentPreset.library}. */
+  library?: boolean
   manifest_version: number
 }
 

@@ -42,7 +42,10 @@ export interface FlowGraphProps {
    *  interaction that would imply otherwise. */
   edit?: {
     selectedId?: string
+    /** The edge being edited, if the selection is an edge rather than a node. */
+    selectedEdgeId?: string
     onSelect: (id: string | undefined) => void
+    onSelectEdge: (id: string | undefined) => void
     onMove: (id: string, to: [number, number]) => void
     onConnect: (source: string, target: string) => void
     onDeleteNode: (id: string) => void
@@ -162,6 +165,7 @@ export function FlowGraph({
     const arcs: Edge[] = (definition.edges ?? []).map((e) => {
       const onPath = wasVisited.has(e.source) && wasVisited.has(e.target)
       const isError = e.source_handle === 'error'
+      const selected = e.id === edit?.selectedEdgeId
       return {
         id: e.id,
         source: e.source,
@@ -174,9 +178,14 @@ export function FlowGraph({
         labelStyle: { fontSize: 10, fill: 'var(--color-ink-3)' },
         labelBgStyle: { fill: 'var(--color-surface)' },
         animated: onPath,
+        selected: e.id === edit?.selectedEdgeId,
         style: {
-          stroke: onPath ? 'var(--color-green)' : 'var(--color-line-strong)',
-          strokeWidth: onPath ? 1.5 : 1,
+          stroke: selected
+            ? 'var(--color-accent)'
+            : onPath
+              ? 'var(--color-green)'
+              : 'var(--color-line-strong)',
+          strokeWidth: selected || onPath ? 1.5 : 1,
           // An error rail is a real edge but not the intended path; drawing it
           // like one makes every graph look like it forks constantly.
           strokeDasharray: isError ? '4 3' : undefined,
@@ -185,7 +194,7 @@ export function FlowGraph({
     })
 
     return { nodes: cards, edges: arcs }
-  }, [definition, visited, failedAt, waitingAt, edit?.selectedId])
+  }, [definition, visited, failedAt, waitingAt, edit?.selectedId, edit?.selectedEdgeId])
 
   if (nodes.length === 0) {
     return (
@@ -208,7 +217,17 @@ export function FlowGraph({
       edgesFocusable={Boolean(edit)}
       elementsSelectable={Boolean(edit)}
       onNodeClick={edit ? (_, n) => edit.onSelect(n.id) : undefined}
-      onPaneClick={edit ? () => edit.onSelect(undefined) : undefined}
+      // An edge is selectable in its own right: its handle is the only place a
+      // forking node says which output goes where.
+      onEdgeClick={edit ? (_, e) => edit.onSelectEdge(e.id) : undefined}
+      onPaneClick={
+        edit
+          ? () => {
+              edit.onSelect(undefined)
+              edit.onSelectEdge(undefined)
+            }
+          : undefined
+      }
       // Position is committed once, on drop. Committing per frame would make a
       // single drag a hundred undo steps and a hundred validation round trips.
       onNodeDragStop={

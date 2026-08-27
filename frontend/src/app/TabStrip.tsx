@@ -12,7 +12,7 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
     case 'fleet':
       return 'Fleet'
     case 'packs':
-      return 'Agent presets'
+      return 'Extensions'
     // Not "Artifacts": the word for what is on the pod has to be the word
     // someone would reach for, and nobody goes looking for their artifacts.
     case 'library':

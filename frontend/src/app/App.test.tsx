@@ -286,9 +286,9 @@ describe('App', () => {
   })
 
   it('counts pack updates in the sidebar without anyone opening the shop', async () => {
-    // The tab is called "Browse agent presets", and before this the only way to
-    // learn that a pack you run had a new version was to go browsing. A pod's
-    // packs are checked once it is connected, and the count sits on the row.
+    // The tab is called "Extensions", and before this the only way to learn that
+    // a pack you run had a new version was to go browsing. A pod's packs are
+    // checked once it is connected, and the count sits on the row.
     await mount({
       session: { email: 'a@b.com', premium: true },
       list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
@@ -318,7 +318,7 @@ describe('App', () => {
     // Scoped to the sidebar's nav: the command palette lists the same
     // destination, and only the nav row carries the count.
     const nav = await screen.findByRole('navigation')
-    const row = within(nav).getByRole('button', { name: /Browse agent presets/ })
+    const row = within(nav).getByRole('button', { name: /Extensions/ })
     await waitFor(() => expect(row.textContent).toMatch(/1$/))
   })
 

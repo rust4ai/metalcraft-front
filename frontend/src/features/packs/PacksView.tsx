@@ -54,7 +54,10 @@ export function PacksView() {
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium">Agents</div>
+          {/* The same word the tab and the sidebar row use. A pane that renames
+              the place you just clicked into reads as having navigated
+              somewhere else. */}
+          <div className="text-sm font-medium">Extensions</div>
           <div className="text-[11.5px] text-ink-2">Install an agent from a registry</div>
         </div>
 

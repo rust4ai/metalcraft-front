@@ -121,7 +121,7 @@ export function ConversationPicker({ instanceId }: { instanceId: string }) {
                   type="button"
                   onClick={() => void deleteConversation(instanceId, c.id)}
                   title="Delete this conversation"
-                  className="mt-0.5 shrink-0 text-ink-3 opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                  className="mt-0.5 shrink-0 text-ink-3 opacity-0 transition-opacity hover:text-red group-hover:opacity-100"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

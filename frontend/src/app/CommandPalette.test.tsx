@@ -60,7 +60,7 @@ describe('CommandPalette', () => {
 
   it('navigates to the registry', async () => {
     const { useUi } = await mount()
-    await userEvent.click(screen.getByText('Browse agent presets'))
+    await userEvent.click(screen.getByText('Extensions'))
     expect(useUi.getState().activeKey).toBe('packs')
   })
 

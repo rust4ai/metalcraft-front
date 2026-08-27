@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useFleet } from '@/stores/fleet'
+import { useFleet, startablePresets } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -19,7 +19,11 @@ export function NewAgentDialog() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const chosen = preset ?? presets[0]?.slug ?? null
+  // Library presets are not agents — a pack ships one to bring its personas and
+  // skills onto the pod, and the pod refuses to mint an instance from it. They
+  // belong in the library, not in the list of things to be.
+  const options = startablePresets(presets)
+  const chosen = preset ?? options[0]?.slug ?? null
 
   async function create() {
     if (!chosen) return
@@ -41,7 +45,7 @@ export function NewAgentDialog() {
       description="Pick what it is. The preset is fixed for the agent's life — its memory is seeded from it."
     >
       <div className="max-h-72 space-y-1.5 overflow-y-auto">
-        {presets.map((p) => (
+        {options.map((p) => (
           <button
             key={p.slug}
             type="button"

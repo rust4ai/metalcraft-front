@@ -110,7 +110,7 @@ export function Sidebar() {
         <div className="my-1.5 h-px bg-line" />
         <NavRow
           icon={<Store className="h-4 w-4" />}
-          label="Browse agent presets"
+          label="Extensions"
           selected={activeKey === 'packs'}
           onClick={() => go({ kind: 'packs' })}
           count={usePackUpdateCount()}

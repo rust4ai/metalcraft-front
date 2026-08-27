@@ -12,6 +12,7 @@ import { describeTool, truncateTarget } from '@/features/session/describeTool'
 import type { ToolCard } from '@/features/session/transcript'
 import { Resizer } from './Resizer'
 import { PersonaSwitcher } from '@/features/session/PersonaSwitcher'
+import { DeleteAgent } from '@/features/fleet/DeleteAgent'
 import { EditableName } from '@/features/fleet/EditableName'
 import { cn } from '@/lib/cn'
 
@@ -142,6 +143,12 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
           }
         />
       </Section>
+
+      {/* Last, and after a rule. The rail is read top-down for facts about the
+          agent; the one control that ends it does not belong among them. */}
+      <div className="mt-4 border-t border-line pt-3">
+        <DeleteAgent instance={instance} />
+      </div>
     </>
   )
 }

@@ -109,7 +109,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
         <Group heading="Go">
           <Item value="go fleet" onSelect={() => run(() => go({ kind: 'fleet' }))} icon={<Bot className="h-3.5 w-3.5" />} label="Fleet" />
-          <Item value="go packs browse agent presets registry axoniac" onSelect={() => run(() => go({ kind: 'packs' }))} icon={<Store className="h-3.5 w-3.5" />} label="Browse agent presets" />
+          {/* The old words stay in `value`, which is only ever matched against:
+              somebody who learned this as "browse agent presets" must still find
+              it by typing that. */}
+          <Item value="go packs extensions browse agent presets registry axoniac" onSelect={() => run(() => go({ kind: 'packs' }))} icon={<Store className="h-3.5 w-3.5" />} label="Extensions" />
           <Item value="go library artifacts presets personas skills integrations tools installed" onSelect={() => run(() => go({ kind: 'library' }))} icon={<BookOpen className="h-3.5 w-3.5" />} label="Library" hint="what is on this pod" />
           <Item value="go automations flows schedules cron runs" onSelect={() => run(() => go({ kind: 'automations' }))} icon={<Clock className="h-3.5 w-3.5" />} label="Automations" />
           <Item value="go interface source key provider" onSelect={() => run(() => go({ kind: 'source' }))} icon={<KeyRound className="h-3.5 w-3.5" />} label="Interface source" />

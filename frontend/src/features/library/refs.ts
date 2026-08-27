@@ -42,9 +42,9 @@ export function sameRef(a: Ref, b: Ref): boolean {
  * What a kind is called in the singular, and in a heading.
  *
  * "Agent" rather than "Preset" for the thing the pod calls `agent_preset`: the
- * rest of this app already made that choice (the packs tab is "Browse agent
- * presets" and its cards say Agents), and a library that renamed it would be
- * the only screen using the pod's word.
+ * rest of this app already made that choice (the packs tab is "Extensions" and
+ * its cards say Agents), and a library that renamed it would be the only screen
+ * using the pod's word.
  */
 export const KIND_LABEL: Record<ArtifactKind, { one: string; many: string }> = {
   preset: { one: 'Agent', many: 'Agents' },

@@ -85,6 +85,15 @@ pub struct AgentPresetSummary {
     /// Pack-provided presets cannot be edited on the pod.
     #[serde(default)]
     pub read_only: bool,
+    /// **A library, not an agent.** The preset exists to carry a pack's personas
+    /// and skills onto the pod; the pod refuses to mint an instance from it. It is
+    /// still listed — the library is a browser and this is a real artifact — but
+    /// nothing that starts an agent may offer it.
+    ///
+    /// Absent on a pod older than the flag, which reads as `false`: the previous
+    /// behaviour, where every preset was startable.
+    #[serde(default)]
+    pub library: bool,
 }
 
 /// `GET /agents/instances` — the instance plus what the pod counts alongside it.
@@ -830,6 +839,10 @@ pub struct AgentPresetDetail {
     pub model: Option<ModelFloor>,
     #[serde(default)]
     pub memories: Option<MemoriesRef>,
+    /// See [`AgentPresetSummary::library`] — the show page reads it from here so
+    /// it does not have to find the preset in the snapshot to know.
+    #[serde(default)]
+    pub library: bool,
     #[serde(default)]
     pub manifest_version: u32,
 }

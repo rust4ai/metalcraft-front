@@ -100,6 +100,28 @@ describe('nodes', () => {
     expect(node(added, 'open_pr')).toBeTruthy()
   })
 
+  // A branch added with an empty payload is refused by the pod on sight
+  // ("expected branch data: missing field `query`"), and its outputs list —
+  // edited as JSON — could not even be typed, because the JSON editor only
+  // shows keys that already exist.
+  it('a new branch starts with the payload the pod requires', () => {
+    const added = addNode(flow(), 'branch', [0, 0])
+    const data = node(added, 'branch')?.data as Record<string, unknown>
+    expect(data).toHaveProperty('query')
+    expect(Array.isArray(data.outputs)).toBe(true)
+    expect((data.outputs as Array<{ handle: string }>).length).toBeGreaterThan(0)
+  })
+
+  it('a new conditional starts with a conditions list', () => {
+    const added = addNode(flow(), 'conditional', [0, 0])
+    const data = node(added, 'conditional')?.data as Record<string, unknown>
+    expect(data.conditions).toEqual([])
+  })
+
+  it('a type with no required payload still starts empty', () => {
+    expect(node(addNode(flow(), 'wait', [0, 0]), 'wait')?.data).toEqual({})
+  })
+
   it('deleting a node takes its edges with it', () => {
     const gone = deleteNode(flow(), 'post')
     expect(gone.flow.nodes.map((n) => n.id)).toEqual(['entry'])

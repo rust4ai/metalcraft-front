@@ -1,3 +1,4 @@
+import { newNodeData } from './nodeFields'
 import type { FlowEdge, FlowNode, SavedFlow } from '@/types'
 
 /**
@@ -44,11 +45,18 @@ function withGraph(flow: SavedFlow, nodes: FlowNode[], edges: FlowEdge[]): Saved
   return { ...flow, flow: { ...flow.flow, nodes, edges } }
 }
 
+/**
+ * Add a step.
+ *
+ * The `data` is seeded rather than empty (see `newNodeData`): the pod validates
+ * `branch` and `conditional` payloads structurally, so a node added with `{}`
+ * is refused on arrival for a field nobody has been offered yet.
+ */
 export function addNode(flow: SavedFlow, nodeType: string, at: [number, number]): SavedFlow {
   const node: FlowNode = {
     id: freshNodeId(flow, nodeType),
     node_type: nodeType,
-    data: {},
+    data: newNodeData(nodeType),
     position: at,
   }
   return withGraph(flow, [...flow.flow.nodes, node], flow.flow.edges)

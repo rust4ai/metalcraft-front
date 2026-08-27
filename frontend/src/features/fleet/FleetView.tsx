@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { partitionByActivity } from './activity'
+import { DeleteAgent } from './DeleteAgent'
 import { EditableName } from './EditableName'
 import { cn } from '@/lib/cn'
 import type { AgentInstance, InstanceOrigin } from '@/types'
@@ -154,7 +155,7 @@ function InstanceCard({
     // 600ms entrance, 60ms apart — the stagger is what makes a grid land rather
     // than blink into place.
     <Card
-      className="animate-fade-up cursor-pointer"
+      className="group animate-fade-up cursor-pointer"
       style={{ animationDelay: `${Math.min(index, 12) * 60}ms` }}
       onClick={onOpen}
     >
@@ -170,7 +171,10 @@ function InstanceCard({
             {instance.agent_preset} · {instance.persona}
           </p>
         </div>
-        <OriginBadge origin={instance.origin} />
+        <div className="flex shrink-0 items-center gap-1">
+          <OriginBadge origin={instance.origin} />
+          <DeleteAgent instance={instance} compact />
+        </div>
       </div>
 
       {/* Reported, not hidden: the pack that provided this agent withdrew its

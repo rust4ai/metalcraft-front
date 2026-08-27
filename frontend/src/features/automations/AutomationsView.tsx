@@ -433,7 +433,7 @@ function Empty() {
         </p>
       </div>
       <Button size="sm" onClick={() => go({ kind: 'packs' })}>
-        Browse agent presets
+        Browse extensions
       </Button>
     </Card>
   )
