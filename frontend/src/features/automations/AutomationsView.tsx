@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { relative } from '@/features/fleet/FleetView'
 import { cn } from '@/lib/cn'
-import type { Flow, FlowRun, ScheduledFlow } from '@/types'
+import type { Flow, FlowRun, SavedFlow, ScheduledFlow } from '@/types'
 
 /**
  * PLAN §10.7 — what this pod is set up to do on its own.
@@ -44,6 +44,21 @@ import type { Flow, FlowRun, ScheduledFlow } from '@/types'
 const FlowGraphPanel = lazy(() =>
   import('./graph/FlowGraphPanel').then((m) => ({ default: m.FlowGraphPanel })),
 )
+const FlowEditor = lazy(() =>
+  import('./graph/FlowEditor').then((m) => ({ default: m.FlowEditor })),
+)
+const NewFlowDialog = lazy(() =>
+  import('./graph/NewFlowDialog').then((m) => ({ default: m.NewFlowDialog })),
+)
+
+/** The one wait shared by every lazily-loaded graph surface. */
+function Opening() {
+  return (
+    <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-2">
+      <Loader2 className="h-4 w-4 animate-spin" /> Loading the graph…
+    </div>
+  )
+}
 
 export function AutomationsView() {
   const { flows, runs, loading, error, load } = useAutomations()
@@ -54,6 +69,10 @@ export function AutomationsView() {
   // Same reasoning as `arming`: held above the list so reloading the flows
   // underneath it cannot close the graph someone is reading.
   const [viewing, setViewing] = useState<Flow | null>(null)
+  const [creating, setCreating] = useState(false)
+  /** A flow that exists only on screen until the editor saves it. Abandoning one
+   *  leaves nothing behind, which creating it up front would not. */
+  const [drafting, setDrafting] = useState<SavedFlow | null>(null)
 
   useEffect(() => {
     void load()
@@ -61,15 +80,36 @@ export function AutomationsView() {
 
   const waiting = runs.filter((r) => r.status === 'paused')
 
+  if (drafting) {
+    return (
+      <Suspense fallback={<Opening />}>
+        <FlowEditor
+          flow={drafting}
+          onSaved={(saved) => {
+            setDrafting(null)
+            // The list has a flow it has never heard of until this lands.
+            void load()
+            setViewing({
+              id: saved.id,
+              name: saved.name,
+              node_count: saved.flow.nodes.length,
+              created_at: saved.created_at,
+              updated_at: saved.updated_at,
+              v2: true,
+              preset: '',
+              scheduled_count: 0,
+              enabled_count: 0,
+            })
+          }}
+          onClose={() => setDrafting(null)}
+        />
+      </Suspense>
+    )
+  }
+
   if (viewing) {
     return (
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading the graph…
-          </div>
-        }
-      >
+      <Suspense fallback={<Opening />}>
         <FlowGraphPanel
           flow={viewing}
           runs={runs.filter((r) => r.flow_id === viewing.id)}
@@ -92,6 +132,10 @@ export function AutomationsView() {
                 } running on a timer`}
           </p>
         </div>
+        <Button variant="ghost" size="sm" onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" />
+          New
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
           Refresh
@@ -124,6 +168,19 @@ export function AutomationsView() {
       )}
 
       <ArmDialog flow={arming} onClose={() => setArming(null)} />
+
+      {creating && (
+        <Suspense fallback={null}>
+          <NewFlowDialog
+            takenIds={flows.map((f) => f.id)}
+            onStart={(draft) => {
+              setCreating(false)
+              setDrafting(draft)
+            }}
+            onClose={() => setCreating(false)}
+          />
+        </Suspense>
+      )}
 
       {runs.length > waiting.length && (
         <section className="mt-8">
