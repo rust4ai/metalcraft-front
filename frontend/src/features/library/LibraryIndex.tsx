@@ -233,8 +233,14 @@ function collect({
       packId: p.pack_id,
       // The pod's default agent is worth marking here and nowhere else: it is
       // the one preset whose identity is a fact about the pod rather than about
-      // itself.
-      badge: p.slug === snapshot?.default_agent_preset ? 'pod default' : null,
+      // itself. A library is the other thing worth saying up front — the row
+      // looks exactly like an agent otherwise, and it is not one.
+      badge:
+        p.slug === snapshot?.default_agent_preset
+          ? 'pod default'
+          : p.library
+            ? 'library'
+            : null,
     })
   }
   for (const p of snapshot?.personas ?? []) {

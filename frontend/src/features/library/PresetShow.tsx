@@ -61,6 +61,10 @@ function Body({ slug, detail }: { slug: string; detail: PresetDetail }) {
   const roster = detail.personas
   const live = instances.filter((i) => i.agent_preset === slug)
   const isDefault = snapshot?.default_agent_preset === slug
+  // A library preset is a real artifact and belongs on this page — it is what
+  // brought a pack's personas and skills onto the pod. It is simply not
+  // something to be, so the page reads it and the one action goes away.
+  const isLibrary = preset?.library ?? summary?.library ?? false
 
   return (
     <div className="h-full overflow-y-auto px-8 pb-12 pt-6">
@@ -74,6 +78,7 @@ function Body({ slug, detail }: { slug: string; detail: PresetDetail }) {
               <span className="font-mono text-[11px] text-ink-3">{slug}</span>
               {preset?.version && <Badge>v{preset.version}</Badge>}
               {isDefault && <Badge tone="accent">this pod&rsquo;s default agent</Badge>}
+              {isLibrary && <Badge>library</Badge>}
               {(summary?.read_only ?? false) && <Badge>read-only</Badge>}
             </>
           }
@@ -81,11 +86,22 @@ function Body({ slug, detail }: { slug: string; detail: PresetDetail }) {
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Provenance packId={summary?.pack_id} readOnly={summary?.read_only} />
             {/* The one action on this page, and it belongs here: reading what an
-                agent is made of is exactly when someone decides to have one. */}
-            <Button size="sm" className="ml-auto" onClick={() => void spawn(slug)}>
-              <Sparkles className="h-3.5 w-3.5" />
-              Spawn an agent
-            </Button>
+                agent is made of is exactly when someone decides to have one.
+                Unless there is nothing to have — a library preset carries the
+                personas and skills below onto the pod and stops there, and the
+                pod refuses to mint an instance from it. A disabled button would
+                only pose the question again, so the sentence takes its place. */}
+            {isLibrary ? (
+              <span className="ml-auto text-xs text-ink-3">
+                A library — it brings the personas and skills below onto this pod. No agent is
+                started as it; the default agent can call them.
+              </span>
+            ) : (
+              <Button size="sm" className="ml-auto" onClick={() => void spawn(slug)}>
+                <Sparkles className="h-3.5 w-3.5" />
+                Spawn an agent
+              </Button>
+            )}
           </div>
         </ShowHeader>
 
