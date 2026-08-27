@@ -31,10 +31,14 @@ export function FleetView() {
     <div className="h-full overflow-y-auto px-8 py-6">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold">Fleet</h1>
-          {/* A count of a list nobody has read is not zero — it is nothing to
-              say yet, and saying "0 agents on this pod" to somebody with twelve
-              of them is the first thing they see after connecting. */}
+          {/* No title. The sidebar row and the tab both name this place, and a
+              third "Fleet" over the grid was labelling the home screen for
+              somebody who just pressed Home to get here.
+
+              The count stays and now leads: a count of a list nobody has read is
+              not zero — it is nothing to say yet, and saying "0 agents on this
+              pod" to somebody with twelve of them is the first thing they see
+              after connecting. */}
           <p className="text-sm text-ink-2">
             {loaded
               ? `${instances.length} agent${instances.length === 1 ? '' : 's'} on this pod`

@@ -90,7 +90,7 @@ describe('App', () => {
     await userEvent.click(screen.getByText('Connect'))
 
     // Straight into the shell, with no session and no pod list.
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/agents? on this pod/)).toBeTruthy())
     expect(calls).toContain('connect_pod_url')
     expect(calls).not.toContain('list_pods')
   })
@@ -107,8 +107,9 @@ describe('App', () => {
     })
     await waitFor(() => expect(screen.getByText('a@b.com')).toBeTruthy())
     // Auto-connects when the account has exactly one pod, and lands on the fleet.
-    // By role: the shell also names the tab "Fleet".
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    // By the pod-count line: the home screen carries no title, and the sidebar
+    // row and tab both say "Home".
+    await waitFor(() => expect(screen.getByText(/agents? on this pod/)).toBeTruthy())
   })
 
   it('leaves a premium account on the fleet with an empty key store', async () => {
@@ -128,7 +129,7 @@ describe('App', () => {
       // What a provisioned pod reports: a credential the key store cannot show.
       inference_status: { ready: true, credential: 'environment', gateway: true },
     })
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/agents? on this pod/)).toBeTruthy())
     expect(screen.queryByText('This pod cannot think yet')).toBeNull()
   })
 
@@ -166,7 +167,7 @@ describe('App', () => {
       inference_status: { ready: true, credential: 'environment', gateway: true },
     })
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/agents? on this pod/)).toBeTruthy())
     // The recent one is in both the tree and the grid; the old one is in
     // neither until its shelf is opened.
     expect(screen.getAllByText('Briefer').length).toBeGreaterThan(0)
@@ -228,7 +229,7 @@ describe('App', () => {
       list_keys: [],
       inference_status: { ready: true, credential: 'environment', gateway: true },
     })
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Fleet' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/agents? on this pod/)).toBeTruthy())
     expect(screen.getByRole('button', { name: /^Error log/ })).toBeTruthy()
   })
 

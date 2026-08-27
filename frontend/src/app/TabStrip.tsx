@@ -10,7 +10,7 @@ import { cn } from '@/lib/cn'
 export function tabLabel(view: View, nameOf: (id: string) => string | undefined): string {
   switch (view.kind) {
     case 'fleet':
-      return 'Fleet'
+      return 'Home'
     case 'packs':
       return 'Extensions'
     // Not "Artifacts": the word for what is on the pod has to be the word

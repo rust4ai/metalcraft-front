@@ -421,7 +421,6 @@ function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string })
 }
 
 function Empty() {
-  const go = useUi((s) => s.go)
   return (
     <Card className="flex flex-col items-center gap-3 py-10 text-center">
       <Zap className="h-6 w-6 text-ink-3" />
@@ -432,9 +431,6 @@ function Empty() {
           Agent packs bring the flows; scheduling one is what creates the agent that runs it.
         </p>
       </div>
-      <Button size="sm" onClick={() => go({ kind: 'packs' })}>
-        Browse extensions
-      </Button>
     </Card>
   )
 }

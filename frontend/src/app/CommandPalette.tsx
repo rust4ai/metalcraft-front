@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
 import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Plus, ScrollText, ServerCog, Settings, Sparkles, Store } from 'lucide-react'
-import { useFleet } from '@/stores/fleet'
+import { useFleet, startablePresets } from '@/stores/fleet'
 import { useLayout } from '@/stores/layout'
 import { useUi } from '@/stores/ui'
 import { StatusDot } from '@/components/ui/StatusDot'
@@ -95,7 +95,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             label="New agent…"
             hint="⌘N"
           />
-          {presets.map((p) => (
+          {/* Libraries excluded: a pack's library preset is not something to be,
+              and the pod answers 400 to anything that tries. */}
+          {startablePresets(presets).map((p) => (
             <Item
               key={p.slug}
               value={`spawn ${p.name} ${p.slug}`}
@@ -108,7 +110,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
         </Group>
 
         <Group heading="Go">
-          <Item value="go fleet" onSelect={() => run(() => go({ kind: 'fleet' }))} icon={<Bot className="h-3.5 w-3.5" />} label="Fleet" />
+          <Item value="go home fleet agents" onSelect={() => run(() => go({ kind: 'fleet' }))} icon={<Bot className="h-3.5 w-3.5" />} label="Home" />
           {/* The old words stay in `value`, which is only ever matched against:
               somebody who learned this as "browse agent presets" must still find
               it by typing that. */}

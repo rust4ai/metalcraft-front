@@ -95,7 +95,7 @@ export function Sidebar() {
       <nav className="px-2 pb-2">
         <NavRow
           icon={<LayoutGrid className="h-4 w-4" />}
-          label="My fleet"
+          label="Home"
           selected={activeKey === 'fleet'}
           onClick={() => go({ kind: 'fleet' })}
         />
