@@ -274,9 +274,11 @@ export interface ChatSummary {
    *  to decide a gateway conversation has gone quiet. Absent on a pod older than
    *  the session list, where `created_at` is the best available answer. */
   updated_at?: string | null
-  /** The opening line, trimmed — what makes a row identifiable as *this*
-   *  conversation rather than a timestamp beside an id. Absent when nothing has
-   *  been said yet, and on a pod too old to send it. */
+  /** The start of the last thing said, trimmed to one line — what makes a row
+   *  identifiable as *this* conversation rather than a timestamp beside an id,
+   *  and what tells you where it got to. Absent when nothing has been said yet,
+   *  and on a pod too old to send it. A pod older than the last-message preview
+   *  sends the opening line here instead, which still reads as a label. */
   preview?: string | null
   /** How many turns the conversation holds. Absent from a pod too old to report
    *  it, which is not the same as none and is not ranked as if it were. */
