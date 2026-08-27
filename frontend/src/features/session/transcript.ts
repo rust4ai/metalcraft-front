@@ -32,7 +32,10 @@ export interface ToolCard {
 
 export type TranscriptItem =
   | { kind: 'user'; id: string; content: string }
-  | { kind: 'reply'; id: string; content: string }
+  /** `awaitingReply` marks a question (`ask_user`) rather than an answer: the
+   *  turn has ended but the conversation has not, and `options` are the answers
+   *  the agent offered. The user may always type something else instead. */
+  | { kind: 'reply'; id: string; content: string; awaitingReply?: boolean; options?: string[] }
   | { kind: 'error'; id: string; code: string; message: string; retryable: boolean }
   /** Local, never from the pod: the result of a slash command. Part of the
    *  transcript because that is where the user is looking, but it is this
@@ -233,7 +236,16 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         ...state,
         thinking: false,
         phase: undefined,
-        items: [...state.items, { kind: 'reply', id: `r${state.items.length}`, content: ev.content }],
+        items: [
+          ...state.items,
+          {
+            kind: 'reply',
+            id: `r${state.items.length}`,
+            content: ev.content,
+            awaitingReply: ev.awaiting_reply,
+            options: ev.options,
+          },
+        ],
       }
 
     case 'error':

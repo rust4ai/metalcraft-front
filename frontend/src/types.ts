@@ -325,7 +325,7 @@ export type ChatEvent =
   | { kind: 'llm_completed'; messages: ChatMessage[]; duration_ms: number }
   | { kind: 'tool_started'; tool_call_id: string; name: string; args: unknown }
   | { kind: 'tool_completed'; tool_call_id: string; name: string; duration_ms: number; result: ChatMessage }
-  | { kind: 'reply'; content: string }
+  | { kind: 'reply'; content: string; awaiting_reply?: boolean; options?: string[] }
   | { kind: 'error'; code: string; message: string; retryable: boolean }
   /** Work that happens before the model is called and emits nothing else —
    *  compaction (a whole extra LLM call) and memory recall (an embeddings call).

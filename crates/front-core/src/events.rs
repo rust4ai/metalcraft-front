@@ -72,10 +72,19 @@ pub enum ChatEvent {
         duration_ms: u64,
         result: ChatMessage,
     },
-    /// The agent's user-facing reply (a `say_to_user` call). In tool-only mode
-    /// this — not free-text `llm_completed` content — is the assistant's message.
+    /// The agent's user-facing message (a `say_to_user` or `ask_user` call). In
+    /// tool-only mode this — not free-text `llm_completed` content — is the
+    /// assistant's message.
+    ///
+    /// `awaiting_reply` marks a question rather than an answer: the turn has
+    /// ended but the conversation has not, and `options` are the answers the
+    /// agent offered. Both default, so a pod older than `ask_user` still decodes.
     Reply {
         content: String,
+        #[serde(default)]
+        awaiting_reply: bool,
+        #[serde(default)]
+        options: Vec<String>,
     },
     /// Classified, user-safe failure. `code` branches (see the agent's
     /// `runtime::ErrorCode`); `402`-class codes mean out of credits / not premium.
