@@ -34,7 +34,13 @@ export function Composer({
 }) {
   const [value, setValue] = useState('')
   const [highlighted, setHighlighted] = useState(0)
-  const canSend = value.trim().length > 0 && !busy
+  // A slash command still needs an idle chat — `/compact` rewrites the very
+  // message list a running turn is reading. An ordinary message does not: the
+  // pod queues it and takes it up at the next safe boundary, so making the
+  // person wait for a delegation chain to finish before they can say "actually,
+  // do X instead" is exactly the wait this composer used to force.
+  const isCommand = value.trim().startsWith('/')
+  const canSend = value.trim().length > 0 && !(busy && isCommand)
   /** A turn to stop, and somewhere to send the ask. */
   const canStop = busy && Boolean(onStop)
 
@@ -46,7 +52,7 @@ export function Composer({
 
   function submit(text = value) {
     const trimmed = text.trim()
-    if (!trimmed || busy) return
+    if (!trimmed || (busy && trimmed.startsWith('/'))) return
     onSend(trimmed)
     setValue('')
     setHighlighted(0)
@@ -134,7 +140,7 @@ export function Composer({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={busy ? 'The agent is working…' : placeholder}
+            placeholder={busy ? 'The agent is working — send anyway to queue it' : placeholder}
             className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent px-2 py-1 text-[13.5px] caret-accent outline-none placeholder:text-ink-3"
           />
           {canStop ? (

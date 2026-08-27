@@ -392,8 +392,11 @@ export const useSessions = create<SessionsState>((set, get) => ({
     try {
       await chats.send(session.chatId, message)
     } catch (e) {
-      // The pod refuses a concurrent turn per chat with a 409; surface that
-      // rather than leaving the composer locked on a turn that never started.
+      // A send can still fail — no such chat, pod unreachable — and surfacing it
+      // beats leaving the composer locked on a turn that never started. What no
+      // longer lands here is the concurrent-turn case: the pod queues a message
+      // sent mid-turn and answers 202, so it arrives as a `queued` frame rather
+      // than as an error.
       const current = get().byInstance[instanceId]
       if (current) {
         set({

@@ -25,6 +25,19 @@ pub async fn list_flows(state: State<'_>) -> Result<Vec<Flow>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// One run, with its step trace and a snapshot of the graph it ran against.
+///
+/// The snapshot is the point: a run that paused yesterday must be read against
+/// the flow as it was, not as it has since been edited.
+#[tauri::command]
+pub async fn get_flow_run(run_id: String, state: State<'_>) -> Result<serde_json::Value, String> {
+    state
+        .conn(None)?
+        .get_flow_run(&run_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// One flow with its graph — what `list_flows` deliberately leaves out.
 ///
 /// `serde_json::Value` all the way through: the shape belongs to the

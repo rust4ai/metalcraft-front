@@ -7,6 +7,31 @@
 
 use serde::{Deserialize, Serialize};
 
+/// One step of the agent's plan for the current turn, as `update_plan` wrote it.
+///
+/// `persona` is who it intends to delegate to, and is advisory — a plan that
+/// reroutes mid-turn is a plan working as intended.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlanStep {
+    pub step: String,
+    #[serde(default)]
+    pub persona: Option<String>,
+    #[serde(default)]
+    pub status: PlanStepStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanStepStatus {
+    #[default]
+    Pending,
+    InProgress,
+    Done,
+    /// Deliberately abandoned — an earlier step made it unnecessary. Closed, not
+    /// outstanding.
+    Skipped,
+}
+
 /// One message in a chat. Tagged by `role`, matching `ChatMessageWire`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "snake_case")]
@@ -85,6 +110,18 @@ pub enum ChatEvent {
         awaiting_reply: bool,
         #[serde(default)]
         options: Vec<String>,
+    },
+    /// A message sent while a turn was running: taken, not started. `position`
+    /// is 1 for the next to run.
+    Queued { message: String, position: usize },
+    /// A queued message joined the turn already in flight. It stops being
+    /// pending and becomes part of the thread.
+    Injected { message: String },
+    /// The turn's plan as it stands. Sent on every change, including the empty
+    /// list a new turn starts with — render it, do not accumulate it.
+    Plan {
+        #[serde(default)]
+        steps: Vec<PlanStep>,
     },
     /// Classified, user-safe failure. `code` branches (see the agent's
     /// `runtime::ErrorCode`); `402`-class codes mean out of credits / not premium.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import {
   AlertTriangle,
   Clock,
@@ -7,6 +7,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Workflow,
   Zap,
 } from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
@@ -32,18 +33,51 @@ import type { Flow, FlowRun, ScheduledFlow } from '@/types'
  * The pod keeps the work and the timing apart, and so does this: a flow card is
  * the work, and each row under it is one schedule pointing at it.
  */
+/**
+ * Loaded only when someone opens a graph.
+ *
+ * `@xyflow/react` is a large dependency and this is the one screen that needs
+ * it. Imported eagerly it rode along with the automations list — into the app's
+ * startup path, and into every test that renders this view, where it turned
+ * sub-second renders into five-second timeouts.
+ */
+const FlowGraphPanel = lazy(() =>
+  import('./graph/FlowGraphPanel').then((m) => ({ default: m.FlowGraphPanel })),
+)
+
 export function AutomationsView() {
   const { flows, runs, loading, error, load } = useAutomations()
   // Held here rather than per-row so the dialog survives the list re-rendering
   // underneath it — arming reloads the flows, and a row-owned modal would
   // unmount itself mid-confirm.
   const [arming, setArming] = useState<Flow | null>(null)
+  // Same reasoning as `arming`: held above the list so reloading the flows
+  // underneath it cannot close the graph someone is reading.
+  const [viewing, setViewing] = useState<Flow | null>(null)
 
   useEffect(() => {
     void load()
   }, [load])
 
   const waiting = runs.filter((r) => r.status === 'paused')
+
+  if (viewing) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-ink-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading the graph…
+          </div>
+        }
+      >
+        <FlowGraphPanel
+          flow={viewing}
+          runs={runs.filter((r) => r.flow_id === viewing.id)}
+          onClose={() => setViewing(null)}
+        />
+      </Suspense>
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto px-8 py-6">
@@ -84,7 +118,7 @@ export function AutomationsView() {
       ) : (
         <div className="space-y-3">
           {flows.map((flow) => (
-            <FlowCard key={flow.id} flow={flow} onArm={setArming} />
+            <FlowCard key={flow.id} flow={flow} onArm={setArming} onOpen={setViewing} />
           ))}
         </div>
       )}
@@ -108,7 +142,15 @@ export function AutomationsView() {
   )
 }
 
-function FlowCard({ flow, onArm }: { flow: Flow; onArm: (flow: Flow) => void }) {
+function FlowCard({
+  flow,
+  onArm,
+  onOpen,
+}: {
+  flow: Flow
+  onArm: (flow: Flow) => void
+  onOpen: (flow: Flow) => void
+}) {
   const { run, busy, schedulesOf } = useAutomations()
   const go = useUi((s) => s.go)
   const running = busy[flow.id] ?? false
@@ -141,6 +183,13 @@ function FlowCard({ flow, onArm }: { flow: Flow; onArm: (flow: Flow) => void }) 
         {/* Running an armed automation by hand *is* its scheduled firing — same
             agent, same memory — so this lands you in the conversation it just
             wrote rather than reporting a status code. */}
+        {/* The only way to see what an automation actually does. `list_flows`
+            stops at a node count, so before this the answer lived in JSON on the
+            pod's disk. */}
+        <Button variant="ghost" size="sm" onClick={() => onOpen(flow)}>
+          <Workflow className="h-4 w-4" />
+          View
+        </Button>
         <Button
           variant="ghost"
           size="sm"

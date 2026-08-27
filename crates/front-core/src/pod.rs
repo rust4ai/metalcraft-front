@@ -700,6 +700,16 @@ impl PodConnection {
         self.get("/flow-runs").await
     }
 
+    /// One run, with its step trace and the graph it actually ran against.
+    ///
+    /// Raw JSON, like the flow endpoints: the record embeds a `SavedFlow`
+    /// snapshot, and the reason to want that snapshot is that it is the graph the
+    /// run took — re-parsing it through a narrower type here would lose exactly
+    /// the vendor nodes someone is trying to debug.
+    pub async fn get_flow_run(&self, run_id: &str) -> anyhow::Result<serde_json::Value> {
+        self.get(&format!("/flow-runs/{run_id}")).await
+    }
+
     /// One flow, graph included.
     ///
     /// Raw JSON for the same reason as [`Self::put_flow`]: this client does not

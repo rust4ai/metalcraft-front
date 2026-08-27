@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { positions } from './layout'
+import { unhandledErrorNodes } from './analyze'
 import { KIND_STYLES, look, vendorOf } from './nodeKinds'
 import type { FlowDefinition } from '@/types'
 import { cn } from '@/lib/cn'
@@ -114,14 +115,10 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
     const placed = positions(definition)
     const wasVisited = new Set(visited)
 
-    // Which nodes have an `error` output that goes nowhere. Computed here rather
-    // than per-card so it costs one pass over the edges instead of one per node.
-    const wiredErrors = new Set(
-      (definition.edges ?? []).filter((e) => e.source_handle === 'error').map((e) => e.source),
-    )
+    // One pass over the edges rather than one per card.
+    const unhandled = unhandledErrorNodes(definition)
 
-    const nodes: Node[] = (definition.nodes ?? []).map((n) => {
-      const info = look(n.node_type)
+    const cards: Node[] = (definition.nodes ?? []).map((n) => {
       const at = placed.get(n.id)
       const state =
         n.id === failedAt
@@ -139,12 +136,12 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
           nodeType: n.node_type,
           data: (n.data ?? {}) as Record<string, unknown>,
           state,
-          unhandledError: (info.handles?.includes('error') ?? false) && !wiredErrors.has(n.id),
+          unhandledError: unhandled.has(n.id),
         } satisfies CardData,
       }
     })
 
-    const edges: Edge[] = (definition.edges ?? []).map((e) => {
+    const arcs: Edge[] = (definition.edges ?? []).map((e) => {
       const onPath = wasVisited.has(e.source) && wasVisited.has(e.target)
       const isError = e.source_handle === 'error'
       return {
@@ -169,7 +166,7 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
       }
     })
 
-    return { nodes, edges }
+    return { nodes: cards, edges: arcs }
   }, [definition, visited, failedAt, waitingAt])
 
   if (nodes.length === 0) {

@@ -18,7 +18,7 @@
  * - `unknown` frames are ignored. A pod newer than this client must not break a
  *   live turn.
  */
-import type { ChatEvent, ChatMessage } from '@/types'
+import type { ChatEvent, ChatMessage, PlanStep } from '@/types'
 
 export interface ToolCard {
   kind: 'tool'
@@ -62,6 +62,14 @@ export interface TranscriptState {
    *  The handle the debug view is opened with. */
   sessionId?: string
   lastStatus?: 'completed' | 'interrupted' | 'failed'
+  /** Messages sent while a turn was running, in the order they were sent, still
+   *  waiting to be taken up. Kept out of `items` because a queued message is not
+   *  yet part of the conversation: it becomes a `user` item when the pod says it
+   *  started (`injected`, or a `turn_started` carrying it). */
+  queued: string[]
+  /** The agent's plan for the current turn. Replaced wholesale on every `plan`
+   *  frame, and empty between turns. */
+  plan: PlanStep[]
 }
 
 /** The phases the pod names today, plus whatever a newer one names. */
@@ -91,7 +99,22 @@ export function phaseLabel(phase: TurnPhase | undefined): string {
   }
 }
 
-export const emptyTranscript = (): TranscriptState => ({ items: [], busy: false, thinking: false })
+export const emptyTranscript = (): TranscriptState => ({
+  items: [],
+  busy: false,
+  thinking: false,
+  queued: [],
+  plan: [],
+})
+
+/** The list without its first occurrence of `value`, or unchanged if absent.
+ *
+ *  Removing *one* matters: sending the same text twice queues two entries, and
+ *  the pod taking up the first must not clear both. */
+function dropFirst(list: string[], value: string): string[] {
+  const at = list.indexOf(value)
+  return at === -1 ? list : [...list.slice(0, at), ...list.slice(at + 1)]
+}
 
 /** The tool whose call *is* the assistant's message; see the `reply` frame. */
 const REPLY_TOOL = 'say_to_user'
@@ -183,6 +206,11 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         // field would read as "there is a session" to every `!= null` check.
         sessionId: ev.session_id ?? undefined,
         lastStatus: undefined,
+        // A queued message that starts its own turn stops being queued. Matched
+        // by text because that is all the frame carries; a duplicate message
+        // sent twice loses one entry from the pending list, which is the right
+        // trade against leaving a phantom there forever.
+        queued: dropFirst(state.queued, ev.user_message),
         items: [
           ...state.items,
           { kind: 'user', id: `t${ev.turn_index}`, content: ev.user_message },
@@ -254,6 +282,23 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
           },
         ],
       }
+
+    case 'queued':
+      // Taken, not started. The composer has already cleared, so this is the
+      // only thing telling the person their message went anywhere.
+      return { ...state, queued: [...state.queued, ev.message] }
+
+    case 'injected':
+      // It joined the turn already running: no longer pending, and now a real
+      // part of the thread.
+      return {
+        ...state,
+        queued: dropFirst(state.queued, ev.message),
+        items: [...state.items, { kind: 'user', id: `q${state.items.length}`, content: ev.message }],
+      }
+
+    case 'plan':
+      return { ...state, plan: ev.steps }
 
     case 'error':
       return {

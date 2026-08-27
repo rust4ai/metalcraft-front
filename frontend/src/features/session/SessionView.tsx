@@ -13,6 +13,8 @@ import { Linkified } from '@/components/ui/Linkified'
 import { groupIntoBlocks } from './blocks'
 import { EditableName } from '@/features/fleet/EditableName'
 import { ConversationPicker } from './ConversationPicker'
+import { cn } from '@/lib/cn'
+import type { PlanStep } from '@/types'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
@@ -114,6 +116,17 @@ export function SessionView({ instanceId }: { instanceId: string }) {
                 that leaves the screen exactly as it was is indistinguishable
                 from a button that does nothing, which is how this read for the
                 whole time a delegated sub-agent kept working through it. */}
+            {/* The plan, above the waiting indicator: it answers "what is it
+                doing" at a coarser grain than the spinner, and it is only ever
+                the current turn's. */}
+            {(session?.transcript.plan.length ?? 0) > 0 && (
+              <PlanList steps={session!.transcript.plan} />
+            )}
+            {/* Sent, not started. After everything else, because that is where
+                it will land once the pod takes it up. */}
+            {(session?.transcript.queued ?? []).map((message, i) => (
+              <QueuedMessage key={`q${i}-${message}`} content={message} />
+            ))}
             {(session?.transcript.thinking || stopping) && (
               <LoadingState key={phase ?? 'busy'} label={stopping ? 'Stopping' : phaseLabel(phase)} />
             )}
@@ -211,6 +224,58 @@ function Item({
  * the agent's mouth. Everything above it stays readable; the agent simply cannot
  * see any of it any more, and this is the only place that is stated.
  */
+/** A message the pod has taken but not started.
+ *
+ *  Deliberately the user bubble's shape, dimmed and dashed rather than a
+ *  different kind of thing: it *is* their message, and it is about to be exactly
+ *  that. Anything more decorative would read as an error. */
+function QueuedMessage({ content }: { content: string }) {
+  return (
+    <div className="animate-fade-up flex max-w-[85%] flex-col items-end gap-1 self-end">
+      <div className="whitespace-pre-wrap rounded-card rounded-br-sm border border-dashed border-line px-3.5 py-2 text-[13.5px] text-ink-3">
+        {content}
+      </div>
+      <span className="text-[11px] text-ink-3">Queued — the agent is still working</span>
+    </div>
+  )
+}
+
+/** The agent's plan for this turn, as a checklist.
+ *
+ *  The one part of an agent's reasoning that is already structured, so the one
+ *  part worth drawing rather than paraphrasing: "on step 3 of 5" is a different
+ *  experience from a spinner. */
+function PlanList({ steps }: { steps: PlanStep[] }) {
+  const done = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length
+  const marker = (status: PlanStep['status']) =>
+    status === 'done' ? '✓' : status === 'skipped' ? '–' : status === 'in_progress' ? '▸' : '○'
+  return (
+    <div className="rounded-card border border-line px-3.5 py-3 text-[13px]">
+      <div className="mb-2 text-[11.5px] uppercase tracking-wide text-ink-3">
+        Plan · {done}/{steps.length}
+      </div>
+      <ol className="flex flex-col gap-1.5">
+        {steps.map((step, i) => (
+          <li key={`${i}-${step.step}`} className="flex gap-2">
+            <span className="mt-[1px] shrink-0 text-ink-3">{marker(step.status)}</span>
+            <span
+              className={cn(
+                'min-w-0',
+                (step.status === 'done' || step.status === 'skipped') && 'text-ink-3 line-through',
+                step.status === 'in_progress' && 'text-ink',
+                step.status === 'pending' && 'text-ink-2',
+              )}
+            >
+              {step.step}
+              {step.persona && <span className="text-ink-3"> · {step.persona}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 function ResetDivider({ at, reason }: { at: string; reason: string }) {
   const when = new Date(at)
   // The timestamp is the useful half when scrolling back through a long thread,

@@ -267,4 +267,65 @@ describe('fromMessages (a chat reopened after a restart)', () => {
     // A reset is not a turn, so it must not leave the composer locked.
     expect(live.busy).toBe(false)
   })
+
+  /** Fold a list of frames onto a fresh transcript. */
+  const fold = (events: ChatEvent[]) => events.reduce(reduce, emptyTranscript())
+
+  it('holds a message sent mid-turn as queued, not as part of the thread', () => {
+    // The composer clears the moment you hit send, so this frame is the only
+    // thing telling the person their message went anywhere.
+    const s = fold([
+      { kind: 'turn_started', turn_index: 0, user_message: 'do the thing' },
+      { kind: 'queued', message: 'actually, do X instead', position: 1 },
+    ])
+    expect(s.queued).toEqual(['actually, do X instead'])
+    expect(s.items.some((i) => i.kind === 'user' && i.content === 'actually, do X instead')).toBe(
+      false,
+    )
+  })
+
+  it('turns a queued message into a real one when the pod takes it up', () => {
+    const s = fold([
+      { kind: 'turn_started', turn_index: 0, user_message: 'do the thing' },
+      { kind: 'queued', message: 'and also X', position: 1 },
+      { kind: 'injected', message: 'and also X' },
+    ])
+    expect(s.queued).toEqual([])
+    expect(s.items.filter((i) => i.kind === 'user' && i.content === 'and also X')).toHaveLength(1)
+  })
+
+  it('clears a queued message that starts its own turn', () => {
+    // The drain path runs it as a fresh turn instead of injecting it, so
+    // `turn_started` is what says it stopped being pending.
+    const s = fold([
+      { kind: 'queued', message: 'next thing', position: 1 },
+      { kind: 'turn_started', turn_index: 1, user_message: 'next thing' },
+    ])
+    expect(s.queued).toEqual([])
+  })
+
+  it('only clears one entry when the same text was queued twice', () => {
+    // Two identical messages are two messages. Clearing both on the first
+    // take-up would leave the second running with nothing on screen for it.
+    const s = fold([
+      { kind: 'queued', message: 'hurry', position: 1 },
+      { kind: 'queued', message: 'hurry', position: 2 },
+      { kind: 'injected', message: 'hurry' },
+    ])
+    expect(s.queued).toEqual(['hurry'])
+  })
+
+  it('replaces the plan on every frame rather than accumulating it', () => {
+    const s = fold([
+      { kind: 'plan', steps: [{ step: 'read the repo', status: 'pending' }] },
+      {
+        kind: 'plan',
+        steps: [
+          { step: 'read the repo', status: 'done' },
+          { step: 'edit the page', status: 'in_progress' },
+        ],
+      },
+    ])
+    expect(s.plan.map((p) => p.status)).toEqual(['done', 'in_progress'])
+  })
 })

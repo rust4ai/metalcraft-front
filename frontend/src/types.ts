@@ -332,6 +332,15 @@ export interface PodSessionEvent {
 }
 
 /** Mirrors the agent's SSE frames verbatim; see front-core's `events.rs`. */
+/** One step of the agent's plan for the current turn, as `update_plan` wrote
+ *  it. `persona` is who it intends to delegate to, and is advisory — a plan that
+ *  reroutes mid-turn is a plan working as intended. */
+export interface PlanStep {
+  step: string
+  persona?: string | null
+  status: 'pending' | 'in_progress' | 'done' | 'skipped'
+}
+
 export type ChatEvent =
   | { kind: 'turn_started'; turn_index: number; user_message: string; session_id?: string | null }
   | { kind: 'llm_started' }
@@ -339,6 +348,15 @@ export type ChatEvent =
   | { kind: 'tool_started'; tool_call_id: string; name: string; args: unknown }
   | { kind: 'tool_completed'; tool_call_id: string; name: string; duration_ms: number; result: ChatMessage }
   | { kind: 'reply'; content: string; awaiting_reply?: boolean; options?: string[] }
+  /** A message sent while a turn was running. It has been taken, not started —
+   *  `position` is 1 for the next to run. */
+  | { kind: 'queued'; message: string; position: number }
+  /** A queued message joined the turn already in flight, at a boundary where
+   *  doing so was safe. It stops being pending and becomes part of the thread. */
+  | { kind: 'injected'; message: string }
+  /** The turn's plan as it stands. Sent on every change, including the empty
+   *  list a new turn starts with — render it, do not accumulate it. */
+  | { kind: 'plan'; steps: PlanStep[] }
   | { kind: 'error'; code: string; message: string; retryable: boolean }
   /** Work that happens before the model is called and emits nothing else —
    *  compaction (a whole extra LLM call) and memory recall (an embeddings call).
@@ -750,6 +768,27 @@ export interface FlowRun {
   warnings: string[]
   created_at: string
   updated_at: string
+}
+
+/** One node's turn in a run — the trace `RunOverlay` replays onto the graph. */
+export interface FlowStep {
+  node_id: string
+  node_type: string
+  /** `advanced` | `routed:<handle>` | `completed` | `failed`. */
+  outcome: string
+  /** Answer snippet, error, or chosen handle. */
+  detail?: string | null
+}
+
+/** A run with everything needed to read it — `GET /flow-runs/{id}`. */
+export interface FlowRunDetail extends FlowRun {
+  /** In execution order. */
+  steps?: FlowStep[]
+  /** The graph as it was when the run took it. Read the run against **this**,
+   *  not against the flow on disk, which may have been edited since. Absent on
+   *  records written before snapshots existed. */
+  flow?: SavedFlow | null
+  variables?: unknown
 }
 
 export interface FlowPause {
