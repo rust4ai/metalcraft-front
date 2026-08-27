@@ -153,6 +153,9 @@ export const automations = {
   /** Check a graph without saving it. An invalid graph resolves with
    *  `valid: false`; only an unreachable pod rejects. */
   validate: (flow: SavedFlow) => call<FlowValidation>('validate_flow', { flow }),
+  /** Create or replace a flow. The pod validates again and refuses a graph it
+   *  cannot run — its refusal is the message worth showing. */
+  save: (flow: SavedFlow) => call<SavedFlow>('put_flow', { flowId: flow.id, flow }),
   /** Everything this pod will do on its own. Joined to `list()` by `flow_id`. */
   scheduled: () => call<ScheduledFlow[]>('list_scheduled_flows'),
   /** Persisted runs — mostly the paused ones, which are the ones that need a human. */

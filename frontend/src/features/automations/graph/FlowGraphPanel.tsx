@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Loader2, X } from 'lucide-react'
+import { AlertTriangle, Loader2, Pencil, X } from 'lucide-react'
 import { automations } from '@/rpc'
 import { FlowGraph } from './FlowGraph'
+import { FlowEditor } from './FlowEditor'
+import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import type { Flow, FlowRun, FlowRunDetail, SavedFlow } from '@/types'
 
@@ -31,6 +33,7 @@ export function FlowGraphPanel({
   const [error, setError] = useState<string | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [run, setRun] = useState<FlowRunDetail | null>(null)
+  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -70,6 +73,21 @@ export function FlowGraphPanel({
   const waitingAt = run?.status === 'paused' ? run.current_node_id : undefined
   const stale = Boolean(run && !run.flow)
 
+  if (editing && saved) {
+    return (
+      <FlowEditor
+        flow={saved}
+        onSaved={(next) => {
+          setSaved(next)
+          // Back to reading. Staying in the editor after a save invites a second
+          // edit on top of one nobody has looked at yet.
+          setEditing(false)
+        }}
+        onClose={() => setEditing(false)}
+      />
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-line px-4 py-2.5">
@@ -97,6 +115,13 @@ export function FlowGraphPanel({
           </select>
         )}
 
+        {/* Editing a *run's* snapshot would be editing history; the button is
+            only offered against the flow as it is now. */}
+        {saved && !run && (
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            <Pencil className="h-4 w-4" /> Edit
+          </Button>
+        )}
         <button
           type="button"
           onClick={onClose}

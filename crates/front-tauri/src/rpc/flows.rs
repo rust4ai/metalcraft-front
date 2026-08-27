@@ -52,6 +52,24 @@ pub async fn get_flow(flow_id: String, state: State<'_>) -> Result<serde_json::V
         .map_err(|e| e.to_string())
 }
 
+/// Create or replace a flow.
+///
+/// `serde_json::Value` end to end, like the reads: the editor sends back the
+/// document the pod gave it with only the edited parts replaced, so a field this
+/// build has never heard of survives a save by somebody running an older app.
+#[tauri::command]
+pub async fn put_flow(
+    flow_id: String,
+    flow: serde_json::Value,
+    state: State<'_>,
+) -> Result<serde_json::Value, String> {
+    state
+        .conn(None)?
+        .put_flow(&flow_id, &flow)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Check a graph without saving it — the editor's live feedback.
 ///
 /// An invalid graph is a successful call reporting `valid: false`; only a

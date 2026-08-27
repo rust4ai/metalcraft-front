@@ -308,6 +308,14 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "list_flows" => j(app.conn(None)?.list_flows().await),
         "get_flow" => j(app.conn(None)?.get_flow(need(args, "flowId")?).await),
         "get_flow_run" => j(app.conn(None)?.get_flow_run(need(args, "runId")?).await),
+        "put_flow" => j(app
+            .conn(None)?
+            .put_flow(
+                need(args, "flowId")?,
+                args.get("flow")
+                    .ok_or_else(|| "missing argument 'flow'".to_string())?,
+            )
+            .await),
         // The graph is a whole object, not a string field, so it comes out of
         // `args` directly — `need`/`arg` only reach string values.
         "validate_flow" => j(app

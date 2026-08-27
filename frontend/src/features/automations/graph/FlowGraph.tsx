@@ -38,6 +38,16 @@ export interface FlowGraphProps {
   failedAt?: string
   /** Where the run is parked, waiting on a person or a clock. */
   waitingAt?: string
+  /** Editing hooks. Absent means read-only, and the canvas turns off every
+   *  interaction that would imply otherwise. */
+  edit?: {
+    selectedId?: string
+    onSelect: (id: string | undefined) => void
+    onMove: (id: string, to: [number, number]) => void
+    onConnect: (source: string, target: string) => void
+    onDeleteNode: (id: string) => void
+    onDeleteEdge: (id: string) => void
+  }
 }
 
 interface CardData extends Record<string, unknown> {
@@ -49,7 +59,7 @@ interface CardData extends Record<string, unknown> {
 }
 
 /** One node. */
-function NodeCard({ data: card }: NodeProps) {
+function NodeCard({ data: card, selected }: NodeProps) {
   const { nodeType, data, state, unhandledError } = card as CardData
   const info = look(nodeType)
   const style = KIND_STYLES[info.kind]
@@ -65,6 +75,7 @@ function NodeCard({ data: card }: NodeProps) {
         state === 'visited' && 'border-green/60 shadow-raised',
         state === 'failed' && 'border-red/70 shadow-raised',
         state === 'waiting' && 'border-accent/70 shadow-raised',
+        selected && 'ring-2 ring-accent',
       )}
     >
       {/* An entry node has nothing upstream of it; drawing a target port would
@@ -110,7 +121,13 @@ function NodeCard({ data: card }: NodeProps) {
 
 const nodeTypes = { card: NodeCard }
 
-export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: FlowGraphProps) {
+export function FlowGraph({
+  definition,
+  visited = [],
+  failedAt,
+  waitingAt,
+  edit,
+}: FlowGraphProps) {
   const { nodes, edges } = useMemo(() => {
     const placed = positions(definition)
     const wasVisited = new Set(visited)
@@ -132,6 +149,7 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
         id: n.id,
         type: 'card',
         position: { x: at?.x ?? 0, y: at?.y ?? 0 },
+        selected: n.id === edit?.selectedId,
         data: {
           nodeType: n.node_type,
           data: (n.data ?? {}) as Record<string, unknown>,
@@ -167,7 +185,7 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
     })
 
     return { nodes: cards, edges: arcs }
-  }, [definition, visited, failedAt, waitingAt])
+  }, [definition, visited, failedAt, waitingAt, edit?.selectedId])
 
   if (nodes.length === 0) {
     return (
@@ -183,11 +201,26 @@ export function FlowGraph({ definition, visited = [], failedAt, waitingAt }: Flo
       edges={edges}
       nodeTypes={nodeTypes}
       fitView
-      // Read-only: every interaction that would mutate the graph is off, so the
-      // canvas cannot imply an editing affordance it does not have.
-      nodesDraggable={false}
-      nodesConnectable={false}
-      edgesFocusable={false}
+      // Without `edit`, every interaction that would mutate the graph is off, so
+      // the canvas cannot imply an affordance it does not have.
+      nodesDraggable={Boolean(edit)}
+      nodesConnectable={Boolean(edit)}
+      edgesFocusable={Boolean(edit)}
+      elementsSelectable={Boolean(edit)}
+      onNodeClick={edit ? (_, n) => edit.onSelect(n.id) : undefined}
+      onPaneClick={edit ? () => edit.onSelect(undefined) : undefined}
+      // Position is committed once, on drop. Committing per frame would make a
+      // single drag a hundred undo steps and a hundred validation round trips.
+      onNodeDragStop={
+        edit ? (_, n) => edit.onMove(n.id, [Math.round(n.position.x), Math.round(n.position.y)]) : undefined
+      }
+      onConnect={
+        edit
+          ? (c) => c.source && c.target && edit.onConnect(c.source, c.target)
+          : undefined
+      }
+      onNodesDelete={edit ? (deleted) => deleted.forEach((n) => edit.onDeleteNode(n.id)) : undefined}
+      onEdgesDelete={edit ? (deleted) => deleted.forEach((e) => edit.onDeleteEdge(e.id)) : undefined}
       proOptions={{ hideAttribution: true }}
       className="bg-canvas"
     >

@@ -124,6 +124,7 @@ fn main() {
             rpc::flows::list_flows,
             rpc::flows::get_flow,
             rpc::flows::get_flow_run,
+            rpc::flows::put_flow,
             rpc::flows::validate_flow,
             rpc::flows::list_scheduled_flows,
             rpc::flows::list_flow_runs,
