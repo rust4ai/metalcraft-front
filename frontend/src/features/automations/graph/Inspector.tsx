@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Plus, Trash2, X } from 'lucide-react'
 import {
   addableFields,
   INTERPOLATES,
@@ -73,6 +73,7 @@ export function Inspector({
           <Labelled
             key={f.key}
             label={f.label}
+            group={f.kind === 'rows'}
             hint={
               INTERPOLATES.has(f.key)
                 ? [f.hint, `Variables: ${scope.map((v) => `{{${v}}}`).join(', ')}`]
@@ -135,7 +136,7 @@ export function Inspector({
           hint={
             vendor
               ? `Defined by ${vendor}, not by this app — edited as JSON so nothing is lost.`
-              : 'Edited as JSON. Structured lists (conditions, outputs) live here.'
+              : 'Edited as JSON — anything this step carries that has no control above.'
           }
         >
           <JsonField
@@ -151,6 +152,7 @@ export function Inspector({
 
         {addable.length > 0 && (
           <Labelled
+            group
             label="Add a field"
             hint="Accepted by this step, not set yet. Starts as an empty shape to fill in."
           >
@@ -260,21 +262,35 @@ export function EdgeInspector({
   )
 }
 
+/**
+ * A labelled control.
+ *
+ * A `<label>` names exactly one control — that is what makes clicking the word
+ * focus the field, and what a screen reader announces. Wrap several controls in
+ * one and every button inside inherits the whole block as its name: the row
+ * editor's delete button announced itself as the entire outputs list, including
+ * the words "Add output" from the button beside it. So a group of controls gets
+ * `group`, which is a heading over a region rather than a label for a field.
+ */
 function Labelled({
   label,
   hint,
+  group,
   children,
 }: {
   label: string
   hint?: string
+  /** Set when the children are more than one control. */
+  group?: boolean
   children: React.ReactNode
 }) {
+  const Tag = group ? 'div' : 'label'
   return (
-    <label className="flex flex-col gap-1">
+    <Tag className="flex flex-col gap-1">
       <span className="text-[11px] font-medium uppercase tracking-wide text-ink-3">{label}</span>
       {children}
       {hint && <span className="text-[11px] leading-snug text-ink-3">{hint}</span>}
-    </label>
+    </Tag>
   )
 }
 
@@ -290,12 +306,17 @@ function TextField({
   multiline,
   mono,
   numeric,
+  compact,
+  placeholder,
 }: {
   value: string
   onCommit: (value: string) => void
   multiline?: boolean
   mono?: boolean
   numeric?: boolean
+  /** Sized for a cell inside a row rather than a field of its own. */
+  compact?: boolean
+  placeholder?: string
 }) {
   const [draft, setDraft] = useState(value)
   // Follow the document when it changes underneath — an undo, or another node
@@ -303,7 +324,8 @@ function TextField({
   useEffect(() => setDraft(value), [value])
 
   const shared = cn(
-    'w-full rounded-md border border-line bg-field px-2 py-1.5 text-[12.5px] text-ink',
+    'w-full rounded-md border border-line bg-field text-ink',
+    compact ? 'px-1.5 py-1 text-[11.5px]' : 'px-2 py-1.5 text-[12.5px]',
     mono && 'font-mono text-[11.5px]',
   )
   const commit = () => draft !== value && onCommit(draft)
@@ -311,7 +333,8 @@ function TextField({
   return multiline ? (
     <textarea
       value={draft}
-      rows={4}
+      rows={compact ? 2 : 4}
+      placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       className={cn(shared, 'resize-y')}
@@ -319,6 +342,7 @@ function TextField({
   ) : (
     <input
       value={draft}
+      placeholder={placeholder}
       inputMode={numeric ? 'numeric' : undefined}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -378,7 +402,7 @@ function RowsField({
               <X className="h-3 w-3" />
             </button>
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {columns.map((c) => (
               <Cell key={c.key} column={c} value={row[c.key]} onCommit={(v) => patch(i, { [c.key]: v })} />
             ))}
@@ -387,7 +411,7 @@ function RowsField({
       ))}
       <button
         type="button"
-        onClick={() => onCommit([...list, { ...(field.newRow ?? {}) }])}
+        onClick={() => onCommit([...list, { ...field.newRow }])}
         className={cn(
           'flex items-center justify-center gap-1 rounded-md border border-dashed border-line py-1',
           'text-[11.5px] text-ink-3 transition-colors hover:bg-hover hover:text-ink',
@@ -410,7 +434,7 @@ function Cell({
   onCommit: (value: unknown) => void
 }) {
   return (
-    <label className="flex flex-col gap-0.5">
+    <label className={cn('flex min-w-0 flex-col gap-0.5', column.wide && 'col-span-2')}>
       <span className="text-[10px] text-ink-3">{column.label}</span>
       {column.kind === 'select' ? (
         <select
@@ -497,12 +521,21 @@ function JsonValueField({
  * config file — text that parses as JSON is that JSON, and text that does not
  * is a string.
  */
-function AnyField({ value, onCommit }: { value: unknown; onCommit: (value: unknown) => void }) {
+function AnyField({
+  value,
+  onCommit,
+  compact,
+}: {
+  value: unknown
+  onCommit: (value: unknown) => void
+  compact?: boolean
+}) {
   const text = typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value)
   return (
     <TextField
       value={text}
-      multiline
+      multiline={!compact}
+      compact={compact}
       onCommit={(v) => {
         if (v === '') return onCommit(undefined)
         try {

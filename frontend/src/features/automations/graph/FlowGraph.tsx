@@ -12,7 +12,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { positions } from './layout'
 import { unhandledErrorNodes } from './analyze'
-import { KIND_STYLES, look, vendorOf } from './nodeKinds'
+import { KIND_STYLES, look, portsOf, vendorOf } from './nodeKinds'
 import type { FlowDefinition } from '@/types'
 import { cn } from '@/lib/cn'
 
@@ -47,7 +47,7 @@ export interface FlowGraphProps {
     onSelect: (id: string | undefined) => void
     onSelectEdge: (id: string | undefined) => void
     onMove: (id: string, to: [number, number]) => void
-    onConnect: (source: string, target: string) => void
+    onConnect: (source: string, target: string, handle?: string) => void
     onDeleteNode: (id: string) => void
     onDeleteEdge: (id: string) => void
   }
@@ -59,11 +59,17 @@ interface CardData extends Record<string, unknown> {
   state?: 'visited' | 'failed' | 'waiting'
   /** Whether this node's `error` output goes nowhere. */
   unhandledError?: boolean
+  /** Output ports to draw, `null` being the unnamed one — see `portsOf`. */
+  ports: Array<string | null>
 }
 
 /** One node. */
 function NodeCard({ data: card, selected }: NodeProps) {
-  const { nodeType, data, state, unhandledError } = card as CardData
+  const { nodeType, data, state, unhandledError, ports } = card as CardData
+  // One unnamed output is the ordinary case and stays a bare port on the edge of
+  // the card; naming it would put the word "out" on almost every node in every
+  // flow to say nothing.
+  const plain = ports.length === 0 || (ports.length === 1 && ports[0] === null)
   const info = look(nodeType)
   const style = KIND_STYLES[info.kind]
   const Icon = info.icon
@@ -115,8 +121,35 @@ function NodeCard({ data: card, selected }: NodeProps) {
         <p className="mt-1 text-[10.5px] leading-snug text-orange">failure is unhandled</p>
       )}
 
-      {info.handles && info.handles.length === 0 ? null : (
-        <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-line !bg-ink-3" />
+      {plain ? (
+        ports.length > 0 && (
+          <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-line !bg-ink-3" />
+        )
+      ) : (
+        // A port per handle, each one draggable. Until this, a branch's outputs
+        // existed only in its payload: the canvas drew one anonymous port, so
+        // there was no way to say which arc was `yes` and which was `no` without
+        // going to the edge and naming it by hand.
+        <div className="-mx-3 mt-1.5 border-t border-line pt-1">
+          {ports.map((port) => (
+            <div key={port ?? '\u00b7'} className="relative flex h-[18px] items-center justify-end pr-3">
+              <span
+                className={cn(
+                  'truncate font-mono text-[10px]',
+                  port === 'error' ? 'text-orange' : 'text-ink-3',
+                )}
+              >
+                {port ?? 'out'}
+              </span>
+              <Handle
+                type="source"
+                id={port ?? undefined}
+                position={Position.Right}
+                className="!h-2 !w-2 !border-line !bg-ink-3"
+              />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -138,6 +171,15 @@ export function FlowGraph({
     // One pass over the edges rather than one per card.
     const unhandled = unhandledErrorNodes(definition)
 
+    // Which handles each node's edges actually use, so a port is drawn for every
+    // one of them and no edge can be bound to a port that is not there.
+    const usedHandles = new Map<string, Array<string | null | undefined>>()
+    for (const e of definition.edges ?? []) {
+      const list = usedHandles.get(e.source) ?? []
+      list.push(e.source_handle)
+      usedHandles.set(e.source, list)
+    }
+
     const cards: Node[] = (definition.nodes ?? []).map((n) => {
       const at = placed.get(n.id)
       const state =
@@ -158,6 +200,11 @@ export function FlowGraph({
           data: (n.data ?? {}) as Record<string, unknown>,
           state,
           unhandledError: unhandled.has(n.id),
+          ports: portsOf(
+            n.node_type,
+            (n.data ?? {}) as Record<string, unknown>,
+            usedHandles.get(n.id) ?? [],
+          ),
         } satisfies CardData,
       }
     })
@@ -170,13 +217,14 @@ export function FlowGraph({
         id: e.id,
         source: e.source,
         target: e.target,
-        // The handle names are the flow's vocabulary, not React Flow's port ids —
-        // the cards draw one port per side — so they are shown as labels rather
-        // than bound to `sourceHandle`, which would silently drop every edge
-        // whose handle has no matching port.
-        label: e.source_handle ?? undefined,
-        labelStyle: { fontSize: 10, fill: 'var(--color-ink-3)' },
-        labelBgStyle: { fill: 'var(--color-surface)' },
+        // Bound to the port of the same name, which `portsOf` guarantees exists —
+        // it is derived from these very edges. React Flow drops an edge whose
+        // handle matches no port, so that guarantee is the whole reason ports are
+        // computed from the graph rather than from the node type alone.
+        //
+        // No label: the port the arc leaves from is already named on the card, and
+        // printing `urgent` again forty pixels away is the same word twice.
+        sourceHandle: e.source_handle ?? null,
         animated: onPath,
         selected: e.id === edit?.selectedEdgeId,
         style: {
@@ -235,7 +283,10 @@ export function FlowGraph({
       }
       onConnect={
         edit
-          ? (c) => c.source && c.target && edit.onConnect(c.source, c.target)
+          ? (c) =>
+              // The port dragged from *is* the handle — the whole point of
+              // drawing one port per output.
+              c.source && c.target && edit.onConnect(c.source, c.target, c.sourceHandle ?? undefined)
           : undefined
       }
       onNodesDelete={edit ? (deleted) => deleted.forEach((n) => edit.onDeleteNode(n.id)) : undefined}

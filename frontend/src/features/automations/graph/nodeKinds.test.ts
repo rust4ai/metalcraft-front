@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handlesOf } from './nodeKinds'
+import { handlesOf, portsOf } from './nodeKinds'
 
 /**
  * The handles an edge can be given. Getting this wrong is not cosmetic: a
@@ -48,5 +48,56 @@ describe('handlesOf', () => {
   // the free-text box the inspector keeps for exactly this case.
   it('claims nothing about a vendor node', () => {
     expect(handlesOf('slack:send_message', { channel: '#ops' })).toEqual([])
+  })
+})
+
+/**
+ * Ports are what make a fork wirable by dragging — and what could make an edge
+ * vanish, since React Flow drops any edge whose handle matches no port.
+ */
+describe('portsOf', () => {
+  it('draws one port per declared output, plus the error rail', () => {
+    expect(portsOf('branch', { outputs: [{ handle: 'yes' }, { handle: 'no' }] }, [])).toEqual([
+      'yes',
+      'no',
+      'error',
+    ])
+  })
+
+  it('keeps a port for a handle only the edges know about', () => {
+    // The case that loses work: an output deleted from the payload while its
+    // edge is still in the graph. Without its port the edge would not render,
+    // and someone would save a flow with an arc they can no longer see.
+    expect(portsOf('branch', { outputs: [{ handle: 'yes' }] }, ['yes', 'gone'])).toEqual([
+      'yes',
+      'error',
+      'gone',
+    ])
+  })
+
+  it('gives a vendor node the ports its own edges use', () => {
+    expect(portsOf('slack:send_message', {}, ['sent'])).toEqual(['sent'])
+  })
+
+  it('is one unnamed port for an ordinary step', () => {
+    expect(portsOf('set_variable', {}, [])).toEqual([null])
+    expect(portsOf('set_variable', {}, [undefined])).toEqual([null])
+  })
+
+  it('carries an unlabeled edge alongside named handles', () => {
+    // SPEC §5.5: a conditional with no match falls through to the node's
+    // unlabeled outgoing edge, so both kinds coexist on one node.
+    expect(portsOf('conditional', { conditions: [{ handle: 'hot' }] }, ['hot', undefined])).toEqual([
+      'hot',
+      null,
+    ])
+  })
+
+  it('draws nothing on a terminal step', () => {
+    expect(portsOf('end', {}, [])).toEqual([])
+  })
+
+  it('still draws a port on a terminal step someone wired anyway', () => {
+    expect(portsOf('end', {}, [undefined])).toEqual([null])
   })
 })

@@ -228,6 +228,36 @@ export function handlesOf(nodeType: string, data: Record<string, unknown>): stri
   return [...new Set([...declared, ...(fallback ? [fallback] : [])])]
 }
 
+/**
+ * The source ports to draw on a card, as handle names — `null` being the
+ * unnamed one.
+ *
+ * Binding an edge to a port is what makes a fork wirable by dragging, and it is
+ * also the one thing that can make an edge *disappear*: React Flow drops an edge
+ * whose `sourceHandle` matches no port on the node. So the ports are not just
+ * what the node declares — they include every handle the node's own edges
+ * already use, whoever wrote them. A vendor node's handle, a handle from a spec
+ * newer than this build, a handle someone deleted from `outputs` but not from
+ * the graph: each still gets a port, so the edge still has somewhere to land.
+ */
+export function portsOf(
+  nodeType: string,
+  data: Record<string, unknown>,
+  edgeHandles: Array<string | null | undefined>,
+): Array<string | null> {
+  const named = [
+    ...new Set([
+      ...handlesOf(nodeType, data),
+      ...edgeHandles.filter((h): h is string => typeof h === 'string' && h.length > 0),
+    ]),
+  ]
+  // A terminal node has no outputs at all — unless the document says otherwise,
+  // in which case drawing the port is how someone can see and remove the edge.
+  if (look(nodeType).handles?.length === 0 && edgeHandles.length === 0) return []
+  const unnamed = named.length === 0 || edgeHandles.some((h) => !h)
+  return unnamed ? [...named, null] : named
+}
+
 /** The vendor prefix of a custom type, for the badge on its card. */
 export function vendorOf(nodeType: string): string | undefined {
   const colon = nodeType.indexOf(':')

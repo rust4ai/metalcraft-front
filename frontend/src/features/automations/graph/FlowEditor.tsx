@@ -196,7 +196,7 @@ export function FlowEditor({
                 if (id) setSelectedId(undefined)
               },
               onMove: (id, to) => edit(moveNode(flow, id, to)),
-              onConnect: (source, target) => edit(connect(flow, source, target)),
+              onConnect: (source, target, handle) => edit(connect(flow, source, target, handle)),
               onDeleteNode: (id) => {
                 edit(deleteNode(flow, id))
                 setSelectedId((s) => (s === id ? undefined : s))

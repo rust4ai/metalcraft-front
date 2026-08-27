@@ -38,6 +38,9 @@ export interface RowColumn {
   options?: string[]
   mono?: boolean
   placeholder?: string
+  /** Takes the full width of the row rather than half — prose and JSON need it,
+   *  a handle name does not. */
+  wide?: boolean
 }
 
 /**
@@ -117,16 +120,26 @@ export const NODE_FIELDS: Record<string, Field[]> = {
       hint: 'The model picks exactly one. Each handle is a port on the card — wire it from there.',
       rowNoun: 'output',
       newRow: { handle: '' },
+      // Handle and the variable it lands in are the mechanics, and pair on one
+      // line; the description and schema are what the model reads, and get the
+      // width to be readable.
       columns: [
         { key: 'handle', label: 'Handle', kind: 'text', mono: true },
+        { key: 'var', label: 'Store payload as', kind: 'text', mono: true },
         {
           key: 'description',
           label: 'When to pick it',
           kind: 'text',
+          wide: true,
           placeholder: 'What this outcome means',
         },
-        { key: 'schema', label: 'Payload', kind: 'json', placeholder: '{"type":"string"}' },
-        { key: 'var', label: 'Store payload as', kind: 'text', mono: true },
+        {
+          key: 'schema',
+          label: 'Payload',
+          kind: 'json',
+          wide: true,
+          placeholder: '{"type":"string"}',
+        },
       ],
     },
     { key: 'persona', label: 'Persona', kind: 'text' },

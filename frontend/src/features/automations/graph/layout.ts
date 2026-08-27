@@ -17,8 +17,10 @@ import type { FlowDefinition, FlowEdge, FlowNode } from '@/types'
 
 /** Horizontal distance between ranks. Wide enough for an edge label to sit in. */
 const RANK_GAP = 260
-/** Vertical distance between nodes sharing a rank. */
-const ROW_GAP = 110
+/** Vertical distance between nodes sharing a rank. Tall enough for a card that
+ *  lists its output ports — a branch with four handles is four rows taller than
+ *  a prompt, and two of them in one rank must not overlap. */
+const ROW_GAP = 150
 
 export interface Placed {
   id: string
