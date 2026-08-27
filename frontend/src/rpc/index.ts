@@ -130,6 +130,8 @@ export const fleet = {
   presets: () => call<AgentPreset[]>('list_presets'),
   create: (preset: string, name?: string) => call<AgentInstance>('create_instance', { preset, name }),
   remove: (id: string) => call<void>('delete_instance', { id }),
+  /** The name only. Whether an agent is kept is `persistent`, and this never touches it. */
+  rename: (id: string, name: string) => call<AgentInstance>('rename_instance', { id, name }),
   setPersona: (id: string, persona: string) =>
     call<AgentInstance>('set_instance_persona', { id, persona }),
   personas: (preset: string) => call<RosterPersona[]>('list_preset_personas', { preset }),

@@ -24,6 +24,9 @@ interface FleetState {
   load: () => Promise<void>
   spawn: (preset: string, name?: string) => Promise<AgentInstance | null>
   remove: (id: string) => Promise<void>
+  /** Rename an agent. Returns the pod's message on refusal, `null` on success —
+   *  the same shape as `setPersona`, so the surfaces share one error path. */
+  rename: (id: string, name: string) => Promise<string | null>
   setStatus: (instanceId: string, status: Status) => void
 
   /** The roster for a preset, cached — the rail asks on every session open and
@@ -67,6 +70,19 @@ export const useFleet = create<FleetState>((set, get) => ({
   remove: async (id) => {
     await fleet.remove(id)
     set({ instances: get().instances.filter((i) => i.id !== id) })
+  },
+
+  rename: async (id, name) => {
+    try {
+      // The pod's answer is the whole instance, so it is spliced in rather than
+      // the name patched locally: the same request also touches `last_active_at`,
+      // which is what the fleet sorts the history fold by.
+      const updated = await fleet.rename(id, name)
+      set({ instances: get().instances.map((i) => (i.id === id ? updated : i)) })
+      return null
+    } catch (e) {
+      return String(e)
+    }
   },
 
   setStatus: (instanceId, status) => set({ status: { ...get().status, [instanceId]: status } }),

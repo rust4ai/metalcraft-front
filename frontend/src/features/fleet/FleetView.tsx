@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, ChevronRight, Plus, RefreshCw, AlertTriangle, Store } from 'lucide-react'
+import { Bot, ChevronRight, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Card } from '@/components/ui/Card'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { partitionByActivity } from './activity'
+import { EditableName } from './EditableName'
 import { cn } from '@/lib/cn'
 import type { AgentInstance, InstanceOrigin } from '@/types'
 
@@ -40,13 +41,16 @@ export function FleetView() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-8 px-0"
+            onClick={() => void load()}
+            disabled={loading}
+            aria-label="Refresh"
+            title="Refresh"
+          >
             <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-            Refresh
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => go({ kind: 'packs' })}>
-            <Store className="h-4 w-4" />
-            Browse agent presets
           </Button>
           <Button size="sm" disabled={presets.length === 0} onClick={() => setNewAgentOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -158,7 +162,9 @@ function InstanceCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <StatusDot status={status} />
-            <span className="truncate font-medium">{instance.name}</span>
+            {/* Editable in place. The card still opens the session — the name
+                stops the click, so a rename here never costs a navigation. */}
+            <EditableName instance={instance} className="-ml-1.5 font-medium" />
           </div>
           <p className="mt-1 truncate font-mono text-[11px] text-ink-2">
             {instance.agent_preset} · {instance.persona}

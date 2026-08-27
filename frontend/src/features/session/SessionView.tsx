@@ -10,6 +10,7 @@ import { Followups } from './Followups'
 import { DebugButton, DebugDrawer } from './DebugDrawer'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { groupIntoBlocks } from './blocks'
+import { EditableName } from '@/features/fleet/EditableName'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
@@ -44,7 +45,13 @@ export function SessionView({ instanceId }: { instanceId: string }) {
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
         <StatusDot status={busy ? (session?.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{instance?.name ?? 'Agent'}</div>
+          {/* The name is the user's to set, and this is where they are looking
+              when they decide the agent deserves a better one. */}
+          {instance ? (
+            <EditableName instance={instance} className="-ml-1.5 text-sm font-medium" />
+          ) : (
+            <div className="truncate text-sm font-medium">Agent</div>
+          )}
           <div className="truncate text-xs text-ink-2">
             {instance ? `${instance.agent_preset} · ${instance.persona}` : ''}
           </div>

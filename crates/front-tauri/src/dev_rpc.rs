@@ -250,6 +250,10 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .delete_instance(need(args, "id")?)
             .await
             .map(|_| json!(null))),
+        "rename_instance" => j(app
+            .conn(None)?
+            .rename_instance(need(args, "id")?, need(args, "name")?)
+            .await),
         "set_instance_persona" => j(app
             .conn(None)?
             .set_instance_persona(need(args, "id")?, need(args, "persona")?)

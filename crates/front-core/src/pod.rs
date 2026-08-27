@@ -251,6 +251,15 @@ impl PodConnection {
         self.delete_path(&format!("/agents/instances/{id}")).await
     }
 
+    /// Rename an agent.
+    ///
+    /// Only the name: the pod used to set `persistent` on any patch carrying one,
+    /// and does not any more. Whether an agent is kept is its own field.
+    pub async fn rename_instance(&self, id: &str, name: &str) -> anyhow::Result<AgentInstance> {
+        let body = serde_json::json!({ "name": name });
+        self.patch(&format!("/agents/instances/{id}"), &body).await
+    }
+
     /// Switch which persona an instance speaks as.
     ///
     /// The pod validates against the preset's roster and returns 400 with the

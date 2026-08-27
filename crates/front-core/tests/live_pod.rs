@@ -286,6 +286,19 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
         "disarming must not take the agent with it"
     );
 
+    // Rename it before cleanup. A name patch changes the name and nothing else:
+    // the pod used to set `persistent` alongside it, so the gesture for "call it
+    // something I recognise" silently changed how long the pod kept it.
+    let renamed = pod
+        .rename_instance(&agent.id, "live-probe renamed")
+        .await
+        .expect("PATCH …/instances/{id} with a name");
+    assert_eq!(renamed.name, "live-probe renamed");
+    assert_eq!(
+        renamed.persistent, agent.persistent,
+        "a rename must not move an agent's lifetime"
+    );
+
     // Clean up the agent this run minted. Not just tidiness: arming mints a new
     // one every time, so without this a pod accumulates a "General Agent —
     // Hourly" per run until the fleet is unreadable. It also exercises the

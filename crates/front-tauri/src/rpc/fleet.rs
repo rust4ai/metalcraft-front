@@ -48,6 +48,23 @@ pub async fn delete_instance(id: String, state: State<'_>) -> Result<(), String>
         .map_err(|e| e.to_string())
 }
 
+/// Rename an agent (PLAN §10.1) — the one field of an instance a user owns.
+///
+/// A label, not a lifetime: the pod no longer marks a renamed agent persistent.
+/// The instance comes back whole because the patch also touches `last_active_at`.
+#[tauri::command]
+pub async fn rename_instance(
+    id: String,
+    name: String,
+    state: State<'_>,
+) -> Result<AgentInstance, String> {
+    state
+        .conn(None)?
+        .rename_instance(&id, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Switch an instance's persona (PLAN §10.2 — the rail's persona switcher).
 #[tauri::command]
 pub async fn set_instance_persona(

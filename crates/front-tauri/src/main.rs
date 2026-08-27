@@ -110,6 +110,7 @@ fn main() {
             rpc::buildr::buildr_install_pack,
             rpc::buildr::buildr_disconnect,
             rpc::buildr::buildr_link,
+            rpc::fleet::rename_instance,
             rpc::fleet::set_instance_persona,
             rpc::fleet::list_preset_personas,
             rpc::fleet::instance_memory,

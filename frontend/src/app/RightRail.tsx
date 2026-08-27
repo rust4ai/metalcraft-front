@@ -12,6 +12,7 @@ import { describeTool, truncateTarget } from '@/features/session/describeTool'
 import type { ToolCard } from '@/features/session/transcript'
 import { Resizer } from './Resizer'
 import { PersonaSwitcher } from '@/features/session/PersonaSwitcher'
+import { EditableName } from '@/features/fleet/EditableName'
 import { cn } from '@/lib/cn'
 
 /**
@@ -113,7 +114,7 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
   return (
     <>
       <Section title="Agent">
-        <Row label="Name" value={instance.name} />
+        <Row label="Name" value={<EditableName instance={instance} className="text-[12px] text-ink-2" />} />
         <Row label="Preset" value={instance.agent_preset} mono />
         <Row label="Pack" value={instance.agent_pack} mono />
         <Row label="Persona" value={<PersonaSwitcher instance={instance} />} />
