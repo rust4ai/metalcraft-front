@@ -85,8 +85,14 @@ export function SessionView({ instanceId }: { instanceId: string }) {
             {/* Only ever one waiting indicator, and never alongside output.
                 Keyed by phase so the counter restarts with each one: "Compacting
                 context 40.2s" is the sentence that explains a long turn, and a
-                counter that keeps running across phases cannot say it. */}
-            {session?.transcript.thinking && (
+                counter that keeps running across phases cannot say it.
+
+                Shown while stopping even when the agent is inside a tool call,
+                where there is otherwise no waiting indicator at all: a press
+                that leaves the screen exactly as it was is indistinguishable
+                from a button that does nothing, which is how this read for the
+                whole time a delegated sub-agent kept working through it. */}
+            {(session?.transcript.thinking || stopping) && (
               <LoadingState key={phase ?? 'busy'} label={stopping ? 'Stopping' : phaseLabel(phase)} />
             )}
             <div ref={bottom} />
