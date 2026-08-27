@@ -4,6 +4,7 @@ import { LaunchpadView } from '@/features/onboarding/LaunchpadView'
 import { BootScreen } from '@/features/onboarding/WaitScreen'
 import { useUi } from '@/stores/ui'
 import { Gallery } from '@/dev/Gallery'
+import { installExternalLinkHandler } from '@/lib/external'
 import { Shell } from './Shell'
 
 /** Dev-only: `?gallery` renders the primitive harness instead of the app. */
@@ -22,6 +23,11 @@ export function App() {
   useEffect(() => {
     void boot()
   }, [boot])
+
+  // One listener for every outward link in the tree: inside the Tauri window a
+  // plain anchor either does nothing or navigates the *app* to the page, and
+  // there is no way back from that. See `installExternalLinkHandler`.
+  useEffect(() => installExternalLinkHandler(), [])
 
   if (showGallery) return <Gallery />
 

@@ -3,6 +3,7 @@ import { AlertTriangle, Check, ExternalLink, Loader2, Unplug } from 'lucide-reac
 import { useSettings } from '@/stores/settings'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { openExternal } from '@/lib/external'
 import type { ServiceId } from '@/types'
 import { judgeKey } from './keyHealth'
 import { SERVICES } from './services'
@@ -124,7 +125,7 @@ export function ConnectionCard({ service }: { service: ServiceId }) {
             </Button>
           )}
           {connection?.url && (
-            <Button size="sm" variant="outline" onClick={() => window.open(connection.url, '_blank')}>
+            <Button size="sm" variant="outline" onClick={() => void openExternal(connection.url)}>
               {spec.open} <ExternalLink className="h-3.5 w-3.5" />
             </Button>
           )}

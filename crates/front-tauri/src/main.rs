@@ -5,6 +5,7 @@
 #[cfg(feature = "dev-rpc")]
 mod dev_rpc;
 mod diag;
+mod nav_guard;
 mod rpc;
 mod state;
 #[cfg(feature = "dev-rpc")]
@@ -62,6 +63,7 @@ fn main() {
     let state = Arc::new(AppState::default());
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(nav_guard::init())
         .manage(state.clone())
         .setup(move |app| {
             use tauri::Manager;
@@ -99,6 +101,7 @@ fn main() {
             rpc::pods::account_credits,
             rpc::pods::billing_plan,
             rpc::pods::open_checkout,
+            rpc::system::open_url,
             rpc::pods::provision_pod,
             rpc::octaweave::octaweave_status,
             rpc::octaweave::octaweave_connect,
