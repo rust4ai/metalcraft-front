@@ -329,7 +329,11 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         "flow_binding" => j(app.conn(None)?.flow_binding(need(args, "flowId")?).await),
         "run_flow" => j(app
             .conn(None)?
-            .run_flow(need(args, "flowId")?, arg(args, "instanceId"))
+            .run_flow(
+                need(args, "flowId")?,
+                arg(args, "instanceId"),
+                args.get("inputs").filter(|v| !v.is_null()),
+            )
             .await),
         "arm_schedule" => j(app
             .conn(None)?

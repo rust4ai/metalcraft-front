@@ -758,8 +758,12 @@ impl PodConnection {
         &self,
         flow_id: &str,
         instance_id: Option<&str>,
+        inputs: Option<&serde_json::Value>,
     ) -> anyhow::Result<FlowRunSummary> {
-        let body = serde_json::json!({ "instance_id": instance_id });
+        // `inputs` are the entry node's declared parameters. Omitted, the pod
+        // falls back to each input's default and warns about the rest rather
+        // than refusing — so a flow can always be tried before it is filled in.
+        let body = serde_json::json!({ "instance_id": instance_id, "inputs": inputs });
         self.post(&format!("/flows/{flow_id}/run"), &body).await
     }
 

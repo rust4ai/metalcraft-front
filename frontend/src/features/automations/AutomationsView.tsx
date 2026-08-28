@@ -11,7 +11,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
+import { automations as flowsApi } from '@/rpc'
 import { ArmDialog } from './ArmDialog'
+import { RunDialog } from './RunDialog'
+import { declaredInputs } from './flowInputs'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Card } from '@/components/ui/Card'
@@ -61,7 +64,10 @@ function Opening() {
 }
 
 export function AutomationsView() {
-  const { flows, runs, loading, error, load } = useAutomations()
+  // `run` is renamed: the lists below map over runs, and a `run` action in the
+  // same scope as a `run` row shadows it.
+  const { flows, runs, loading, error, load, run: runFlow, busy, schedulesOf } = useAutomations()
+  const go = useUi((s) => s.go)
   // Held here rather than per-row so the dialog survives the list re-rendering
   // underneath it — arming reloads the flows, and a row-owned modal would
   // unmount itself mid-confirm.
@@ -70,6 +76,10 @@ export function AutomationsView() {
   // underneath it cannot close the graph someone is reading.
   const [viewing, setViewing] = useState<Flow | null>(null)
   const [creating, setCreating] = useState(false)
+  /** The flow document a run is being set up for — held here, like `arming`, so
+   *  reloading the list underneath it cannot close a dialog someone is typing
+   *  into. `null` whenever nothing is being started. */
+  const [runningFlow, setRunningFlow] = useState<SavedFlow | null>(null)
   /** A flow that exists only on screen until the editor saves it. Abandoning one
    *  leaves nothing behind, which creating it up front would not. */
   const [drafting, setDrafting] = useState<SavedFlow | null>(null)
@@ -77,6 +87,30 @@ export function AutomationsView() {
   useEffect(() => {
     void load()
   }, [load])
+
+  /** Press Run: ask for the flow's parameters first, if it declares any.
+   *
+   *  The list row does not carry them — `list_flows` stops at a node count — so
+   *  the graph is fetched to find out. A flow that declares nothing runs on the
+   *  click it always did; a dialog that asks nothing is a step that means
+   *  nothing. */
+  const start = async (flow: Flow) => {
+    const document = await flowsApi.get(flow.id).catch(() => null)
+    if (document && declaredInputs(document).length > 0) {
+      setRunningFlow(document)
+      return
+    }
+    await launch(flow.id, {})
+  }
+
+  /** Run it, then land in the conversation it just wrote — running an armed
+   *  automation by hand *is* its scheduled firing, same agent and same memory. */
+  const launch = async (flowId: string, inputs: Record<string, unknown>) => {
+    const summary = await runFlow(flowId, inputs)
+    setRunningFlow(null)
+    const armed = schedulesOf(flowId).find((s) => s.instance_id)?.instance_id
+    if (summary?.chat_id && armed) go({ kind: 'session', instanceId: armed })
+  }
 
   const waiting = runs.filter((r) => r.status === 'paused')
 
@@ -162,12 +196,25 @@ export function AutomationsView() {
       ) : (
         <div className="space-y-3">
           {flows.map((flow) => (
-            <FlowCard key={flow.id} flow={flow} onArm={setArming} onOpen={setViewing} />
+            <FlowCard
+              key={flow.id}
+              flow={flow}
+              onArm={setArming}
+              onOpen={setViewing}
+              onRun={(f) => void start(f)}
+            />
           ))}
         </div>
       )}
 
       <ArmDialog flow={arming} onClose={() => setArming(null)} />
+
+      <RunDialog
+        flow={runningFlow}
+        running={runningFlow ? (busy[runningFlow.id] ?? false) : false}
+        onRun={(inputs) => void launch(runningFlow?.id ?? '', inputs)}
+        onClose={() => setRunningFlow(null)}
+      />
 
       {creating && (
         <Suspense fallback={null}>
@@ -203,13 +250,14 @@ function FlowCard({
   flow,
   onArm,
   onOpen,
+  onRun,
 }: {
   flow: Flow
   onArm: (flow: Flow) => void
   onOpen: (flow: Flow) => void
+  onRun: (flow: Flow) => void
 }) {
-  const { run, busy, schedulesOf } = useAutomations()
-  const go = useUi((s) => s.go)
+  const { busy, schedulesOf } = useAutomations()
   const running = busy[flow.id] ?? false
   const schedules = schedulesOf(flow.id)
 
@@ -247,17 +295,10 @@ function FlowCard({
           <Workflow className="h-4 w-4" />
           View
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={running}
-          onClick={() =>
-            void run(flow.id).then((summary) => {
-              const armed = schedules.find((s) => s.instance_id)?.instance_id
-              if (summary?.chat_id && armed) go({ kind: 'session', instanceId: armed })
-            })
-          }
-        >
+        {/* Starting is the view's job, not the row's: a flow that declares entry
+            inputs asks for them first, in a dialog the list must be able to
+            re-render underneath. */}
+        <Button variant="ghost" size="sm" disabled={running} onClick={() => onRun(flow)}>
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {running ? 'Running…' : 'Run now'}
         </Button>

@@ -242,7 +242,10 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
 
     // Run it. This flow has no prompt node, so it needs no model and no key —
     // what is under test is the request/response shape, not inference.
-    let summary = pod.run_flow("live-probe", None).await.expect("POST …/run");
+    let summary = pod
+        .run_flow("live-probe", None, None)
+        .await
+        .expect("POST …/run");
     assert_eq!(summary.flow_id, "live-probe");
     assert!(!summary.status.is_empty());
 

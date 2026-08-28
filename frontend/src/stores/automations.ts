@@ -48,8 +48,9 @@ interface AutomationsState {
   disarm: (scheduledId: string) => Promise<void>
   /** Pause or resume a schedule without deleting it. */
   setEnabled: (scheduledId: string, enabled: boolean) => Promise<void>
-  /** Run now, and return what it did. Null with `error` set on refusal. */
-  run: (flowId: string) => Promise<FlowRunSummary | null>
+  /** Run now, and return what it did. Null with `error` set on refusal.
+   *  `inputs` seed the flow's declared entry parameters. */
+  run: (flowId: string, inputs?: Record<string, unknown>) => Promise<FlowRunSummary | null>
   /** Answer a paused run. `handle` is one of its `resume_handles`. */
   resume: (runId: string, handle: string) => Promise<FlowRunSummary | null>
 }
@@ -145,12 +146,12 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
     }
   },
 
-  run: async (flowId) => {
+  run: async (flowId, inputs) => {
     // Keyed by flow rather than schedule: running is an act on the whole graph,
     // and the row it disables is the flow's own Run button.
     set({ busy: { ...get().busy, [flowId]: true }, error: null })
     try {
-      const summary = await automations.run(flowId)
+      const summary = await automations.run(flowId, inputs)
       // A run leaves a conversation and may leave a paused record; both are
       // things this view shows, so re-read rather than infer.
       await get().load()

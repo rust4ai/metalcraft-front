@@ -167,11 +167,12 @@ pub async fn update_schedule(
 pub async fn run_flow(
     flow_id: String,
     instance_id: Option<String>,
+    inputs: Option<serde_json::Value>,
     state: State<'_>,
 ) -> Result<FlowRunSummary, String> {
     state
         .conn(None)?
-        .run_flow(&flow_id, instance_id.as_deref())
+        .run_flow(&flow_id, instance_id.as_deref(), inputs.as_ref())
         .await
         .map_err(|e| e.to_string())
 }

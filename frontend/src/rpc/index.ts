@@ -163,9 +163,11 @@ export const automations = {
   /** What arming would permit: personas, domains, keys, which tools mutate. */
   binding: (flowId: string) => call<FlowBinding>('flow_binding', { flowId }),
   /** Run now. The pod resolves the armed agent, so this is the same act as a
-   *  scheduled firing. Resolves when the flow finishes, not when it starts. */
-  run: (flowId: string, instanceId?: string) =>
-    call<FlowRunSummary>('run_flow', { flowId, instanceId }),
+   *  scheduled firing. Resolves when the flow finishes, not when it starts.
+   *  `inputs` are the entry node's declared parameters; omitted ones fall back
+   *  to their defaults, and the pod warns about the rest rather than refusing. */
+  run: (flowId: string, inputs?: Record<string, unknown>, instanceId?: string) =>
+    call<FlowRunSummary>('run_flow', { flowId, instanceId, inputs }),
   /** Take the decision a paused run is waiting on. It picks up in the
    *  conversation it paused in. */
   resume: (runId: string, handle: string) =>
