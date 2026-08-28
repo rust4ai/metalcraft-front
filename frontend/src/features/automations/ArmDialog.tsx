@@ -47,6 +47,12 @@ export function ArmDialog({
   const [attachTo, setAttachTo] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ScheduleSpec>(defaultSchedule)
 
+  /** The agent this flow already has, if it has one — minted by an earlier hand
+   *  run, or by arming it before. Arming continues it. */
+  const ownAgent = instances.find(
+    (i) => i.origin.kind === 'flow' && i.origin.flow_id === flow?.id,
+  )
+
   const open = Boolean(flow)
   const binding = flow ? bindings[flow.id] : undefined
   const working = flow ? (busy[`arm:${flow.id}`] ?? false) : false
@@ -121,8 +127,14 @@ export function ArmDialog({
                   attachTo === null ? 'bg-accent-tint shadow-btn' : 'hover:bg-hover',
                 )}
               >
-                {consent?.preset_name || binding.preset}
-                <span className="ml-1.5 text-ink-3">— a new agent for this automation</span>
+                {ownAgent?.name ?? consent?.preset_name ?? binding.preset}
+                {/* Not always *new*: a flow that has already been run by hand
+                    has an agent, and arming continues it rather than minting a
+                    second one beside it. Saying "a new agent" there promised a
+                    fresh memory and delivered an existing one. */}
+                <span className="ml-1.5 text-ink-3">
+                  {ownAgent ? '— this automation’s own agent' : '— a new agent for this automation'}
+                </span>
               </button>
               {/* Running a briefer as the agent you already chat with is a
                   reasonable thing to want, and the pod supports it. The cost is

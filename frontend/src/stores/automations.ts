@@ -154,7 +154,12 @@ export const useAutomations = create<AutomationsState>((set, get) => ({
       const summary = await automations.run(flowId, inputs)
       // A run leaves a conversation and may leave a paused record; both are
       // things this view shows, so re-read rather than infer.
-      await get().load()
+      //
+      // **And the fleet**, for the same reason arming does: a flow's first run
+      // mints its agent, and the app is about to navigate into it. Without this
+      // it lands on an agent the fleet store has never heard of — and the home
+      // screen would not show the new one until something else reloaded it.
+      await Promise.all([get().load(), useFleet.getState().load()])
       return summary
     } catch (e) {
       set({ error: String(e) })

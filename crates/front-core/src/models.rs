@@ -144,6 +144,26 @@ pub struct ChatSummary {
     /// report it — which is not "no turns", and must not be ranked as if it were.
     #[serde(default)]
     pub turn_count: Option<u32>,
+    /// The last thing said, as one line. The only thing that makes a row
+    /// identifiable as *this* conversation rather than a timestamp beside an id.
+    ///
+    /// It was missing here while the UI and the TS type both expected it, so the
+    /// pod sent it and this struct quietly dropped it on the way through: every
+    /// row in the conversation list read "Nothing said yet".
+    #[serde(default)]
+    pub preview: Option<String>,
+    /// Set when this conversation is a **flow run** rather than something typed.
+    /// A flow agent's list is otherwise a column of timestamps: every row is a
+    /// run, and none of them says so.
+    #[serde(default)]
+    pub flow_run: Option<FlowRunRef>,
+}
+
+/// Which run of which flow a conversation is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowRunRef {
+    pub flow_id: String,
+    pub run_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

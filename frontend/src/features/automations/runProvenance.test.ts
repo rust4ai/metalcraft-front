@@ -29,15 +29,15 @@ describe('provenanceOf', () => {
     expect(explain(p)).toBeUndefined()
   })
 
-  it('still names the agent of a run that never spoke', () => {
-    // A tool-only flow deliberately leaves no empty chat behind, but it did run
-    // as somebody and it did touch that agent's memory.
+  it('still names the agent of a run the pod kept no conversation for', () => {
+    // Runs from an older pod, which opened a chat only for a run that spoke. It
+    // did run as somebody, and it did touch that agent's memory.
     const p = provenanceOf(run('inst-1', null), roster)
     expect(p).toEqual({ kind: 'silent', instanceId: 'inst-1', agentName: 'Morning briefer' })
     expect(explain(p)).toBeDefined()
   })
 
-  it('calls an ad-hoc run of an unarmed flow nobody', () => {
+  it('calls a run the pod had no agent for nobody', () => {
     const p = provenanceOf(run(null, null), roster)
     expect(p).toEqual({ kind: 'anonymous' })
     expect(describeAgent(p)).toBe('nobody')

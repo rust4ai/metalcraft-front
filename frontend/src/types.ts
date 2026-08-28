@@ -283,6 +283,16 @@ export interface ChatSummary {
   /** How many turns the conversation holds. Absent from a pod too old to report
    *  it, which is not the same as none and is not ranked as if it were. */
   turn_count?: number | null
+  /** Set when this conversation *is* an automation run — which flow, and which
+   *  run of it. Absent for anything typed, and from a pod older than one
+   *  conversation per run. */
+  flow_run?: FlowRunRef | null
+}
+
+/** Which run of which flow a conversation is. */
+export interface FlowRunRef {
+  flow_id: string
+  run_id: string
 }
 
 export type ChatMessage =

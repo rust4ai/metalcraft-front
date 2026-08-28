@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Loader2, MessageSquare, Plus, Trash2 } from 'lucide-react'
+import { Check, Loader2, MessageSquare, Play, Plus, Trash2 } from 'lucide-react'
 import { useSessions } from '@/stores/sessions'
 
 /**
@@ -108,8 +108,19 @@ export function ConversationPicker({ instanceId }: { instanceId: string }) {
                 <div className={`truncate text-[12.5px] ${c.preview ? 'text-ink' : 'text-ink-3 italic'}`}>
                   {c.preview ?? 'Nothing said yet'}
                 </div>
-                <div className="mt-0.5 text-[11px] text-ink-3">
-                  {when(c.updated_at ?? c.created_at)} · {c.turn_count === 1 ? '1 turn' : `${c.turn_count} turns`}
+                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-3">
+                  {/* An automation agent's list is every run it has ever made.
+                      Without this the rows are a column of timestamps, and the
+                      one conversation you typed into it is lost among them. */}
+                  {c.flow_run && (
+                    <span className="flex items-center gap-1 rounded-chip bg-inset px-1.5 py-px text-[10px] uppercase tracking-wide">
+                      <Play className="h-2.5 w-2.5" /> Run
+                    </span>
+                  )}
+                  <span>
+                    {when(c.updated_at ?? c.created_at)} ·{' '}
+                    {c.turn_count === 1 ? '1 turn' : `${c.turn_count} turns`}
+                  </span>
                 </div>
               </button>
               {c.id === current ? (

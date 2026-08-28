@@ -3,27 +3,29 @@ import type { FlowRun } from '@/types'
 /**
  * Who a flow run ran as, and where to read what it said.
  *
- * A run is not a log the pod keeps off to one side. Arming a schedule *mints*
- * the agent; every prompt and branch turn then recalls from and writes to that
- * agent's memory, and the first node that actually speaks opens a real
- * conversation there, marking each firing with the flow's name. So "what did my
- * 3am automation do" has a better answer than a node trace — the transcript.
+ * A run is not a log the pod keeps off to one side. Every flow that has ever run
+ * has an agent — its own, minted by the first run or by arming, whichever came
+ * first — and every run is one conversation inside it. Each prompt and branch
+ * turn recalls from and writes to that agent's memory, and the run signs off
+ * with how it ended even when it never spoke. So "what did my 3am automation
+ * do" has a better answer than a node trace: the transcript.
  *
- * Three kinds of run cannot give that answer, which is the whole reason this is
- * a union rather than a nullable id: a tool-only flow deliberately leaves no
- * empty chat behind, an ad-hoc run of an unarmed flow has no agent at all, and
- * an agent can since have been deleted.
+ * Two kinds of run still cannot give that answer, which is why this is a union
+ * rather than an id: a pod with nothing spawnable to run as (no presets
+ * installed) leaves the run anonymous, and an agent can since have been deleted.
  */
 export type RunProvenance =
   /** Ran as an agent and wrote a conversation there. Both ids are the way in. */
   | { kind: 'conversation'; instanceId: string; chatId: string; agentName?: string }
-  /** Ran as an agent but never reached a node that spoke. Still worth naming and
-   *  opening: this run touched that agent's memory. */
+  /** Ran as an agent, but the pod recorded no conversation for it — an older pod,
+   *  which opened one only for runs that spoke. Still worth naming and opening:
+   *  this run touched that agent's memory. */
   | { kind: 'silent'; instanceId: string; agentName?: string }
   /** Ran as an agent this pod no longer has. Its conversations went with it. */
   | { kind: 'gone'; instanceId: string }
-  /** An ad-hoc run of an unarmed flow: no agent, no memory touched, no
-   *  transcript. The node trace is the whole record, by design. */
+  /** Ran as nobody: the pod had no agent it could spawn for this flow, so no
+   *  memory was touched and no transcript written. The node trace is the whole
+   *  record. */
   | { kind: 'anonymous' }
 
 /**
@@ -59,13 +61,13 @@ export function explain(provenance: RunProvenance): string | undefined {
       return undefined
     }
     case 'silent': {
-      return 'This run never reached a step that spoke, so it wrote no transcript. It still ran as this agent, and what it did is in that agent’s memory.'
+      return 'This run wrote no transcript — the pod it ran on kept one only for runs that spoke. It still ran as this agent, and what it did is in that agent’s memory.'
     }
     case 'gone': {
       return 'The agent this ran as has been deleted, and its conversations went with it. The trace below is what is left.'
     }
     case 'anonymous': {
-      return 'Run by hand, as nobody. An automation gets an agent — and a memory that carries between firings — when you give it a schedule.'
+      return 'Run as nobody: this pod has no agent it can start for this automation, so the run kept no memory and left no transcript. Installing an agent pack gives it one.'
     }
   }
 }
