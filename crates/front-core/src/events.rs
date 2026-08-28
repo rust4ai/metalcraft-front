@@ -113,10 +113,15 @@ pub enum ChatEvent {
     },
     /// A message sent while a turn was running: taken, not started. `position`
     /// is 1 for the next to run.
-    Queued { message: String, position: usize },
+    Queued {
+        message: String,
+        position: usize,
+    },
     /// A queued message joined the turn already in flight. It stops being
     /// pending and becomes part of the thread.
-    Injected { message: String },
+    Injected {
+        message: String,
+    },
     /// The turn's plan as it stands. Sent on every change, including the empty
     /// list a new turn starts with — render it, do not accumulate it.
     Plan {

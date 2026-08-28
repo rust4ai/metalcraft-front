@@ -7,7 +7,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { automations } from '@/rpc'
-import { packSatisfied, type Flow, type PackRequirement, type ScheduleSpec } from '@/types'
+import {
+  packSatisfied,
+  type Flow,
+  type PackRequirement,
+  type SchedulePreview,
+  type ScheduleSpec,
+} from '@/types'
 
 /**
  * The second consent moment (PLAN §10.7).
@@ -101,6 +107,7 @@ export function ArmDialog({
         <div className="space-y-3">
           <Line label="When">
             <ScheduleEditor value={schedule} onChange={setSchedule} />
+            <SchedulePreviewLine schedule={schedule} />
           </Line>
 
           <Line label="Runs as">
@@ -248,6 +255,68 @@ function defaultSchedule(): ScheduleSpec {
     cron: '0 0 8 * * *',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   }
+}
+
+/**
+ * When this trigger would actually fire, asked of the pod while somebody types.
+ *
+ * The editor below warns that a five-field POSIX cron saves and then never
+ * fires; this is the pod answering that question *before* it is armed. An empty
+ * `next_runs` on a cron is exactly that failure — the pod could not parse it —
+ * and it is worth shouting about, because the alternative is finding out at 8am
+ * on a morning when nothing happened.
+ */
+function SchedulePreviewLine({ schedule }: { schedule: ScheduleSpec }) {
+  const [preview, setPreview] = useState<SchedulePreview | null>(null)
+
+  // Keyed on the spec's content, so retyping a cron re-asks and switching to
+  // `manual` stops asking about a cron that is no longer on screen.
+  const key = JSON.stringify(schedule)
+  useEffect(() => {
+    setPreview(null)
+    if (schedule.type === 'manual') return
+    let live = true
+    // Debounced: a cron is typed a character at a time, and every intermediate
+    // state is a different, mostly invalid expression.
+    const timer = setTimeout(() => {
+      automations
+        .previewSchedule(schedule)
+        .then((p) => live && setPreview(p))
+        .catch(() => {})
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+    // Keyed on the serialised spec rather than the object: a new object with the
+    // same fields is a re-render, not a new question to ask the pod.
+  }, [key])
+
+  if (schedule.type === 'manual' || !preview) return null
+
+  if (preview.next_runs.length === 0) {
+    return (
+      <p className="mt-1 flex items-start gap-1.5 text-[12px] text-orange">
+        <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+        <span>
+          This pod cannot read that trigger, so it would never fire. Saved as{' '}
+          <span className="font-mono">{preview.description}</span>.
+        </span>
+      </p>
+    )
+  }
+
+  return (
+    <p className="mt-1 text-[11.5px] text-ink-3">
+      Next:{' '}
+      {preview.next_runs.slice(0, 3).map((iso, i) => (
+        <span key={iso}>
+          {i > 0 && ', '}
+          {new Date(iso).toLocaleString()}
+        </span>
+      ))}
+    </p>
+  )
 }
 
 /** The trigger picker: a kind, and whatever that kind needs.

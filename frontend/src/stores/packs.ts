@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { keys, packs } from '@/rpc'
 import { describeRegistryError, updateAvailable } from '@/features/packs/registryState'
-import type { InstalledPack, KeyEntry, PackManifest, PackUpdateReport, Registries, RegistryConnection, SearchHit } from '@/types'
+import type { AgentPackPreview, InstalledPack, KeyEntry, PackManifest, PackUpdateReport, Registries, RegistryConnection, SearchHit } from '@/types'
 
 /**
  * Registry browsing state.
@@ -66,6 +66,9 @@ interface PacksState {
   /** The pod's key names, for the requirements checklist. Names only — a value
    *  never crosses into the webview (PLAN §2). */
   podKeys: string[]
+  /** The pod's own reading of each inspected pack, keyed by reference. Absent
+   *  when the pod would not or could not open the archive. */
+  previews: Record<string, AgentPackPreview>
   view: (hit: SearchHit | null) => Promise<void>
 }
 
@@ -84,6 +87,7 @@ export const usePacks = create<PacksState>((set, get) => ({
   manifestError: {},
   packIds: {},
   podKeys: [],
+  previews: {},
   report: null,
   extraHits: [],
   checking: false,
@@ -104,14 +108,23 @@ export const usePacks = create<PacksState>((set, get) => ({
     const registry = get().active
     if (!registry || get().manifests[hit.reference]) return
     try {
-      const [manifest, stored] = await Promise.all([
+      // Three questions, three sources. The registry describes the pack, the key
+      // store says what this pod holds, and `inspect` is the pod opening the
+      // archive it would actually install — the only one that can see a preset
+      // collision, and the only account of `missing_env` that is not this app's
+      // own arithmetic. The inspection is optional: a pod that refuses it (a
+      // `verified-only` host declines an unvouched pack at inspect too) must
+      // still show the manifest rather than an empty sheet.
+      const [manifest, stored, preview] = await Promise.all([
         packs.manifest(registry, hit.id),
         keys.list().catch((): KeyEntry[] => []),
+        packs.inspect(hit.reference).catch(() => null),
       ])
       set({
         manifests: { ...get().manifests, [hit.reference]: manifest },
         packIds: manifest.id ? { ...get().packIds, [hit.reference]: manifest.id } : get().packIds,
         podKeys: stored.map((k) => k.name),
+        previews: preview ? { ...get().previews, [hit.reference]: preview } : get().previews,
       })
     } catch (e) {
       set({

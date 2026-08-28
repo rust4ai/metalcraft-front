@@ -218,7 +218,10 @@ async fn every_shape_this_client_declares_matches_what_a_pod_sends() {
         .find(|s| s.id == scheduled_id)
         .expect("the schedule we just created");
     assert_eq!(sf.flow_id, "live-probe");
-    assert_eq!(sf.schedule.kind, "hours", "the trigger keeps its `type` tag");
+    assert_eq!(
+        sf.schedule.kind, "hours",
+        "the trigger keeps its `type` tag"
+    );
     assert_eq!(sf.schedule.interval, Some(1));
     assert!(sf.enabled);
     assert!(

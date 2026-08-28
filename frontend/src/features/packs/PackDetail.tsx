@@ -3,7 +3,7 @@ import { usePacks } from '@/stores/packs'
 import { isInstalled, updateAvailable } from './registryState'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import type { PackManifest, SearchHit } from '@/types'
+import type { AgentPackPreview, PackManifest, SearchHit } from '@/types'
 
 /**
  * What a pack is, before you install it (PLAN §9.4).
@@ -21,7 +21,7 @@ import type { PackManifest, SearchHit } from '@/types'
  * service it was built around.
  */
 export function PackDetail() {
-  const { viewing, manifests, manifestError, packIds, podKeys, installing, installed, error: installError, view, apply } =
+  const { viewing, manifests, manifestError, packIds, podKeys, previews, installing, installed, error: installError, view, apply } =
     usePacks()
   if (!viewing) return null
 
@@ -89,7 +89,11 @@ export function PackDetail() {
               <Loader2 className="h-4 w-4 animate-spin" /> Reading the manifest…
             </p>
           ) : (
-            <Body manifest={manifest} podKeys={podKeys} />
+            <Body
+              manifest={manifest}
+              podKeys={podKeys}
+              preview={previews[viewing.reference]}
+            />
           )}
         </div>
 
@@ -134,12 +138,21 @@ export function PackDetail() {
   )
 }
 
-function Body({ manifest, podKeys }: { manifest: PackManifest; podKeys: string[] }) {
+function Body({
+  manifest,
+  podKeys,
+  preview,
+}: {
+  manifest: PackManifest
+  podKeys: string[]
+  preview?: AgentPackPreview
+}) {
   const env = manifest.requires_env ?? []
   return (
     <>
       {manifest.description && <p className="mt-3 text-[13px] leading-relaxed text-ink-2">{manifest.description}</p>}
 
+      <Collisions preview={preview} />
       <Requirements env={env} podKeys={podKeys} />
 
       <List title="Agents" items={manifest.presets} mono />
@@ -158,6 +171,30 @@ function Body({ manifest, podKeys }: { manifest: PackManifest; podKeys: string[]
         </Section>
       )}
     </>
+  )
+}
+
+/**
+ * A preset this pack provides that something already installed also provides.
+ *
+ * The one thing on this sheet that only the *pod* can know. The registry
+ * describes a pack in isolation; whether its presets collide depends on what
+ * else is on this particular pod, and the answer arrives from
+ * `POST /agent-packs/inspect` — the pod opening the archive it would install.
+ *
+ * Renders nothing when the pod could not be asked, which is a pod that declined
+ * to inspect rather than a pod reporting no collisions.
+ */
+function Collisions({ preview }: { preview?: AgentPackPreview }) {
+  if (!preview || preview.preset_collisions.length === 0) return null
+  return (
+    <p className="mt-3 flex items-start gap-1.5 rounded-card bg-orange-tint px-3 py-2 text-[12px] text-orange">
+      <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+      <span>
+        Another installed pack already provides{' '}
+        <span className="font-mono">{preview.preset_collisions.join(', ')}</span>.
+      </span>
+    </p>
   )
 }
 

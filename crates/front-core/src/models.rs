@@ -197,6 +197,46 @@ pub struct KeyEntry {
     pub managed: bool,
 }
 
+/// The pod's own reading of a pack archive, from `POST /agent-packs/inspect`.
+///
+/// Deliberately narrow: the fields here are the ones a registry manifest cannot
+/// answer. Everything descriptive still comes from the manifest.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentPackPreview {
+    /// Credentials the pod does not have yet. A warning, not a blocker — the
+    /// pack installs and its tools fail clearly when they are used.
+    #[serde(default)]
+    pub missing_env: Vec<String>,
+    /// Preset slugs another installed pack already provides.
+    #[serde(default)]
+    pub preset_collisions: Vec<String>,
+    /// The version already installed under this id. Present means this is an
+    /// upgrade or a downgrade, not a first install.
+    #[serde(default)]
+    pub installed_version: Option<String>,
+    /// Content hash of the archive as received.
+    #[serde(default)]
+    pub content_sha256: Option<String>,
+}
+
+/// Projected firing times for a trigger, from `POST /scheduled-flows/preview`.
+///
+/// Takes an *unsaved* spec, which is the point: the pod is the only thing that
+/// can say whether a cron parses, and until this it only said so after the
+/// schedule was armed — as `Invalid cron …` on a row that then never fired.
+///
+/// An empty `next_runs` on a cron trigger is that failure, visible before
+/// saving. (It is also simply what a manual trigger looks like.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulePreview {
+    /// Human-readable trigger, e.g. ``"Cron `0 0 8 * * *` (America/Detroit)"``.
+    #[serde(default)]
+    pub description: String,
+    /// The next few firing times, RFC-3339.
+    #[serde(default)]
+    pub next_runs: Vec<String>,
+}
+
 /// One pack a flow requires, and whether this pod has it.
 ///
 /// From `POST /flows/{id}/check-dependencies`, which **reports rather than

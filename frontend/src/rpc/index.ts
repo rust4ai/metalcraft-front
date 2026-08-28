@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -171,6 +171,10 @@ export const automations = {
    *  personas and says nothing about a pack the graph reaches that this agent
    *  does not have. Reports only — it never installs. */
   dependencies: (flowId: string) => call<FlowDependencies>('flow_dependencies', { flowId }),
+  /** When a trigger would fire, asked of an unsaved spec. The pod is the only
+   *  thing that knows whether its cron parses. */
+  previewSchedule: (schedule: ScheduleSpec) =>
+    call<SchedulePreview>('preview_schedule', { schedule }),
   /** Run now. The pod resolves the armed agent, so this is the same act as a
    *  scheduled firing. Resolves when the flow finishes, not when it starts.
    *  `inputs` are the entry node's declared parameters; omitted ones fall back
@@ -299,6 +303,10 @@ export const packs = {
   search: (name: string, query?: string) => call<SearchHit[]>('registry_search', { name, query }),
   manifest: (name: string, id: string) => call<PackManifest>('registry_manifest', { name, id }),
   installed: () => call<InstalledPack[]>('list_installed_packs'),
+  /** What the pod reads in the archive it would install: missing credentials and
+   *  preset collisions, neither of which a registry manifest can answer. */
+  inspect: (reference: string, allowUnverified = false) =>
+    call<AgentPackPreview>('inspect_pack', { reference, allowUnverified }),
   install: (reference: string, allowUnverified = false) =>
     call<unknown>('install_pack', { reference, allowUnverified }),
   /** Update an installed pack. Not `install` against the same reference: the pod

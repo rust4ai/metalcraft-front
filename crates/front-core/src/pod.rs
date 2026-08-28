@@ -362,7 +362,6 @@ impl PodConnection {
         self.post(&format!("/chats/{id}/clear"), &()).await
     }
 
-
     /// Ask a running turn to stop — the stop button.
     ///
     /// Returns when the pod has *recorded* the request, not when the turn is
@@ -777,6 +776,20 @@ impl PodConnection {
         self.put(&format!("/flows/{flow_id}"), flow).await
     }
 
+    /// When a trigger would actually fire, asked before anything is saved.
+    ///
+    /// The cron the pod parses is six fields, seconds first; a five-field POSIX
+    /// expression is accepted by the form, saved, and then never fires. Only the
+    /// pod can tell those apart, and this is how it is asked while somebody is
+    /// still typing rather than after they have armed it.
+    pub async fn preview_schedule(
+        &self,
+        schedule: &ScheduleSpec,
+    ) -> anyhow::Result<SchedulePreview> {
+        let body = serde_json::json!({ "schedule": schedule });
+        self.post("/scheduled-flows/preview", &body).await
+    }
+
     /// What this flow needs that the pod may not have, pack by pack.
     ///
     /// A companion to `flow_binding`, which answers the same question for
@@ -895,10 +908,12 @@ impl PodConnection {
 
     /// Everything installed, in one call.
     ///
-    /// This is the only route that can enumerate personas and skills — the pod
-    /// exposes `/personas/{slug}` and `/skills/{slug}` but no list beside them,
-    /// so a library built from the per-artifact routes would have nothing to
-    /// start from.
+    /// This was once the *only* way to enumerate personas and skills. The pod
+    /// has published `/personas` and `/skills` since, so it is now a choice
+    /// rather than a necessity — and still the right one: those routes return
+    /// the same `PersonaSummary`/`SkillSummary` this already carries, so reading
+    /// them instead would cost two more round trips for identical data and still
+    /// leave presets, api-tools and the default preset to fetch.
     ///
     /// `Ok(None)` on 404, the same contract as [`Self::inference_status`]: a pod
     /// older than the endpoint cannot say, which wants a different screen from a
@@ -1055,6 +1070,33 @@ impl PodConnection {
         self.get(&format!(
             "/agent-packs/registries/{name}/packs/{id}/manifest"
         ))
+        .await
+    }
+
+    /// Read what a pack actually contains, before installing it.
+    ///
+    /// Not the same question as the registry's `/manifest`, which is the
+    /// *registry's* description of a pack. This is the pod opening the archive
+    /// it would install, so it can answer two things nothing else can: which
+    /// credentials it will be missing, and whether a preset inside it collides
+    /// with one another installed pack already provides.
+    ///
+    /// Same `ref` trap as `install_agent_pack`, and the same `allow_unverified`
+    /// override — a `verified-only` pod refuses an unvouched pack at *inspect*
+    /// too, so without it there is no way to read what a thing wants before
+    /// deciding about it.
+    pub async fn inspect_agent_pack(
+        &self,
+        reference: &str,
+        allow_unverified: bool,
+    ) -> anyhow::Result<AgentPackPreview> {
+        self.post_query(
+            "/agent-packs/inspect",
+            &[
+                ("ref", reference.to_string()),
+                ("allow_unverified", allow_unverified.to_string()),
+            ],
+        )
         .await
     }
 

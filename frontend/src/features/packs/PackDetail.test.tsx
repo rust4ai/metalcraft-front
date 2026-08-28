@@ -181,3 +181,40 @@ describe('PackDetail', () => {
     expect(store.getState().viewing).toBeNull()
   })
 })
+
+describe('what only the pod can answer', () => {
+  it('warns when a preset collides with one already installed', async () => {
+    // The registry describes a pack in isolation. Whether its presets collide
+    // depends on what else is on *this* pod, so the answer can only come from
+    // the pod opening the archive it would install.
+    await mount({
+      registry_manifest: manifest,
+      list_keys: [],
+      inspect_pack: { missing_env: [], preset_collisions: ['briefer'] },
+    })
+    await waitFor(() => expect(screen.getByText(/already provides/)).toBeTruthy())
+    expect(screen.getByText('briefer')).toBeTruthy()
+  })
+
+  it('says nothing when the pod reports no collision', async () => {
+    await mount({
+      registry_manifest: manifest,
+      list_keys: [],
+      inspect_pack: { missing_env: [], preset_collisions: [] },
+    })
+    await waitFor(() => expect(screen.getByText(manifest.name)).toBeTruthy())
+    expect(screen.queryByText(/already provides/)).toBeNull()
+  })
+
+  it('still shows the manifest when the pod refuses to inspect', async () => {
+    // A `verified-only` pod declines an unvouched pack at inspect too. Losing
+    // the whole sheet over that would leave nothing to decide from.
+    await mount({
+      registry_manifest: manifest,
+      list_keys: [],
+      inspect_pack: new Error('403 unverified'),
+    })
+    await waitFor(() => expect(screen.getByText(manifest.name)).toBeTruthy())
+    expect(screen.queryByText(/already provides/)).toBeNull()
+  })
+})

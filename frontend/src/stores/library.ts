@@ -17,9 +17,11 @@ import type {
  *
  * Two halves that behave differently on purpose.
  *
- * **The index is one fetch.** `GET /snapshot` is not a batching optimisation —
- * the pod serves `/personas/{slug}` and `/skills/{slug}` but publishes no list
- * beside either, so without it there is no way to know those artifacts exist.
+ * **The index is one fetch.** `GET /snapshot` carries presets, personas, skills,
+ * api-tools and the default preset together. It used to be the only way to know
+ * personas and skills existed at all; the pod publishes `/personas` and
+ * `/skills` now, but they return the same summaries the snapshot already holds,
+ * so reading them would be two more round trips for the same answer.
  * Integrations, packs and flow templates come from three list routes the
  * snapshot leaves out, fetched alongside it and settled independently: a pod
  * that will not answer one of them still has a library worth showing.

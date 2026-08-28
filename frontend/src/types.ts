@@ -843,6 +843,34 @@ export interface FlowBinding {
 }
 
 /**
+ * The pod's own reading of a pack archive — `POST /agent-packs/inspect`.
+ *
+ * Deliberately narrow: only what a *registry* manifest cannot answer. The
+ * registry describes a pack; the pod opens the archive it would actually
+ * install, and is the authority on both fields below.
+ */
+export interface AgentPackPreview {
+  /** Credentials the pod does not have. A warning, not a blocker. */
+  missing_env: string[]
+  /** Preset slugs another installed pack already provides. */
+  preset_collisions: string[]
+  installed_version?: string | null
+  content_sha256?: string | null
+}
+
+/**
+ * Projected firing times for a trigger — `POST /scheduled-flows/preview`.
+ *
+ * Takes an *unsaved* spec. An empty `next_runs` on a cron trigger is a cron this
+ * pod cannot parse: a schedule that would save and then never fire.
+ */
+export interface SchedulePreview {
+  description: string
+  /** RFC-3339. Empty for a manual trigger, and for an unparseable cron. */
+  next_runs: string[]
+}
+
+/**
  * One pack a flow requires, and whether this pod has it.
  *
  * `POST /flows/{id}/check-dependencies` **reports rather than installs** — a

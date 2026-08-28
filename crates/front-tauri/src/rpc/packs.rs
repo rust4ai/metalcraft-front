@@ -8,7 +8,10 @@
 
 use std::sync::Arc;
 
-use front_core::{InstalledAgentPack, PackUpdateReport, Registries, RegistryConnection, SearchHit};
+use front_core::{
+    AgentPackPreview, InstalledAgentPack, PackUpdateReport, Registries, RegistryConnection,
+    SearchHit,
+};
 
 use crate::state::AppState;
 
@@ -112,6 +115,21 @@ pub async fn update_pack(
     state
         .conn(None)?
         .update_agent_pack(&id, &reference, allow_unverified.unwrap_or(false))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// What the pod reads in the archive it would install — the two facts a registry
+/// manifest cannot supply: missing credentials, and preset collisions.
+#[tauri::command]
+pub async fn inspect_pack(
+    reference: String,
+    allow_unverified: Option<bool>,
+    state: State<'_>,
+) -> Result<AgentPackPreview, String> {
+    state
+        .conn(None)?
+        .inspect_agent_pack(&reference, allow_unverified.unwrap_or(false))
         .await
         .map_err(|e| e.to_string())
 }

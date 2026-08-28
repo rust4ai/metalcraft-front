@@ -286,8 +286,14 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             j(app.conn(None)?.diagnostics_session(need(args, "id")?).await)
         }
         "pod_diagnostics_trace" => j(app.conn(None)?.diagnostics_trace(need(args, "id")?).await),
-        "scheduled_followups" => j(app.conn(None)?.followups_for_chat(need(args, "chatId")?).await),
-        "cancel_followup" => j(app.conn(None)?.cancel_scheduled_task(need(args, "id")?).await),
+        "scheduled_followups" => j(app
+            .conn(None)?
+            .followups_for_chat(need(args, "chatId")?)
+            .await),
+        "cancel_followup" => j(app
+            .conn(None)?
+            .cancel_scheduled_task(need(args, "id")?)
+            .await),
         "create_chat" => {
             let new = NewChat {
                 instance_id: arg(args, "instanceId").map(str::to_string),
@@ -332,7 +338,18 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             )
             .await),
         "list_flow_runs" => j(app.conn(None)?.list_flow_runs().await),
-        "flow_dependencies" => j(app.conn(None)?.flow_dependencies(need(args, "flowId")?).await),
+        "flow_dependencies" => j(app
+            .conn(None)?
+            .flow_dependencies(need(args, "flowId")?)
+            .await),
+        "preview_schedule" => {
+            let spec: ScheduleSpec = serde_json::from_value(
+                args.and_then(|a| a.get("schedule").cloned())
+                    .unwrap_or_default(),
+            )
+            .map_err(|e| e.to_string())?;
+            j(app.conn(None)?.preview_schedule(&spec).await)
+        }
         "flow_binding" => j(app.conn(None)?.flow_binding(need(args, "flowId")?).await),
         "run_flow" => j(app
             .conn(None)?
@@ -391,6 +408,15 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         // worth being able to drive, and the one where a wire mismatch hid for
         // months (`?ref=` vs `?reference=`). A bridge that cannot reproduce the
         // bug you are chasing is not much of a bridge.
+        "inspect_pack" => j(app
+            .conn(None)?
+            .inspect_agent_pack(
+                need(args, "reference")?,
+                args.get("allowUnverified")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            )
+            .await),
         "install_pack" => j(app
             .conn(None)?
             .install_agent_pack(

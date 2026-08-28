@@ -8,7 +8,8 @@
 use std::sync::Arc;
 
 use front_core::{
-    Flow, FlowBinding, FlowDependencies, FlowRun, FlowRunSummary, ScheduleSpec, ScheduledFlow,
+    Flow, FlowBinding, FlowDependencies, FlowRun, FlowRunSummary, SchedulePreview, ScheduleSpec,
+    ScheduledFlow,
 };
 
 use crate::state::AppState;
@@ -102,6 +103,19 @@ pub async fn list_scheduled_flows(state: State<'_>) -> Result<Vec<ScheduledFlow>
 
 /// Persisted flow runs. The pod only persists a run that paused, so this is
 /// mostly "what is waiting on a human" — the reason the surface exists.
+/// When a trigger would fire, before it is saved.
+#[tauri::command]
+pub async fn preview_schedule(
+    schedule: ScheduleSpec,
+    state: State<'_>,
+) -> Result<SchedulePreview, String> {
+    state
+        .conn(None)?
+        .preview_schedule(&schedule)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// What a flow needs that this pod may not have.
 #[tauri::command]
 pub async fn flow_dependencies(
