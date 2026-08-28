@@ -270,6 +270,31 @@ pub struct FlowDependencies {
     pub packs: Vec<PackRequirement>,
 }
 
+/// What a pod is set to prefer — `GET /settings`.
+///
+/// One field so far, and it is the one that decides when things happen: a cron
+/// schedule that names no zone is read in this one. Before it existed, such a
+/// schedule was read on the pod's own clock — UTC in the cluster — so "08:00"
+/// meant the middle of the night unless whoever armed it also typed a zone.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PodSettings {
+    /// IANA name, e.g. `America/Detroit`. `None` on a pod nobody has told.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
+}
+
+/// One region's worth of timezones — `GET /timezones`.
+///
+/// From the pod rather than from this machine's own tz database, so a picker
+/// offers exactly the names the pod will accept.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimezoneRegion {
+    /// IANA area — `America`, `Europe` — or `UTC`.
+    pub region: String,
+    /// Full zone names in it, sorted.
+    pub zones: Vec<String>,
+}
+
 /// A key an *enabled* integration says it needs, from its `requires_env`.
 ///
 /// `configured: false` is the whole point: the pod knows which credentials its

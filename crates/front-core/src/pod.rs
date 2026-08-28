@@ -313,6 +313,22 @@ impl PodConnection {
         Ok(wrapped.presets)
     }
 
+    /// What this pod is set to prefer.
+    pub async fn pod_settings(&self) -> anyhow::Result<PodSettings> {
+        self.get("/settings").await
+    }
+
+    /// Replace them. The whole document: clearing a preference has to be
+    /// expressible, and a merge on the client would make "unset" unreachable.
+    pub async fn set_pod_settings(&self, settings: &PodSettings) -> anyhow::Result<PodSettings> {
+        self.put("/settings", settings).await
+    }
+
+    /// Every timezone this pod can resolve, grouped by region.
+    pub async fn timezones(&self) -> anyhow::Result<Vec<TimezoneRegion>> {
+        self.get("/timezones").await
+    }
+
     /// The keys this pod's enabled packs read by name, and whether each resolves.
     ///
     /// `list_keys` answers "what is stored"; this answers "what is *wanted*",

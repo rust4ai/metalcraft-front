@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -148,6 +148,22 @@ export const fleet = {
  * Automations. The commands are named for the pod's vocabulary (`list_flows`);
  * this object is named for the surface it drives.
  */
+/**
+ * Pod-wide preferences.
+ *
+ * The timezone is the one that matters here: it is what a cron schedule naming
+ * no zone is read in, and what the schedule editor compares this machine's zone
+ * against.
+ */
+export const settings = {
+  get: () => call<PodSettings>('pod_settings'),
+  /** The whole document — clearing a preference has to be expressible. The pod
+   *  refuses a timezone it cannot resolve, and its refusal is worth showing. */
+  save: (settings: PodSettings) => call<PodSettings>('save_pod_settings', { settings }),
+  /** Every zone this pod can resolve, grouped by region. */
+  timezones: () => call<TimezoneRegion[]>('timezones'),
+}
+
 export const automations = {
   /** The flows — the *work*. When each runs is `scheduled()`. */
   list: () => call<Flow[]>('list_flows'),

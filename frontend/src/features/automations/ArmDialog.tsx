@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useAutomations } from '@/stores/automations'
+import { useSettings } from '@/stores/podSettings'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { Modal } from '@/components/ui/Modal'
@@ -244,17 +245,62 @@ export function ArmDialog({
   )
 }
 
-/** A daily 8am cron, in the reader's own timezone.
+/** A daily 8am cron, in whatever zone the pod reads a zone-less schedule in.
  *
- *  Not the pod's: a cron with no zone is evaluated wherever the pod happens to
- *  run, so "8am" would mean 8am somewhere else. Stating the browser's zone makes
- *  the common case mean what it says. */
+ *  It used to stamp the browser's zone onto every schedule, which made the ones
+ *  armed from here correct and left every other way of arming one — the agent's
+ *  own scheduling tool, a pack suggestion, a hand-written flow — running on the
+ *  pod's clock. The pod has a timezone of its own now, so the fix belongs there
+ *  and this inherits it. `ZoneMismatch` below is what makes that visible, and
+ *  offers to set it when the two disagree. */
 function defaultSchedule(): ScheduleSpec {
-  return {
-    type: 'cron',
-    cron: '0 0 8 * * *',
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  return { type: 'cron', cron: '0 0 8 * * *' }
+}
+
+/**
+ * Which zone this will actually run in, and an offer to change it when that is
+ * not the one the reader lives in.
+ *
+ * A pod is provisioned in a datacentre and nobody tells it where its owner
+ * lives, so disagreeing is the *starting* state, not an exotic one — and the
+ * symptom is the worst kind: the automation works, on the wrong hour, silently.
+ * The fix sets the pod's zone rather than this schedule's, because a person
+ * whose pod is on the wrong clock does not have one wrong automation, they have
+ * every future one.
+ */
+function ZoneMismatch({ schedule }: { schedule: ScheduleSpec }) {
+  const { podZone, load, setZone } = useSettings()
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // A schedule carrying its own zone is not inheriting anything, so there is
+  // nothing here to disagree about.
+  if (schedule.type !== 'cron' || schedule.timezone) return null
+
+  if (podZone === here) {
+    return <p className="text-[11.5px] text-ink-3">Runs in {here}, this pod’s timezone.</p>
   }
+
+  return (
+    <p className="flex items-start gap-1.5 text-[11.5px] text-orange">
+      <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+      <span>
+        {podZone
+          ? `This pod is on ${podZone} and you are on ${here}, so 8am here would fire at 8am ${podZone}.`
+          : `This pod has no timezone, so it will use its own clock — usually UTC, not ${here}.`}{' '}
+        <button
+          type="button"
+          onClick={() => void setZone(here)}
+          className="underline hover:text-ink"
+        >
+          Set the pod to {here}
+        </button>
+      </span>
+    </p>
+  )
 }
 
 /**
@@ -366,8 +412,11 @@ function ScheduleEditor({
           />
           <p className="text-[11.5px] text-ink-3">
             Six fields, seconds first — <span className="font-mono">0 0 8 * * *</span> is 8am
-            daily, in {value.timezone ?? 'the pod&apos;s timezone'}.
+            daily. Weekdays are <span className="font-mono">SUN</span>…
+            <span className="font-mono">SAT</span>, or 1–7 from Sunday: a bare{' '}
+            <span className="font-mono">1</span> is Sunday, not Monday.
           </p>
+          <ZoneMismatch schedule={value} />
         </>
       )}
 

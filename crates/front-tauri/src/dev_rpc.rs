@@ -232,6 +232,15 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
         }
 
         // Keys.
+        "pod_settings" => j(app.conn(None)?.pod_settings().await),
+        "save_pod_settings" => {
+            let settings = serde_json::from_value(
+                args.get("settings").cloned().unwrap_or(serde_json::Value::Null),
+            )
+            .map_err(|e| format!("bad settings: {e}"))?;
+            j(app.conn(None)?.set_pod_settings(&settings).await)
+        }
+        "timezones" => j(app.conn(None)?.timezones().await),
         "list_keys" => j(app.conn(None)?.list_keys().await),
         "recommended_keys" => j(app.conn(None)?.recommended_keys().await),
         "save_key" => j(app

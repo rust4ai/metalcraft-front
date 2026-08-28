@@ -752,6 +752,23 @@ export interface ScheduledFlow {
   next_fire_at?: string | null
 }
 
+/** What a pod is set to prefer — `GET /settings`.
+ *
+ *  One field so far, and it is the one that decides when things happen: a cron
+ *  schedule naming no zone is read in this one. */
+export interface PodSettings {
+  /** IANA name, e.g. `America/Detroit`. Absent on a pod nobody has told, which
+   *  leaves its schedules on the pod's own clock — UTC in the cluster. */
+  timezone?: string | null
+}
+
+/** One region's worth of timezones — `GET /timezones`. From the pod rather than
+ *  from this machine, so a picker cannot offer a name the pod would refuse. */
+export interface TimezoneRegion {
+  region: string
+  zones: string[]
+}
+
 export interface ScheduleSpec {
   /** Trigger tag: `manual` | `minutes` | `hours` | `cron`. */
   type: string

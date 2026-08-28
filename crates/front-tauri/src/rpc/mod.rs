@@ -21,4 +21,5 @@ pub mod octaweave;
 pub mod packs;
 pub mod pods;
 pub mod reset;
+pub mod settings;
 pub mod system;

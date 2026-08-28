@@ -6,6 +6,7 @@ import { ConnectionCard } from './ConnectionCard'
 import { DangerZoneCard } from './DangerZoneCard'
 import { GatewayCard } from './GatewayCard'
 import { KeysCard } from './KeysCard'
+import { TimezoneCard } from './TimezoneCard'
 
 /**
  * PLAN §10.6 — the settings surface, as far as it exists.
@@ -78,6 +79,8 @@ export function SettingsView() {
         <ConnectionCard service="octaweave" />
         <ConnectionCard service="buildr" />
         <GatewayCard />
+        <TimezoneCard />
+
         <KeysCard />
 
         {/* Last, and after a gap: the one control here that destroys something.
