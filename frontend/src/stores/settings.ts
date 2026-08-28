@@ -6,6 +6,7 @@ import type {
   GatewayRegistration,
   GatewayStatus,
   KeyEntry,
+  RecommendedKey,
   OctaweaveWorkspace,
   ServiceId,
 } from '@/types'
@@ -51,6 +52,9 @@ const blank = (): ServiceConnection => ({
 
 interface SettingsState {
   keys: KeyEntry[]
+  /** What the pod's enabled packs read by name. `[]` also covers a pod too old
+   *  for the route — nothing to nag about either way. */
+  recommendedKeys: RecommendedKey[]
   loadingKeys: boolean
   keyError: string | null
 
@@ -137,6 +141,7 @@ const patch = (service: ServiceId, next: Partial<ServiceConnection>) =>
 
 export const useSettings = create<SettingsState>((set, get) => ({
   keys: [],
+  recommendedKeys: [],
   loadingKeys: false,
   keyError: null,
   services: { octaweave: blank(), buildr: blank() },
@@ -149,7 +154,19 @@ export const useSettings = create<SettingsState>((set, get) => ({
   loadKeys: async () => {
     set({ loadingKeys: true, keyError: null })
     try {
-      set({ keys: await keysRpc.list(), loadingKeys: false })
+      // Both halves of the same screen: what is stored, and what is wanted. The
+      // recommendations are the softer half — a pod too old for the route, or
+      // one with no packs installed, simply has nothing to suggest, and that
+      // must not read as a key store that failed to load.
+      const [stored, recommended] = await Promise.all([
+        keysRpc.list(),
+        keysRpc.recommended().catch(() => [] as RecommendedKey[]),
+      ])
+      // `?? []` rather than trusting the call: a pod that answers this route with
+      // null, and a transport that has nothing to say for it, both arrive here
+      // as undefined — and a missing recommendation list must not take the key
+      // store down with it.
+      set({ keys: stored, recommendedKeys: recommended ?? [], loadingKeys: false })
     } catch (e) {
       set({ loadingKeys: false, keyError: String(e) })
     }

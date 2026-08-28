@@ -11,7 +11,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { useAutomations, pausedFirst } from '@/stores/automations'
-import { automations as flowsApi } from '@/rpc'
+import { useSessions } from '@/stores/sessions'
+import { automations as flowsApi, chats } from '@/rpc'
 import { ArmDialog } from './ArmDialog'
 import { RunDialog } from './RunDialog'
 import { declaredInputs } from './flowInputs'
@@ -68,6 +69,7 @@ export function AutomationsView() {
   // same scope as a `run` row shadows it.
   const { flows, runs, loading, error, load, run: runFlow, busy, schedulesOf } = useAutomations()
   const go = useUi((s) => s.go)
+  const openAt = useSessions((s) => s.openAt)
   // Held here rather than per-row so the dialog survives the list re-rendering
   // underneath it — arming reloads the flows, and a row-owned modal would
   // unmount itself mid-confirm.
@@ -103,15 +105,28 @@ export function AutomationsView() {
     await launch(flow.id, {})
   }
 
-  /** Run it, then land in the conversation it just wrote — running an armed
-   *  automation by hand *is* its scheduled firing, same agent and same memory. */
+  /** Run it, then land in the conversation it just wrote.
+   *
+   *  Running an armed automation by hand *is* its scheduled firing — same agent,
+   *  same memory — so this opens the transcript rather than reporting a status
+   *  code. */
   const launch = async (flowId: string, inputs: Record<string, unknown>) => {
     const summary = await runFlow(flowId, inputs)
     setRunningFlow(null)
-    const armed = schedulesOf(flowId).find((s) => s.instance_id)?.instance_id
-    if (summary?.chat_id && armed) go({ kind: 'session', instanceId: armed })
+    // The run names the conversation it wrote. This used to read `chat_id` as a
+    // yes/no and then open the *armed* agent's most recent chat instead — a
+    // different conversation whenever that agent had been spoken to since.
+    if (!summary?.chat_id) return
+    // Which agent, from the chat rather than from a schedule: a summary carries
+    // no `instance_id`, and a flow can be bound to an agent by something other
+    // than a schedule row, which used to navigate nowhere at all.
+    const chat = await chats.get(summary.chat_id).catch(() => null)
+    const instanceId =
+      chat?.instance_id ?? schedulesOf(flowId).find((s) => s.instance_id)?.instance_id
+    if (!instanceId) return
+    go({ kind: 'session', instanceId })
+    void openAt(instanceId, summary.chat_id)
   }
-
   const waiting = runs.filter((r) => r.status === 'paused')
 
   if (drafting) {
@@ -285,9 +300,6 @@ function FlowCard({
             runs as {flow.preset} · {flow.node_count} nodes · edited {relative(flow.updated_at)}
           </div>
         </div>
-        {/* Running an armed automation by hand *is* its scheduled firing — same
-            agent, same memory — so this lands you in the conversation it just
-            wrote rather than reporting a status code. */}
         {/* The only way to see what an automation actually does. `list_flows`
             stops at a node count, so before this the answer lived in JSON on the
             pod's disk. */}

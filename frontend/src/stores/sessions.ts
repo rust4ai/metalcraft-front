@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { chats } from '@/rpc'
+import { chats, fleet } from '@/rpc'
 import { emptyTranscript, fromMessages, reduce, type TranscriptState } from '@/features/session/transcript'
 import { describeCommandError, helpText, parse } from '@/features/session/commands'
 import type { ChatDetail, ChatEvent, ChatSummary, ScheduledTask } from '@/types'
@@ -55,6 +55,9 @@ interface SessionsState {
   loadConversations: (instanceId: string) => Promise<void>
   /** Open one of this agent's other conversations, in place. */
   resume: (instanceId: string, chatId: string) => Promise<void>
+  /** Open this agent **on this conversation**, whether or not a session for it
+   *  is already open. What a flow run's "read what it said" link needs. */
+  openAt: (instanceId: string, chatId: string) => Promise<void>
   /** Start another conversation with this agent, keeping its memory. */
   startConversation: (instanceId: string) => Promise<void>
   /** Delete one of this agent's other conversations. Refuses the open one. */
@@ -288,10 +291,11 @@ export const useSessions = create<SessionsState>((set, get) => ({
   loadConversations: async (instanceId) => {
     set({ loadingConversations: { ...get().loadingConversations, [instanceId]: true } })
     try {
-      // Filtered from the full list rather than fetched per agent: the core has
-      // no per-instance chat call, and this is the same list `newestChat` already
-      // ranks — one shape, one sort, no second way for the two to disagree.
-      const mine = (await chats.list()).filter((c) => c.instance_id === instanceId)
+      // Asked of the agent. This used to filter the whole pod's chat list on
+      // `instance_id`, which read every conversation on the pod to answer a
+      // question about one agent — and silently dropped any chat written by a
+      // pod too old to stamp an instance onto it.
+      const mine = await fleet.conversations(instanceId)
       // oxlint-disable-next-line unicorn/no-array-sort
       mine.sort((a, b) => Date.parse(recency(b)) - Date.parse(recency(a)))
       set({ conversations: { ...get().conversations, [instanceId]: mine } })
@@ -306,6 +310,20 @@ export const useSessions = create<SessionsState>((set, get) => ({
       const { [instanceId]: _, ...rest } = get().loadingConversations
       set({ loadingConversations: rest })
     }
+  },
+
+  openAt: async (instanceId, chatId) => {
+    // Two states, one intent. `open` refuses to touch a session that already
+    // exists and `resume` refuses to create one, so neither alone can honour
+    // "open this agent on this chat" from a standing start.
+    //
+    // Pinning first is what makes the cold path land: `resolveChat` prefers the
+    // remembered id over its ranking heuristic, and verifies the chat really
+    // belongs to this agent before using it — so this reuses that check rather
+    // than opening a chat id nobody vouched for.
+    if (get().byInstance[instanceId]) return await get().resume(instanceId, chatId)
+    rememberChat(instanceId, chatId)
+    await get().open(instanceId)
   },
 
   resume: async (instanceId, chatId) => {

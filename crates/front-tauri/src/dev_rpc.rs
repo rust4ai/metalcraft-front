@@ -233,6 +233,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
 
         // Keys.
         "list_keys" => j(app.conn(None)?.list_keys().await),
+        "recommended_keys" => j(app.conn(None)?.recommended_keys().await),
         "save_key" => j(app
             .conn(None)?
             .save_key(need(args, "name")?, need(args, "value")?)
@@ -266,6 +267,11 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .await),
         "list_preset_personas" => j(app.conn(None)?.preset_personas(need(args, "preset")?).await),
         "instance_memory" => j(app.conn(None)?.instance_memory(need(args, "id")?, 50).await),
+        "instance_conversations" => j(app
+            .conn(None)?
+            .instance_conversations(need(args, "id")?)
+            .await),
+        "instance_flows" => j(app.conn(None)?.instance_flows(need(args, "id")?).await),
 
         // Chats.
         "list_chats" => j(app.conn(None)?.list_chats().await),
@@ -326,6 +332,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             )
             .await),
         "list_flow_runs" => j(app.conn(None)?.list_flow_runs().await),
+        "flow_dependencies" => j(app.conn(None)?.flow_dependencies(need(args, "flowId")?).await),
         "flow_binding" => j(app.conn(None)?.flow_binding(need(args, "flowId")?).await),
         "run_flow" => j(app
             .conn(None)?

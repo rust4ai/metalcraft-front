@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -137,6 +137,11 @@ export const fleet = {
     call<AgentInstance>('set_instance_persona', { id, persona }),
   personas: (preset: string) => call<RosterPersona[]>('list_preset_personas', { preset }),
   memory: (id: string) => call<InstanceMemory>('instance_memory', { id }),
+  /** This agent's conversations, asked of the agent rather than filtered out of
+   *  the whole pod's chat list. */
+  conversations: (id: string) => call<ChatSummary[]>('instance_conversations', { id }),
+  /** What this agent does on its own — the schedules pointing at it. */
+  flows: (id: string) => call<ScheduledFlow[]>('instance_flows', { id }),
 }
 
 /**
@@ -162,6 +167,10 @@ export const automations = {
   runs: () => call<FlowRun[]>('list_flow_runs'),
   /** What arming would permit: personas, domains, keys, which tools mutate. */
   binding: (flowId: string) => call<FlowBinding>('flow_binding', { flowId }),
+  /** The other half of that question: packs. `binding` covers credentials and
+   *  personas and says nothing about a pack the graph reaches that this agent
+   *  does not have. Reports only — it never installs. */
+  dependencies: (flowId: string) => call<FlowDependencies>('flow_dependencies', { flowId }),
   /** Run now. The pod resolves the armed agent, so this is the same act as a
    *  scheduled firing. Resolves when the flow finishes, not when it starts.
    *  `inputs` are the entry node's declared parameters; omitted ones fall back
@@ -221,6 +230,8 @@ export const danger = {
 
 export const keys = {
   list: () => call<KeyEntry[]>('list_keys'),
+  /** What the installed packs want, as opposed to what is stored. */
+  recommended: () => call<RecommendedKey[]>('recommended_keys'),
   /** Whether the pod can run a turn. `null` = too old to say; fall back to what
    *  the account knows rather than guessing from an empty key store. */
   inference: () => call<InferenceStatus | null>('inference_status'),

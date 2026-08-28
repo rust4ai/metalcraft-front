@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 
-use front_core::{AgentInstance, AgentPresetSummary, InstanceMemory, RosterPersona};
+use front_core::{
+    AgentInstance, AgentPresetSummary, ChatSummary, InstanceMemory, RosterPersona, ScheduledFlow,
+};
 
 use crate::state::AppState;
 
@@ -89,6 +91,29 @@ pub async fn list_preset_personas(
     state
         .conn(None)?
         .preset_personas(&preset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The conversations this one agent has had, asked of the agent.
+#[tauri::command]
+pub async fn instance_conversations(
+    id: String,
+    state: State<'_>,
+) -> Result<Vec<ChatSummary>, String> {
+    state
+        .conn(None)?
+        .instance_conversations(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// What this agent does on its own — the schedules pointing at it.
+#[tauri::command]
+pub async fn instance_flows(id: String, state: State<'_>) -> Result<Vec<ScheduledFlow>, String> {
+    state
+        .conn(None)?
+        .instance_flows(&id)
         .await
         .map_err(|e| e.to_string())
 }

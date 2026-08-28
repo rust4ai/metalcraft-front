@@ -23,6 +23,7 @@ async function mount(overrides: Record<string, unknown> = {}) {
         return r as never
       }
       if (method === 'list_keys') return stored as never
+      if (method === 'recommended_keys') return [] as never
       return undefined as never
     }),
     listen: vi.fn(async () => () => {}),
@@ -79,5 +80,39 @@ describe('KeysCard', () => {
 
     await waitFor(() => expect(screen.getByText(/pod refused/)).toBeTruthy())
     expect((screen.getByLabelText('Key value') as HTMLInputElement).value).toBe('b')
+  })
+})
+
+describe('keys these packs still need', () => {
+  const wanted = [
+    { name: 'RESEND_API_KEY', configured: false, packs: ['email'], managed: false },
+    { name: 'OPENAI_API_KEY', configured: true, packs: ['core'], managed: false },
+    { name: 'METALCRAFT_TOKEN', configured: false, packs: ['metalcraft'], managed: true },
+  ]
+
+  it('lists only what is wanted and missing, and says who wants it', async () => {
+    await mount({ recommended_keys: wanted })
+    await waitFor(() => expect(screen.getByText('Keys these packs still need')).toBeTruthy())
+    // A satisfied requirement has nothing to do about it.
+    expect(screen.queryByRole('button', { name: 'Add OPENAI_API_KEY' })).toBeNull()
+    // And a platform-injected one cannot be pasted in by the user at all, so
+    // prompting for it would be worse than saying nothing.
+    expect(screen.queryByRole('button', { name: 'Add METALCRAFT_TOKEN' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add RESEND_API_KEY' })).toBeTruthy()
+    expect(screen.getByText('email')).toBeTruthy()
+  })
+
+  it('says nothing at all when every wanted key is filled in', async () => {
+    await mount({ recommended_keys: [wanted[1]] })
+    await waitFor(() => expect(screen.getByText('OPENAI_API_KEY')).toBeTruthy())
+    expect(screen.queryByText('Keys these packs still need')).toBeNull()
+  })
+
+  it('survives a pod with nothing to say about recommendations', async () => {
+    // A pod older than the route answers nothing. The key store is the point of
+    // this screen and must still render.
+    await mount({ recommended_keys: undefined })
+    await waitFor(() => expect(screen.getByText('OPENAI_API_KEY')).toBeTruthy())
+    expect(screen.queryByText('Keys these packs still need')).toBeNull()
   })
 })

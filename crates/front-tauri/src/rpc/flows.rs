@@ -7,7 +7,9 @@
 
 use std::sync::Arc;
 
-use front_core::{Flow, FlowBinding, FlowRun, FlowRunSummary, ScheduleSpec, ScheduledFlow};
+use front_core::{
+    Flow, FlowBinding, FlowDependencies, FlowRun, FlowRunSummary, ScheduleSpec, ScheduledFlow,
+};
 
 use crate::state::AppState;
 
@@ -100,6 +102,19 @@ pub async fn list_scheduled_flows(state: State<'_>) -> Result<Vec<ScheduledFlow>
 
 /// Persisted flow runs. The pod only persists a run that paused, so this is
 /// mostly "what is waiting on a human" — the reason the surface exists.
+/// What a flow needs that this pod may not have.
+#[tauri::command]
+pub async fn flow_dependencies(
+    flow_id: String,
+    state: State<'_>,
+) -> Result<FlowDependencies, String> {
+    state
+        .conn(None)?
+        .flow_dependencies(&flow_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_flow_runs(state: State<'_>) -> Result<Vec<FlowRun>, String> {
     state

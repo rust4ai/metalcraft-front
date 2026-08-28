@@ -772,6 +772,9 @@ export interface FlowRun {
   status: string
   current_node_id: string
   instance_id?: string | null
+  /** The conversation this run wrote. Absent for a run with no agent, and for a
+   *  tool-only flow that never reached a step that spoke. */
+  chat_id?: string | null
   pause?: FlowPause | null
   warnings: string[]
   created_at: string
@@ -807,6 +810,22 @@ export interface FlowPause {
   wake_at?: string | null
 }
 
+/**
+ * `GET /keys/recommended` — a key an *enabled* pack reads by name, and whether
+ * it resolves.
+ *
+ * The key store can list what is stored; only the pod can say what is *wanted*.
+ * `configured: false` is a pack that will fail the first time somebody uses it.
+ */
+export interface RecommendedKey {
+  name: string
+  configured: boolean
+  /** Which enabled packs declare it. */
+  packs: string[]
+  /** Platform-injected and read-only — show it as provided, never prompt for it. */
+  managed: boolean
+}
+
 /** `GET /flows/{id}/binding` — what arming this would actually permit. */
 export interface FlowBinding {
   flow_id: string
@@ -821,6 +840,30 @@ export interface FlowBinding {
     instance_name?: string | null
   }[]
   consent: ArmConsent
+}
+
+/**
+ * One pack a flow requires, and whether this pod has it.
+ *
+ * `POST /flows/{id}/check-dependencies` **reports rather than installs** — a
+ * missing pack is news to act on, not something arming can fix.
+ */
+export interface PackRequirement {
+  pack: string
+  /** `installed` | `already-satisfied` | `skipped` | `failed`. */
+  status: string
+  version?: string | null
+  detail?: string | null
+}
+
+export interface FlowDependencies {
+  flow: string
+  packs: PackRequirement[]
+}
+
+/** Whether this pod can actually run the flow's use of a pack. */
+export function packSatisfied(p: PackRequirement): boolean {
+  return p.status === 'installed' || p.status === 'already-satisfied'
 }
 
 export interface ArmConsent {

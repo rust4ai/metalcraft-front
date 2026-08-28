@@ -6,7 +6,8 @@ import { useUi } from '@/stores/ui'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import type { Flow, ScheduleSpec } from '@/types'
+import { automations } from '@/rpc'
+import { packSatisfied, type Flow, type PackRequirement, type ScheduleSpec } from '@/types'
 
 /**
  * The second consent moment (PLAN §10.7).
@@ -35,6 +36,7 @@ export function ArmDialog({
   const { bindings, loadBinding, arm, busy } = useAutomations()
   const instances = useFleet((s) => s.instances)
   const go = useUi((s) => s.go)
+  const [needs, setNeeds] = useState<PackRequirement[]>([])
   const [attachTo, setAttachTo] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<ScheduleSpec>(defaultSchedule)
 
@@ -54,6 +56,23 @@ export function ArmDialog({
       setSchedule(defaultSchedule())
     }
   }, [open])
+
+  // Packs, which `binding` does not cover. Kept local to the dialog and failing
+  // quietly: a pod too old for the route, or one that will not answer, must not
+  // block a consent screen whose other half loaded fine.
+  const flowId = open ? flow?.id : undefined
+  useEffect(() => {
+    setNeeds([])
+    if (!flowId) return
+    let live = true
+    automations
+      .dependencies(flowId)
+      .then((d) => live && setNeeds(d.packs.filter((p) => !packSatisfied(p))))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [flowId])
 
   if (!flow) return null
   const consent = binding?.consent
@@ -158,6 +177,21 @@ export function ArmDialog({
                   </span>
                 </p>
               )}
+            </Line>
+          )}
+
+          {needs.length > 0 && (
+            <Line label="Needs packs">
+              {/* The same failure as a missing credential, from the other
+                  direction: the graph reaches a pack this agent does not have,
+                  and nothing else on this screen would say so. */}
+              <p className="flex items-start gap-1.5 text-[12px] text-orange">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                <span>
+                  This pod does not have {needs.map((p) => p.pack).join(', ')}. Steps that use
+                  {needs.length === 1 ? ' it' : ' them'} will fail when it runs.
+                </span>
+              </p>
             </Line>
           )}
 

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use front_core::{InferenceStatus, KeyEntry};
+use front_core::{InferenceStatus, KeyEntry, RecommendedKey};
 
 use crate::state::AppState;
 
@@ -30,6 +30,16 @@ pub async fn list_keys(state: State<'_>) -> Result<Vec<KeyEntry>, String> {
     state
         .conn(None)?
         .list_keys()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// What the installed packs want, as opposed to what is stored.
+#[tauri::command]
+pub async fn recommended_keys(state: State<'_>) -> Result<Vec<RecommendedKey>, String> {
+    state
+        .conn(None)?
+        .recommended_keys()
         .await
         .map_err(|e| e.to_string())
 }

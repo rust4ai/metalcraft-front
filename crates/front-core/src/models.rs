@@ -103,6 +103,13 @@ pub struct InstanceList {
     pub instances: Vec<AgentInstance>,
 }
 
+/// `GET /agents/instances/{id}/flows` — what this agent does on its own.
+#[derive(Debug, Clone, Deserialize)]
+pub struct InstanceFlows {
+    #[serde(default)]
+    pub scheduled: Vec<ScheduledFlow>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PresetList {
     #[serde(default)]
@@ -186,6 +193,60 @@ pub struct KeyEntry {
     pub channel_name: Option<String>,
     /// Platform-injected and read-only — the pod refuses writes to these, so the
     /// UI must not offer one.
+    #[serde(default)]
+    pub managed: bool,
+}
+
+/// One pack a flow requires, and whether this pod has it.
+///
+/// From `POST /flows/{id}/check-dependencies`, which **reports rather than
+/// installs** — fetching a pack from there would be a second install path into a
+/// second layout, so a missing one is news to act on, not a thing this fixes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackRequirement {
+    pub pack: String,
+    /// `"installed" | "already-satisfied" | "skipped" | "failed"`.
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+impl PackRequirement {
+    /// Whether this pod can actually run the flow's use of this pack.
+    pub fn satisfied(&self) -> bool {
+        matches!(self.status.as_str(), "installed" | "already-satisfied")
+    }
+}
+
+/// `POST /flows/{id}/check-dependencies` — what a flow needs, pack by pack.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowDependencies {
+    #[serde(default)]
+    pub flow: String,
+    #[serde(default)]
+    pub packs: Vec<PackRequirement>,
+}
+
+/// A key an *enabled* integration says it needs, from its `requires_env`.
+///
+/// `configured: false` is the whole point: the pod knows which credentials its
+/// installed packs read by name, so a key store can list the ones nobody has
+/// filled in yet instead of leaving a pack silently broken until somebody runs a
+/// tool and reads the error.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecommendedKey {
+    pub name: String,
+    /// Resolves from the key store or the environment.
+    #[serde(default)]
+    pub configured: bool,
+    /// Which enabled packs declare it.
+    #[serde(default)]
+    pub packs: Vec<String>,
+    /// Platform-injected and env-authoritative. Show it as provided, never as
+    /// something to paste a value into.
     #[serde(default)]
     pub managed: bool,
 }
@@ -1080,6 +1141,15 @@ pub struct FlowRun {
     /// The agent this run belongs to, when a schedule armed one.
     #[serde(default)]
     pub instance_id: Option<String>,
+    /// The conversation this run wrote — the link from "it ran" to "here is what
+    /// it said".
+    ///
+    /// A run is an agent plus a chat: arming mints the instance, and the first
+    /// node that actually speaks opens a conversation in it. Absent for a run
+    /// with no agent, and for a tool-only flow that never spoke — neither of
+    /// which leaves a transcript to point at.
+    #[serde(default)]
+    pub chat_id: Option<String>,
     #[serde(default)]
     pub pause: Option<FlowPause>,
     /// Missing packs/personas noticed when the run started — a run that cannot

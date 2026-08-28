@@ -304,6 +304,7 @@ async function mountOpen(
   const calls: Array<{ method: string; args?: Record<string, unknown> }> = []
   const responses: Record<string, unknown> = {
     list_chats: [],
+    instance_conversations: [],
     watch_chat: undefined,
     scheduled_followups: [],
     ...overrides,
@@ -343,18 +344,23 @@ const conversation = (id: string, over: Record<string, unknown> = {}) => ({
 })
 
 describe('conversations', () => {
-  it('lists only this agent conversations, most recently spoken in first', async () => {
-    const { useSessions } = await mountOpen({
-      list_chats: [
+  it('ranks this agent conversations by what was spoken in most recently', async () => {
+    // *Which* conversations are this agent's is the pod's answer now — the store
+    // asks `/agents/instances/{id}/conversations` instead of filtering the whole
+    // pod's chat list, so there is no filter left here to test. The order still
+    // belongs to the store, and is what this pins.
+    const { useSessions, calls } = await mountOpen({
+      instance_conversations: [
         conversation('older', { updated_at: '2026-08-20T00:00:00Z' }),
-        conversation('someone-else', { instance_id: 'i2', updated_at: '2026-08-27T00:00:00Z' }),
         conversation('newest', { updated_at: '2026-08-26T00:00:00Z' }),
       ],
     })
     await useSessions.getState().loadConversations('i1')
-    // Ranked by last activity, not creation: all three were created at the same
+    // Ranked by last activity, not creation: both were created at the same
     // moment here, which is exactly the case `created_at` cannot order.
     expect(useSessions.getState().conversations.i1?.map((c) => c.id)).toEqual(['newest', 'older'])
+    // Asked of the agent, and not by reading every chat on the pod.
+    expect(calls.find((c) => c.method === 'instance_conversations')?.args).toEqual({ id: 'i1' })
   })
 
   it('switching conversations reattaches the stream to the new one', async () => {
@@ -401,6 +407,7 @@ describe('conversations', () => {
   it('drops a deleted conversation from the list', async () => {
     const { useSessions, methods } = await mountOpen({
       list_chats: [conversation('c1'), conversation('old')],
+      instance_conversations: [conversation('c1'), conversation('old')],
       get_chat: { id: 'c1', instance_id: 'i1', messages: [] },
       delete_chat: undefined,
     })

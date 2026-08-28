@@ -280,6 +280,27 @@ impl PodConnection {
         Ok(detail.personas)
     }
 
+    /// The conversations this one agent has had.
+    ///
+    /// Asked of the agent rather than filtered out of `/chats`, which is what
+    /// this replaced: the pod knows which chats are whose, and a client-side
+    /// filter on `instance_id` silently drops every chat written by a pod too
+    /// old to stamp one — and reads the whole pod's history to answer a question
+    /// about one agent.
+    pub async fn instance_conversations(&self, id: &str) -> anyhow::Result<Vec<ChatSummary>> {
+        self.get(&format!("/agents/instances/{id}/conversations"))
+            .await
+    }
+
+    /// What this agent does on its own — the schedules pointing at it.
+    ///
+    /// Wrapped like `/agents/instances`, and unwrapped here for the same reason:
+    /// the asymmetry is the pod's, not every caller's.
+    pub async fn instance_flows(&self, id: &str) -> anyhow::Result<Vec<ScheduledFlow>> {
+        let wrapped: InstanceFlows = self.get(&format!("/agents/instances/{id}/flows")).await?;
+        Ok(wrapped.scheduled)
+    }
+
     /// What one agent knows. Read-only by construction on the pod side — looking
     /// at an agent's memory must not touch its access counts or decay curve.
     pub async fn instance_memory(&self, id: &str, limit: u32) -> anyhow::Result<InstanceMemory> {
@@ -290,6 +311,15 @@ impl PodConnection {
     pub async fn list_presets(&self) -> anyhow::Result<Vec<AgentPresetSummary>> {
         let wrapped: PresetList = self.get("/agent-presets").await?;
         Ok(wrapped.presets)
+    }
+
+    /// The keys this pod's enabled packs read by name, and whether each resolves.
+    ///
+    /// `list_keys` answers "what is stored"; this answers "what is *wanted*",
+    /// which is the question a key store cannot derive on its own — an unset
+    /// credential is invisible until a tool fails on it.
+    pub async fn recommended_keys(&self) -> anyhow::Result<Vec<RecommendedKey>> {
+        self.get("/keys/recommended").await
     }
 
     pub async fn list_chats(&self) -> anyhow::Result<Vec<ChatSummary>> {
@@ -745,6 +775,20 @@ impl PodConnection {
         flow: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         self.put(&format!("/flows/{flow_id}"), flow).await
+    }
+
+    /// What this flow needs that the pod may not have, pack by pack.
+    ///
+    /// A companion to `flow_binding`, which answers the same question for
+    /// *credentials* and personas but says nothing about packs: a flow whose
+    /// graph reaches a pack this agent does not have fails when it fires, and
+    /// nothing on the arming path used to say so.
+    ///
+    /// `POST`, and it only reports — the pod deliberately refuses to install a
+    /// pack from here.
+    pub async fn flow_dependencies(&self, flow_id: &str) -> anyhow::Result<FlowDependencies> {
+        self.post(&format!("/flows/{flow_id}/check-dependencies"), &())
+            .await
     }
 
     /// Run a flow now.

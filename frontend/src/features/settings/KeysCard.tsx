@@ -1,8 +1,57 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useSettings } from '@/stores/settings'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import type { RecommendedKey } from '@/types'
+
+/**
+ * Keys the packs on this pod read by name, that nobody has filled in.
+ *
+ * The store above can only say what is *stored*. A pack that needs
+ * `RESEND_API_KEY` and does not have it looks exactly like a pack that needs
+ * nothing, right up until somebody runs a tool and reads the failure — the pod
+ * knows the difference from every enabled integration's `requires_env`, and this
+ * is that list.
+ *
+ * Configured ones are not shown: this is a to-do, and a satisfied requirement
+ * has nothing to do about. Managed ones are not shown either — the platform
+ * injects those, and prompting for a value the user cannot supply is worse than
+ * silence.
+ */
+function Wanted({ keys, onPick }: { keys: RecommendedKey[]; onPick: (name: string) => void }) {
+  const missing = keys.filter((k) => !k.configured && !k.managed)
+  if (missing.length === 0) return null
+
+  return (
+    <div className="mt-4 rounded-card bg-inset p-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+        Keys these packs still need
+      </p>
+      <ul className="mt-1.5">
+        {missing.map((k) => (
+          <li key={k.name} className="flex items-center gap-2 py-1">
+            <KeyRound className="h-3.5 w-3.5 shrink-0 text-ink-3" />
+            <button
+              type="button"
+              onClick={() => onPick(k.name)}
+              // The visible text is the key's name; what the button *does* is
+              // put that name in the form below, which only a label can say.
+              aria-label={`Add ${k.name}`}
+              title={`Add ${k.name}`}
+              className="min-w-0 shrink-0 font-mono text-[12px] text-accent hover:underline"
+            >
+              {k.name}
+            </button>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-ink-3">
+              {k.packs.join(', ')}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 /**
  * The pod's key store (PLAN §10.6).
@@ -17,7 +66,8 @@ import { cn } from '@/lib/cn'
  * devtools snapshot could reach.
  */
 export function KeysCard() {
-  const { keys, loadingKeys, keyError, loadKeys, saveKey, deleteKey } = useSettings()
+  const { keys, recommendedKeys, loadingKeys, keyError, loadKeys, saveKey, deleteKey } =
+    useSettings()
   const [name, setName] = useState('')
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
@@ -99,6 +149,14 @@ export function KeysCard() {
           </ul>
         )}
       </div>
+
+      <Wanted
+        keys={recommendedKeys}
+        onPick={(picked) => {
+          setName(picked)
+          setValue('')
+        }}
+      />
 
       <div className="mt-4 flex gap-2">
         <input

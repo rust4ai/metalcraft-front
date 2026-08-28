@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Loader2, Pencil, X } from 'lucide-react'
+import { AlertTriangle, Loader2, MessageSquareText, Pencil, UserX, X } from 'lucide-react'
 import { automations } from '@/rpc'
 import { FlowGraph } from './FlowGraph'
 import { FlowEditor } from './FlowEditor'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
+import { useFleet } from '@/stores/fleet'
+import { useSessions } from '@/stores/sessions'
+import { useUi } from '@/stores/ui'
+import { describeAgent, explain, provenanceOf } from '../runProvenance'
 import type { Flow, FlowRun, FlowRunDetail, SavedFlow } from '@/types'
 
 /**
@@ -157,7 +161,64 @@ export function FlowGraphPanel({
         )}
       </div>
 
+      {run && <RanAs run={run} />}
       {steps.length > 0 && <StepTrace steps={steps} />}
+    </div>
+  )
+}
+
+/**
+ * The agent a run ran as, and the way into the conversation it wrote.
+ *
+ * The step trace says which nodes fired; this says where to read what they
+ * actually *said*. That is the better answer to "why did it do that at 3am",
+ * and the one node ids cannot give.
+ */
+function RanAs({ run }: { run: FlowRunDetail }) {
+  const instances = useFleet((s) => s.instances)
+  const loaded = useFleet((s) => s.loaded)
+  const go = useUi((s) => s.go)
+  const openAt = useSessions((s) => s.openAt)
+
+  // `null` until the fleet has loaded — not an empty roster. See `provenanceOf`.
+  const agents = loaded ? new Map(instances.map((i) => [i.id, i.name])) : null
+  const provenance = provenanceOf(run, agents)
+  const note = explain(provenance)
+
+  const openable = provenance.kind === 'conversation' || provenance.kind === 'silent'
+
+  return (
+    <div className="shrink-0 border-t border-line bg-inset px-4 py-2">
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">Ran as</span>
+        {openable ? (
+          <button
+            type="button"
+            onClick={() => {
+              go({ kind: 'session', instanceId: provenance.instanceId })
+              // Only a conversation run has somewhere specific to land; a silent
+              // one opens the agent on whatever it was last saying.
+              if (provenance.kind === 'conversation') {
+                void openAt(provenance.instanceId, provenance.chatId)
+              }
+            }}
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] text-accent transition-colors hover:bg-hover"
+          >
+            <MessageSquareText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {provenance.kind === 'conversation'
+                ? `Read what ${describeAgent(provenance)} said`
+                : `Open ${describeAgent(provenance)}`}
+            </span>
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-ink-2">
+            <UserX className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{describeAgent(provenance)}</span>
+          </span>
+        )}
+      </div>
+      {note && <p className="mt-1 text-[11px] leading-snug text-ink-3">{note}</p>}
     </div>
   )
 }
