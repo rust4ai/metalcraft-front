@@ -1,8 +1,9 @@
-import { Bot, Check, ExternalLink, Sparkles } from 'lucide-react'
+import { Bot, ExternalLink, Sparkles } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useLibrary } from '@/stores/library'
 import { useUi } from '@/stores/ui'
 import { Button } from '@/components/ui/Button'
+import { KeyNeeds } from '@/components/KeyNeeds'
 import { cn } from '@/lib/cn'
 import type { AgentPresetDetail, PresetDetail, RosterPersona } from '@/types'
 import {
@@ -35,9 +36,10 @@ import {
  * preset look smaller than it is and hide the actual problem, so a persona the
  * pod could not find gets a row with the pod's own reason on it.
  *
- * **`requires_env` is checked, not listed.** A key this pod does not hold is the
- * difference between an agent that works and one that fails on its first tool
- * call, and the pod already told us which keys it has.
+ * **`requires_env` is checked and settable, not listed.** A key this pod does
+ * not hold is the difference between an agent that works and one that fails on
+ * its first tool call — the pod already told us which keys it has, and the same
+ * checklist takes the missing value rather than sending anyone to Settings.
  */
 export function PresetShow({ slug }: { slug: string }) {
   const detail = useLibrary((s) => s.presetDetails[slug])
@@ -47,7 +49,7 @@ export function PresetShow({ slug }: { slug: string }) {
 
 function Body({ slug, detail }: { slug: string; detail: PresetDetail }) {
   const snapshot = useLibrary((s) => s.snapshot)
-  const podKeys = useLibrary((s) => s.podKeys)
+  const reload = useLibrary((s) => s.load)
   const instances = useFleet((s) => s.instances)
   const spawn = useFleet((s) => s.spawn)
   const go = useUi((s) => s.go)
@@ -167,7 +169,11 @@ function Body({ slug, detail }: { slug: string; detail: PresetDetail }) {
           hint="every tool these provide is in scope"
         />
 
-        <Requirements env={preset?.requires_env ?? []} podKeys={podKeys} />
+        <KeyNeeds
+          env={preset?.requires_env ?? []}
+          subject="this agent"
+          onSaved={() => void reload()}
+        />
         <Model model={preset?.model} />
         <Memories memories={preset?.memories} />
         <LiveAgents live={live} onOpen={(id) => go({ kind: 'session', instanceId: id })} />
@@ -264,60 +270,6 @@ function Roster({
   )
 }
 
-/**
- * What the preset needs in the key store, checked against what this pod holds.
- *
- * The same idea as the pack browser's pre-install checklist, moved to the other
- * side of the install: there it prevents a surprise, here it explains one. An
- * agent whose tools fail on their first call usually fails for exactly this
- * reason, and the answer is one screen away in Settings.
- */
-function Requirements({ env, podKeys }: { env: string[]; podKeys: string[] }) {
-  const go = useUi((s) => s.go)
-  if (env.length === 0) return null
-  const unmet = env.filter((name) => !podKeys.includes(name))
-
-  return (
-    <Section title="Needs in the key store" count={env.length}>
-      {unmet.length > 0 && (
-        <div className="pb-2">
-          <Note tone="warn">
-            {unmet.length === 1 ? 'One key this agent needs is' : `${unmet.length} keys this agent needs are`}{' '}
-            not on this pod. It will still spawn — the tools that use{' '}
-            {unmet.length === 1 ? 'it' : 'them'} are what fail.{' '}
-            <button
-              type="button"
-              onClick={() => go({ kind: 'settings' })}
-              className="text-accent hover:underline"
-            >
-              Open Settings
-            </button>
-          </Note>
-        </div>
-      )}
-      <ul className="flex flex-col gap-1">
-        {env.map((name) => {
-          const met = podKeys.includes(name)
-          return (
-            <li key={name} className="flex items-center gap-2">
-              {met ? (
-                <Check className="h-3.5 w-3.5 shrink-0 text-green" />
-              ) : (
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange" />
-              )}
-              <span className="font-mono text-[11.5px] text-ink">{name}</span>
-              {!met && <span className="text-[11px] text-ink-3">not in this pod&rsquo;s key store</span>}
-            </li>
-          )
-        })}
-      </ul>
-    </Section>
-  )
-}
-
-/** The capability floor. Labelled as a floor rather than as "Model", because
- *  that is the distinction the field exists to make and the one a reader will
- *  otherwise get wrong. */
 function Model({ model }: { model?: AgentPresetDetail['model'] }) {
   if (!model) return null
   const { tier, prefer, min_context, needs } = model

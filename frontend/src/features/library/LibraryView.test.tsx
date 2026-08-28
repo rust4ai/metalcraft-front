@@ -118,6 +118,7 @@ async function mount(over: Record<string, unknown> = {}) {
       description: 'A cook.',
       presets: ['amy'],
       provides: { personas: ['amy-host'], skills: ['plan-a-menu'] },
+      requires_env: [{ name: 'SPOON_API_KEY', needed_by: ['plan-a-menu'], required: true }],
     },
     api_tool_detail: {
       name: 'octaweave_create_note',
@@ -297,6 +298,27 @@ describe('LibraryView', () => {
       ],
     })
     await waitFor(() => expect(screen.getByText(/v1\.2\.0 → 1\.4\.0/)).toBeTruthy())
+  })
+
+  it('sets a key an installed pack needs from the pack\u2019s own page', async () => {
+    // This page used to print `requires_env` as raw JSON at the bottom: it could
+    // name the key and say nothing about whether the pod had it, and the only
+    // way to act was to go to Settings and retype the name from memory.
+    const { calls } = await mount()
+    await userEvent.click(await screen.findByText("Amy's Kitchen"))
+    expect(await screen.findByText('SPOON_API_KEY')).toBeTruthy()
+    expect(screen.getByText(/One key this pack needs is not in this pod/)).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Set SPOON_API_KEY' }))
+    await userEvent.type(screen.getByLabelText('Value for SPOON_API_KEY'), 'spn_live_x')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === 'save_key')?.args).toEqual({
+        name: 'SPOON_API_KEY',
+        value: 'spn_live_x',
+      }),
+    )
   })
 
   it('updates a pack from its own page, through the update endpoint', async () => {

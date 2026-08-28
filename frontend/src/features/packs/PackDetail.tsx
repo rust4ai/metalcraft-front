@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowUpCircle, BadgeCheck, Check, Download, ExternalLink
 import { usePacks } from '@/stores/packs'
 import { isInstalled, updateAvailable } from './registryState'
 import { Button } from '@/components/ui/Button'
+import { KeyNeeds } from '@/components/KeyNeeds'
 import { cn } from '@/lib/cn'
 import type { AgentPackPreview, PackManifest, SearchHit } from '@/types'
 
@@ -21,7 +22,7 @@ import type { AgentPackPreview, PackManifest, SearchHit } from '@/types'
  * service it was built around.
  */
 export function PackDetail() {
-  const { viewing, manifests, manifestError, packIds, podKeys, previews, installing, installed, error: installError, view, apply } =
+  const { viewing, manifests, manifestError, packIds, previews, installing, installed, error: installError, view, apply } =
     usePacks()
   if (!viewing) return null
 
@@ -89,11 +90,7 @@ export function PackDetail() {
               <Loader2 className="h-4 w-4 animate-spin" /> Reading the manifest…
             </p>
           ) : (
-            <Body
-              manifest={manifest}
-              podKeys={podKeys}
-              preview={previews[viewing.reference]}
-            />
+            <Body manifest={manifest} preview={previews[viewing.reference]} />
           )}
         </div>
 
@@ -138,22 +135,16 @@ export function PackDetail() {
   )
 }
 
-function Body({
-  manifest,
-  podKeys,
-  preview,
-}: {
-  manifest: PackManifest
-  podKeys: string[]
-  preview?: AgentPackPreview
-}) {
-  const env = manifest.requires_env ?? []
+function Body({ manifest, preview }: { manifest: PackManifest; preview?: AgentPackPreview }) {
   return (
     <>
       {manifest.description && <p className="mt-3 text-[13px] leading-relaxed text-ink-2">{manifest.description}</p>}
 
       <Collisions preview={preview} />
-      <Requirements env={env} podKeys={podKeys} />
+      {/* Settable before the install, not only after it: the key store belongs
+          to the pod rather than to the pack, so a credential typed here is
+          already in place the moment the pack lands. */}
+      <KeyNeeds env={manifest.requires_env ?? []} title="Needs" subject="this pack" />
 
       <List title="Agents" items={manifest.presets} mono />
       <List title="Personas" items={manifest.provides?.personas} mono />
@@ -195,60 +186,6 @@ function Collisions({ preview }: { preview?: AgentPackPreview }) {
         <span className="font-mono">{preview.preset_collisions.join(', ')}</span>.
       </span>
     </p>
-  )
-}
-
-/**
- * The pre-install checklist.
- *
- * Optional env is listed but never marked missing — a pack that works better
- * with a key it does not require should not look broken for lacking one.
- */
-function Requirements({
-  env,
-  podKeys,
-}: {
-  env: NonNullable<PackManifest['requires_env']>
-  podKeys: string[]
-}) {
-  if (env.length === 0) return null
-  const unmet = env.filter((e) => e.required && !podKeys.includes(e.name))
-
-  return (
-    <Section title="Needs">
-      {unmet.length > 0 && (
-        <Note
-          tone="warn"
-          text={`${unmet.length} required ${unmet.length === 1 ? 'key is' : 'keys are'} not in this pod's key store yet. It will install, but the agent cannot use ${unmet.length === 1 ? 'that' : 'those'} until you add ${unmet.length === 1 ? 'it' : 'them'}.`}
-        />
-      )}
-      <ul className="mt-1">
-        {env.map((e) => {
-          const met = podKeys.includes(e.name)
-          return (
-            <li key={e.name} className="flex items-baseline gap-2 py-1">
-              {met ? (
-                <Check className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-green" />
-              ) : (
-                <span
-                  className={cn(
-                    'mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full',
-                    e.required ? 'bg-orange' : 'bg-ink-3',
-                  )}
-                />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="font-mono text-[11.5px] text-ink">{e.name}</span>
-                {!e.required && <span className="ml-1.5 text-[11px] text-ink-3">optional</span>}
-                {e.needed_by.length > 0 && (
-                  <span className="block truncate text-[11px] text-ink-3">for {e.needed_by.join(', ')}</span>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
-    </Section>
   )
 }
 

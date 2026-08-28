@@ -69,14 +69,14 @@ describe('PackDetail', () => {
       list_keys: [{ name: 'OPENAI_API_KEY', masked: 'sk-…', scope: 'global', managed: false }],
     })
     // One of the two required keys is still missing, so the warning counts one.
-    await waitFor(() => expect(screen.getByText(/1 required key is not in this pod/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/One key this pack needs is not in this pod/)).toBeTruthy())
   })
 
   it('warns about every unmet required key before installing', async () => {
     // PLAN §9.4: an unmet requirement is a checklist item now, not a runtime
     // failure the first time someone talks to the agent.
     await mount({ registry_manifest: manifest, list_keys: [] })
-    await waitFor(() => expect(screen.getByText(/2 required keys are not in this pod/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/2 keys this pack needs are not in this pod/)).toBeTruthy())
   })
 
   it('never counts an optional key as missing', async () => {
@@ -84,7 +84,7 @@ describe('PackDetail', () => {
     await mount({ registry_manifest: manifest, list_keys: [] })
     await waitFor(() => expect(screen.getByText('NICE_TO_HAVE')).toBeTruthy())
     expect(screen.getByText('optional')).toBeTruthy()
-    expect(screen.queryByText(/3 required/)).toBeNull()
+    expect(screen.queryByText(/3 keys this pack needs/)).toBeNull()
   })
 
   it('reports a manifest the host will not serve', async () => {

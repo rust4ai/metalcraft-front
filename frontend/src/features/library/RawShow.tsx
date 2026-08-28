@@ -4,6 +4,7 @@ import { usePacks } from '@/stores/packs'
 import { useFleet } from '@/stores/fleet'
 import { usePackUpdate } from '@/features/packs/updates'
 import { Button } from '@/components/ui/Button'
+import { KeyNeeds, type KeyNeed } from '@/components/KeyNeeds'
 import { refKey, type Ref } from './refs'
 import {
   Badge,
@@ -178,9 +179,10 @@ function PackUpdate({ id }: { id: string }) {
 }
 
 function Pack({ id, doc }: { id: string; doc: Record<string, unknown> }) {
+  const reload = useLibrary((s) => s.load)
   const provides = obj(doc.provides)
   const domains = strArray(doc.domains)
-  const env = doc.requires_env
+  const env = needs(doc.requires_env)
 
   return (
     <Page>
@@ -197,6 +199,18 @@ function Pack({ id, doc }: { id: string; doc: Record<string, unknown> }) {
       />
 
       <PackUpdate id={id} />
+
+      {/* Above the artifact lists, because this is the half of the page with
+          something to do on it: what the pack gave this pod can be read at
+          leisure, and a key it is missing is why its tools do not work now. */}
+      <KeyNeeds
+        env={env}
+        title="Keys it needs"
+        subject="this pack"
+        // The library holds its own copy of the pod's key names, which a write
+        // from this page has just made one key out of date.
+        onSaved={() => void reload()}
+      />
 
       <RefChips kind="preset" title="Agents it provides" ids={strArray(doc.presets)} />
       <RefChips kind="persona" ids={strArray(provides?.personas)} />
@@ -215,12 +229,6 @@ function Pack({ id, doc }: { id: string; doc: Record<string, unknown> }) {
               </span>
             ))}
           </div>
-        </Section>
-      )}
-
-      {Array.isArray(env) && env.length > 0 && (
-        <Section title="Needs in the key store">
-          <Json value={env} />
         </Section>
       )}
 
@@ -332,6 +340,26 @@ function obj(v: unknown): Record<string, unknown> | undefined {
 
 function strArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
+
+/** `requires_env` in two shapes: bare names from an older manifest, `{name,
+ *  needed_by, required}` from a current one. Both become the second, so the
+ *  checklist does not have to know which pack wrote which. */
+function needs(v: unknown): KeyNeed[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map((e): KeyNeed | null => {
+      if (typeof e === 'string') return { name: e }
+      const o = obj(e)
+      const name = str(o?.name)
+      if (!name) return null
+      return {
+        name,
+        needed_by: strArray(o?.needed_by),
+        required: typeof o?.required === 'boolean' ? o.required : undefined,
+      }
+    })
+    .filter((e) => e !== null)
 }
 
 /** A pack's `provides.integrations` is a list of objects, not strings — each

@@ -1,6 +1,6 @@
 import { useLibrary } from '@/stores/library'
-import { useUi } from '@/stores/ui'
-import { Badge, DetailState, Fact, Facts, Note, RefChips, Section, ShowHeader } from './parts'
+import { KeyNeeds } from '@/components/KeyNeeds'
+import { Badge, DetailState, Fact, Facts, Note, RefChips, ShowHeader } from './parts'
 
 /**
  * An integration pack: HTTP tools, and the personas and skills that came with
@@ -18,12 +18,9 @@ import { Badge, DetailState, Fact, Facts, Note, RefChips, Section, ShowHeader } 
  */
 export function IntegrationShow({ id }: { id: string }) {
   const detail = useLibrary((s) => s.integrationDetails[id])
-  const podKeys = useLibrary((s) => s.podKeys)
-  const go = useUi((s) => s.go)
+  const reload = useLibrary((s) => s.load)
 
   if (!detail) return <DetailState refTo={{ kind: 'integration', id }} />
-
-  const unmet = detail.requires_env.filter((k) => !podKeys.includes(k))
 
   return (
     <div className="h-full overflow-y-auto px-8 pb-12 pt-6">
@@ -54,22 +51,6 @@ export function IntegrationShow({ id }: { id: string }) {
           </div>
         )}
 
-        {unmet.length > 0 && (
-          <div className="mt-3">
-            <Note tone="warn">
-              {unmet.length === 1 ? 'A key this pack needs is' : `${unmet.length} keys this pack needs are`}{' '}
-              not in this pod&rsquo;s key store, so its tools will fail when called.{' '}
-              <button
-                type="button"
-                onClick={() => go({ kind: 'settings' })}
-                className="text-accent hover:underline"
-              >
-                Open Settings
-              </button>
-            </Note>
-          </div>
-        )}
-
         <div className="mt-5">
           <Facts>
             <Fact label="API tools">
@@ -87,29 +68,17 @@ export function IntegrationShow({ id }: { id: string }) {
           </Facts>
         </div>
 
+        <KeyNeeds
+          env={detail.requires_env}
+          subject="this pack"
+          onSaved={() => void reload()}
+        />
+
         <RefChips kind="tool" ids={detail.api_tools} />
         <RefChips kind="persona" ids={detail.personas} />
         <RefChips kind="skill" ids={detail.skills} />
         <RefChips kind="template" ids={detail.flow_templates} />
 
-        {detail.requires_env.length > 0 && (
-          <Section title="Needs in the key store" count={detail.requires_env.length}>
-            <div className="flex flex-wrap gap-1.5">
-              {detail.requires_env.map((name) => (
-                <span
-                  key={name}
-                  className={
-                    podKeys.includes(name)
-                      ? 'rounded-chip bg-green-tint px-2 py-1 font-mono text-[11px] text-green'
-                      : 'rounded-chip bg-orange-tint px-2 py-1 font-mono text-[11px] text-orange'
-                  }
-                >
-                  {name}
-                </span>
-              ))}
-            </div>
-          </Section>
-        )}
       </div>
     </div>
   )
