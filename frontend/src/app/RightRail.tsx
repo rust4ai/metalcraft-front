@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Brain, Clock, Info, PauseCircle, Wrench } from 'lucide-react'
 import { fleet as fleetRpc } from '@/rpc'
-import type { ScheduledFlow } from '@/types'
+import type { DreamReport, MemorySystemStatus, ScheduledFlow } from '@/types'
 import { useFleet } from '@/stores/fleet'
 import { useMemory } from '@/stores/memory'
 import { useSessions } from '@/stores/sessions'
@@ -290,6 +290,8 @@ function Memory({ instanceId }: { instanceId: string }) {
         <Row label="Base" value={view.base} mono />
       </Section>
 
+      <Dreaming instanceId={instanceId} system={view.system} />
+
       {view.sample.length === 0 ? (
         <Empty text="This agent has not formed any memories yet." />
       ) : (
@@ -314,6 +316,120 @@ function Memory({ instanceId }: { instanceId: string }) {
       )}
     </>
   )
+}
+
+/**
+ * How memory is actually maintained, and when it last was.
+ *
+ * The counts above are a result; this is the machine behind them. Both belong in
+ * one pane because the question they answer together is the one people ask of a
+ * quiet agent: has it not learned anything, or has it not been *given the chance*
+ * to? A queue of eighty captures with no dream in a week is the second, and it is
+ * invisible without this.
+ *
+ * The whole block hides on a pod too old to report it, rather than rendering a
+ * row of zeros that would read as a broken memory system rather than an older one.
+ */
+function Dreaming({ instanceId, system }: { instanceId: string; system?: MemorySystemStatus | null }) {
+  const dreaming = useMemory((s) => s.dreaming[instanceId])
+  const report = useMemory((s) => s.lastDream[instanceId])
+  const dream = useMemory((s) => s.dream)
+  if (!system) return null
+
+  const { dream: d } = system
+  const next = d.next_run_at ? until(d.next_run_at) : null
+  const last = d.last_run_at ? relative(d.last_run_at) : null
+
+  return (
+    <Section title="Dreaming">
+      <p className="pb-2 text-[11.5px] leading-relaxed text-ink-3">
+        Conversations are captured as they happen and distilled overnight into durable
+        memories — merged, linked, and faded when unused.
+      </p>
+      <Row
+        label="Nightly"
+        value={d.nightly_enabled ? (next ? `due ${next}` : 'on') : 'off'}
+      />
+      <Row label="Last run" value={last ? `${last}${d.last_trigger === 'manual' ? ' (manual)' : ''}` : 'never'} />
+      {d.last_summary && (
+        <p className="py-1 text-[11.5px] leading-relaxed text-ink-2">{d.last_summary}</p>
+      )}
+      {d.last_error && (
+        <p className="py-1 text-[11.5px] leading-relaxed text-danger">{d.last_error}</p>
+      )}
+      <Row label="Waiting to distil" value={system.pending_captures} />
+      <Row label="Connections" value={system.links} />
+      {system.archived > 0 && <Row label="Faded" value={system.archived} />}
+      {system.superseded > 0 && <Row label="Merged away" value={system.superseded} />}
+      <Row label="Model" value={d.model} mono />
+      {!system.capture_enabled && <Row label="Capture" value="off" />}
+
+      {system.by_kind.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-2">
+          {system.by_kind.map((k) => (
+            <span key={k.kind} className="rounded-chip bg-inset px-1.5 py-px text-[10.5px] text-ink-3">
+              {k.count} {k.kind}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void dream(instanceId)}
+        disabled={dreaming || !system.enabled}
+        className={cn(
+          'mt-3 w-full rounded-chip border border-line px-2 py-1.5 text-[11.5px] transition-colors duration-150',
+          dreaming ? 'text-ink-3' : 'text-ink-2 hover:bg-hover hover:text-ink',
+        )}
+      >
+        {dreaming ? 'Dreaming…' : 'Dream now'}
+      </button>
+      {dreaming && (
+        // Said before it is felt: this is several model calls, and a button that
+        // sits dead for two minutes with no explanation reads as a hang.
+        <p className="pt-1 text-[10.5px] leading-relaxed text-ink-3">
+          Distilling recent conversations. This takes a while — you can keep working.
+        </p>
+      )}
+      {report && !dreaming && (
+        <p className="pt-1 text-[10.5px] leading-relaxed text-ink-3">
+          {report.error ?? `Done: ${dreamSummary(report)}.`}
+        </p>
+      )}
+    </Section>
+  )
+}
+
+/**
+ * How long until an instant in the future — the mirror of `relative`, which
+ * clamps to zero and so reports every future time as "just now".
+ *
+ * Rounded to the hour past a day, because the only future instant shown here is
+ * a nightly schedule and "in 14 hours" is the useful precision. An instant that
+ * has already passed reads as "now": the loop ticks once a minute, so a due time
+ * a few seconds old means it is about to run, not that it was missed.
+ */
+function until(iso: string): string {
+  const then = Date.parse(iso)
+  if (Number.isNaN(then)) return ''
+  const secs = (then - Date.now()) / 1000
+  if (secs <= 60) return 'now'
+  if (secs < 3600) return `in ${Math.round(secs / 60)}m`
+  if (secs < 86_400) return `in ${Math.round(secs / 3600)}h`
+  return `in ${Math.round(secs / 86_400)}d`
+}
+
+/** What a finished run did, in the pane's voice rather than the pod's. */
+function dreamSummary(report: DreamReport): string {
+  const drained = report.captures_pending_before - report.captures_pending_after
+  const gained = report.memories_after - report.memories_before
+  if (drained === 0 && gained === 0) return 'nothing new to distil'
+  const parts: string[] = []
+  if (drained > 0) parts.push(`${drained} conversation turn(s) distilled`)
+  if (gained > 0) parts.push(`${gained} memories added`)
+  else if (gained < 0) parts.push(`${-gained} merged or faded`)
+  return parts.join(', ')
 }
 
 function PodDetails() {

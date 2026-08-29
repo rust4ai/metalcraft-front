@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use front_core::{
-    AgentInstance, AgentPresetSummary, ChatSummary, InstanceMemory, RosterPersona, ScheduledFlow,
+    AgentInstance, AgentPresetSummary, ChatSummary, DreamReport, InstanceMemory, RosterPersona,
+    ScheduledFlow,
 };
 
 use crate::state::AppState;
@@ -124,6 +125,29 @@ pub async fn instance_memory(id: String, state: State<'_>) -> Result<InstanceMem
     state
         .conn(None)?
         .instance_memory(&id, MEMORY_SAMPLE_LIMIT)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Consolidate this agent's memory now rather than waiting for tonight.
+///
+/// Slow by nature — the pod runs the same five stages the nightly sweep does, and
+/// the front's client allows fifteen minutes for it. The caller is expected to
+/// show that it is working; there is no progress stream, because the run is a
+/// handful of long model calls rather than many short ones and a spinner is an
+/// honest account of it.
+///
+/// `stages` narrows the run: `[1, 5]` is the mechanical pass with no model calls
+/// at all. `None` runs whatever the pod is configured for, which is all five.
+#[tauri::command]
+pub async fn dream_instance(
+    id: String,
+    stages: Option<Vec<u8>>,
+    state: State<'_>,
+) -> Result<DreamReport, String> {
+    state
+        .conn(None)?
+        .dream_instance(&id, stages)
         .await
         .map_err(|e| e.to_string())
 }

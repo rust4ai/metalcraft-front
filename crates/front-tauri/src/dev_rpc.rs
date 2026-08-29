@@ -276,6 +276,15 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .await),
         "list_preset_personas" => j(app.conn(None)?.preset_personas(need(args, "preset")?).await),
         "instance_memory" => j(app.conn(None)?.instance_memory(need(args, "id")?, 50).await),
+        "dream_instance" => j(app
+            .conn(None)?
+            .dream_instance(
+                need(args, "id")?,
+                args.get("stages")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|n| n.as_u64()).map(|n| n as u8).collect()),
+            )
+            .await),
         "instance_conversations" => j(app
             .conn(None)?
             .instance_conversations(need(args, "id")?)

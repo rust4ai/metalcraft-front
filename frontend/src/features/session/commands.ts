@@ -1,4 +1,4 @@
-import { chats } from '@/rpc'
+import { chats, fleet } from '@/rpc'
 
 /**
  * Slash commands for agent chats.
@@ -24,12 +24,25 @@ export interface CommandResult {
 
 }
 
+/**
+ * What a command acts on.
+ *
+ * Both ids, because they are not interchangeable: `/compact` and `/clear` act on
+ * one conversation, while `/dream` acts on the **agent** — its memory outlives
+ * any single chat, and consolidating it from inside one is still a fleet-level
+ * operation.
+ */
+export interface CommandTarget {
+  chatId: string
+  instanceId: string
+}
+
 export interface Command {
   name: string
   /** One line, shown in the menu and by `/help`. */
   summary: string
   /** Absent for commands this client answers by itself. */
-  run?: (chatId: string) => Promise<CommandResult>
+  run?: (target: CommandTarget) => Promise<CommandResult>
 }
 
 /** `12400` → `12.4k`. Token counts are estimates; four significant digits would
@@ -44,7 +57,7 @@ export const COMMANDS: Command[] = [
   {
     name: 'compact',
     summary: 'Summarize the older half of this conversation to free up context',
-    run: async (chatId) => {
+    run: async ({ chatId }) => {
       const r = await chats.compact(chatId)
       if (!r.compacted) {
         return { notice: 'Nothing to compact yet — nothing here is old enough to fold up.' }
@@ -60,7 +73,7 @@ export const COMMANDS: Command[] = [
   {
     name: 'tokens',
     summary: 'How full this conversation’s context is',
-    run: async (chatId) => {
+    run: async ({ chatId }) => {
       const c = await chats.context(chatId)
       const pct = Math.round((c.estimated_tokens / c.context_window) * 100)
       const tail = c.would_compact
@@ -76,7 +89,7 @@ export const COMMANDS: Command[] = [
   {
     name: 'clear',
     summary: 'Start the agent fresh here, keeping the conversation and its memory',
-    run: async (chatId) => {
+    run: async ({ chatId }) => {
       await chats.clear(chatId)
       // Deliberately leaves the transcript alone. This used to empty it, which
       // matched a pod that really did delete the history — it does not any more,
@@ -84,6 +97,40 @@ export const COMMANDS: Command[] = [
       // pod, waiting to reappear on the next open. The divider marking the reset
       // arrives on the event stream, the same way a flow's 3am reset does.
       return { notice: 'The agent is starting fresh here. Nothing was deleted.' }
+    },
+  },
+  {
+    name: 'dream',
+    summary: 'Consolidate what this agent remembers now, instead of waiting for tonight',
+    run: async ({ instanceId }) => {
+      // Minutes, not milliseconds. The composer is already locked for the whole
+      // call (see `useSessions.submit`), which is the only progress signal there
+      // is — the pod runs the stages as a handful of long model calls, so there
+      // is nothing finer-grained to stream.
+      const r = await fleet.dream(instanceId)
+      if (r.error) return { notice: `The dream could not finish: ${r.error}` }
+
+      const drained = r.captures_pending_before - r.captures_pending_after
+      const gained = r.memories_after - r.memories_before
+      if (drained === 0 && gained === 0) {
+        return {
+          notice:
+            'Nothing new to distil — everything said since the last dream is already ' +
+            'part of what I know.',
+        }
+      }
+      const secs = Math.round(
+        (Date.parse(r.finished_at) - Date.parse(r.started_at)) / 1000,
+      )
+      const change =
+        gained > 0
+          ? `${gained} memories added`
+          : gained < 0
+            ? `${-gained} merged away or faded`
+            : 'nothing added'
+      return {
+        notice: `Dreamt for ${secs}s: ${drained} captured turn(s) distilled, ${change}.`,
+      }
     },
   },
   {
@@ -121,7 +168,10 @@ export function describeCommandError(error: unknown, command: string): string {
 
 function isMissingRoute(message: string): boolean {
   if (!/^404\b/.test(message)) return false
-  const at = message.indexOf(' /chats/')
+  // Any route, not only `/chats/…`: `/dream` reaches the agent's memory under
+  // `/agents/instances/…`, and pinning the prefix here would have made an old
+  // pod's 404 on that route read as the pod's own words.
+  const at = message.indexOf(' /')
   if (at === -1) return false
   // Everything after the path is the pod's own words. A route miss has none.
   const detail = message.slice(at).split(':').slice(1).join(':')

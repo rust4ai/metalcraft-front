@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
+import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, DreamReport, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -137,6 +137,10 @@ export const fleet = {
     call<AgentInstance>('set_instance_persona', { id, persona }),
   personas: (preset: string) => call<RosterPersona[]>('list_preset_personas', { preset }),
   memory: (id: string) => call<InstanceMemory>('instance_memory', { id }),
+  /** Consolidate this agent's memory now instead of waiting for tonight.
+   *  Minutes, not milliseconds — the caller must show that it is working.
+   *  `stages: [1, 5]` is the mechanical pass and returns immediately. */
+  dream: (id: string, stages?: number[]) => call<DreamReport>('dream_instance', { id, stages }),
   /** This agent's conversations, asked of the agent rather than filtered out of
    *  the whole pod's chat list. */
   conversations: (id: string) => call<ChatSummary[]>('instance_conversations', { id }),

@@ -439,7 +439,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
     // summarization call, and the pod refuses a turn while it runs anyway.
     set({ byInstance: { ...get().byInstance, [instanceId]: { ...session, sending: true, error: null } } })
     try {
-      const result = await parsed.command.run(session.chatId)
+      const result = await parsed.command.run({ chatId: session.chatId, instanceId })
       const current = get().byInstance[instanceId]
       if (!current) return
       set({

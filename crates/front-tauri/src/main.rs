@@ -117,6 +117,7 @@ fn main() {
             rpc::fleet::set_instance_persona,
             rpc::fleet::list_preset_personas,
             rpc::fleet::instance_memory,
+            rpc::fleet::dream_instance,
             rpc::fleet::instance_conversations,
             rpc::fleet::instance_flows,
             rpc::fleet::list_instances,

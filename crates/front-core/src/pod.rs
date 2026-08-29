@@ -42,6 +42,16 @@ const CRUD_TIMEOUT: Duration = Duration::from_secs(30);
 /// longer than a local read before we call them dead.
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// How long to wait on a dream.
+///
+/// Generous because the work genuinely is: a full run is one model call per
+/// episode plus one per merge cluster, and the pod allows ten minutes for any
+/// single inference call. This is a backstop against a dead socket, not a
+/// latency budget — and hitting it does not cancel the run. The pod finishes and
+/// journals it either way, so the next read of the agent's memory shows the
+/// result even when this request gave up waiting for it.
+const DREAM_TIMEOUT: Duration = Duration::from_secs(900);
+
 /// Percent-encode a query value. Tiny by design: the only untrusted thing that
 /// reaches a URL here is a search box.
 fn urlencode(s: &str) -> String {
@@ -306,6 +316,27 @@ impl PodConnection {
     pub async fn instance_memory(&self, id: &str, limit: u32) -> anyhow::Result<InstanceMemory> {
         self.get(&format!("/agents/instances/{id}/memory?limit={limit}"))
             .await
+    }
+
+    /// Consolidate this agent's memory now instead of waiting for tonight.
+    ///
+    /// **Blocks for the whole run.** The full five stages are several model calls
+    /// and can take minutes; `stages` narrows it, and `[1, 5]` is the mechanical
+    /// pass (drain the capture queue, run decay) which returns immediately.
+    ///
+    /// The pod answers 200 with a report even when a stage failed — the stages
+    /// that succeeded did real work, and the failure is named inside.
+    pub async fn dream_instance(
+        &self,
+        id: &str,
+        stages: Option<Vec<u8>>,
+    ) -> anyhow::Result<DreamReport> {
+        self.post_timeout(
+            &format!("/agents/instances/{id}/memory/dream"),
+            &serde_json::json!({ "stages": stages }),
+            DREAM_TIMEOUT,
+        )
+        .await
     }
 
     pub async fn list_presets(&self) -> anyhow::Result<Vec<AgentPresetSummary>> {
@@ -1198,12 +1229,23 @@ impl PodConnection {
         path: &str,
         body: &B,
     ) -> anyhow::Result<T> {
+        self.post_timeout(path, body, INSTALL_TIMEOUT).await
+    }
+
+    /// A POST with a JSON body and a caller-chosen timeout, for the handful of
+    /// routes whose work is measured in minutes rather than milliseconds.
+    async fn post_timeout<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+        timeout: Duration,
+    ) -> anyhow::Result<T> {
         let resp = self
             .client
             .post(self.url(path))
             .bearer_auth(self.bearer())
             .json(body)
-            .timeout(INSTALL_TIMEOUT)
+            .timeout(timeout)
             .send()
             .await?;
         Self::decode(resp, path).await

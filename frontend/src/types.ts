@@ -421,6 +421,76 @@ export interface InstanceMemory {
   learned: number
   forgotten: number
   sample: MemorySample[]
+  /** How the machinery behind those counts is configured, and when it last ran.
+   *  Optional because a pod older than the dream serves this view without it. */
+  system?: MemorySystemStatus | null
+}
+
+/**
+ * The state of the memory subsystem for one agent.
+ *
+ * The counts and the schedule travel together because they answer one question:
+ * an agent that knows very little either has not been talked to, or has a dream
+ * that is not running, and `pending_captures` next to `last_run_at` is what
+ * tells those two apart.
+ */
+export interface MemorySystemStatus {
+  enabled: boolean
+  capture_enabled: boolean
+  recall_enabled: boolean
+  /** Turns captured but not yet distilled. Only grows when the dream is stuck. */
+  pending_captures: number
+  by_kind: KindCount[]
+  links: number
+  archived: number
+  superseded: number
+  dream: DreamStatus
+}
+
+export interface KindCount {
+  kind: string
+  count: number
+}
+
+export interface DreamStatus {
+  /** Whether the nightly schedule is armed. On-demand runs work either way. */
+  nightly_enabled: boolean
+  cron: string
+  timezone?: string | null
+  model: string
+  active_days: number
+  next_run_at?: string | null
+  last_run_at?: string | null
+  /** One line on what the last run did, written by the pod to be printed. */
+  last_summary?: string | null
+  last_trigger?: string | null
+  last_error?: string | null
+}
+
+/** One run of the dream, as the pod reports it. */
+export interface DreamReport {
+  instance_id: string
+  trigger: string
+  model: string
+  started_at: string
+  finished_at: string
+  stages: DreamStageReport[]
+  memories_before: number
+  memories_after: number
+  captures_pending_before: number
+  captures_pending_after: number
+  snapshot_written: boolean
+  error?: string | null
+}
+
+export interface DreamStageReport {
+  stage: number
+  name: string
+  /** False when the pod's MEMORY_DREAM_STAGES excluded it. */
+  ran: boolean
+  counts: Record<string, number>
+  error?: string | null
+  millis: number
 }
 
 export interface MemorySample {

@@ -770,6 +770,118 @@ pub struct InstanceMemory {
     pub forgotten: usize,
     #[serde(default)]
     pub sample: Vec<MemorySample>,
+    /// How the machinery behind those counts is configured, and when it last ran.
+    ///
+    /// `#[serde(default)]` like everything else here, and load-bearing: a pod
+    /// older than the dream serves this view without the field, and the rail has
+    /// to render what it does have rather than fail to parse the response.
+    #[serde(default)]
+    pub system: Option<MemorySystemStatus>,
+}
+
+/// The state of the memory subsystem for one agent — what is switched on, what is
+/// waiting to be distilled, and what the dream did about it last.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct MemorySystemStatus {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub capture_enabled: bool,
+    #[serde(default)]
+    pub recall_enabled: bool,
+    /// Turns captured but not yet distilled. A number that only grows means a
+    /// dream that is not running.
+    #[serde(default)]
+    pub pending_captures: usize,
+    #[serde(default)]
+    pub by_kind: Vec<KindCount>,
+    #[serde(default)]
+    pub links: usize,
+    #[serde(default)]
+    pub archived: usize,
+    #[serde(default)]
+    pub superseded: usize,
+    #[serde(default)]
+    pub dream: DreamStatus,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct KindCount {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub count: usize,
+}
+
+/// When the nightly dream runs, and what happened the last time it did.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct DreamStatus {
+    #[serde(default)]
+    pub nightly_enabled: bool,
+    #[serde(default)]
+    pub cron: String,
+    #[serde(default)]
+    pub timezone: Option<String>,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub active_days: i64,
+    #[serde(default)]
+    pub next_run_at: Option<String>,
+    #[serde(default)]
+    pub last_run_at: Option<String>,
+    /// One line on what the last run did, written by the pod to be printed.
+    #[serde(default)]
+    pub last_summary: Option<String>,
+    #[serde(default)]
+    pub last_trigger: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+}
+
+/// One run of the dream, as the pod reports it.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct DreamReport {
+    #[serde(default)]
+    pub instance_id: String,
+    #[serde(default)]
+    pub trigger: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub started_at: String,
+    #[serde(default)]
+    pub finished_at: String,
+    #[serde(default)]
+    pub stages: Vec<DreamStageReport>,
+    #[serde(default)]
+    pub memories_before: usize,
+    #[serde(default)]
+    pub memories_after: usize,
+    #[serde(default)]
+    pub captures_pending_before: usize,
+    #[serde(default)]
+    pub captures_pending_after: usize,
+    #[serde(default)]
+    pub snapshot_written: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct DreamStageReport {
+    #[serde(default)]
+    pub stage: u8,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub ran: bool,
+    #[serde(default)]
+    pub counts: std::collections::BTreeMap<String, usize>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub millis: u64,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
