@@ -299,9 +299,30 @@ Sections, in order:
 Off a session (Home, Settings, Packs) the rail shows the pod's own version of
 sections 1, 4 and 6.
 
-### H5 — usage, as one number and one meter
+### H5 — usage, as one number and one meter ✅ *landed*
 
-**New:** `stores/usage.ts`, `components/ui/UsageMeter.tsx`.
+**New:** `stores/usage.ts`, `stores/usage.test.ts`, `components/ui/Usage.tsx`.
+**Edits:** `app/TopBar.tsx`, `app/RightRail.tsx`.
+
+> **The ring measures context, and credits stay in the status bar.** Two
+> different questions — "can this conversation keep going" and "can this account
+> afford it" — and one ring cannot answer both. The reference's `<1%` is the
+> first, so that is what this is.
+>
+> **The token legend (Input / Cached / Reasoning / Output) was not built.** Those
+> splits live only in the OTLP trace, which `useTurnDebug` loads for one run at a
+> time; a second consumer in the rail would either fight it for that slot or fire
+> a duplicate fetch on every session open. They are already shown per turn in the
+> Runs mode, which is more useful than an aggregate — a legend averaging every
+> turn together answers no question anyone asks.
+>
+> What the meter shows instead is the thing the reference's ring cannot: the
+> **compaction threshold, marked on the bar**. 48% means nothing alone; 48% with
+> a tick at 60% says "two more exchanges and this gets summarized".
+>
+> The estimate is labelled as one, in the panel rather than a tooltip:
+> `estimated_tokens` is the pod's ~4-chars-per-token figure, and anyone
+> reconciling it against a provider bill needs to know that before they try.
 
 The reference shows the same fact at three sizes: a ring in the top bar, a ring
 in the composer, a stacked meter with a legend in the Inspector. One store, three

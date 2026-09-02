@@ -1,4 +1,4 @@
-import { Bot, ServerCog, ShieldCheck } from 'lucide-react'
+import { Bot, Gauge, ServerCog, ShieldCheck } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useSessions } from '@/stores/sessions'
 import { useConnection } from '@/stores/connection'
@@ -8,6 +8,7 @@ import { activeView, canThink, useUi } from '@/stores/ui'
 import { StatusDot } from '@/components/ui/StatusDot'
 import { Collapsible } from '@/components/ui/Collapsible'
 import { Empty, Row } from '@/components/ui/Facts'
+import { UsageMeter } from '@/components/ui/Usage'
 import { relative } from '@/features/fleet/FleetView'
 import { Resizer } from './Resizer'
 import { PersonaSwitcher } from '@/features/session/PersonaSwitcher'
@@ -139,8 +140,9 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
         )}
       </Collapsible>
 
-      {/* The usage section the reference puts here arrives with H5, when there is
-          a number behind it. Nothing stands in for it meanwhile (§0). */}
+      <Collapsible id="usage" title="Usage" icon={<Gauge className="h-3.5 w-3.5" />}>
+        <UsageMeter instanceId={instanceId} />
+      </Collapsible>
 
       {/* What this agent does unattended used to be a section here. It is the
           Schedules mode now — one click away on the row above, with room for the

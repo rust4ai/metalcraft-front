@@ -10,6 +10,7 @@ import {
   Search,
   Sun,
 } from 'lucide-react'
+import { UsageRing } from '@/components/ui/Usage'
 import { useConnection } from '@/stores/connection'
 import { useFleet } from '@/stores/fleet'
 import { useLayout } from '@/stores/layout'
@@ -89,9 +90,10 @@ export function TopBar() {
       <SearchField />
 
       <div className="flex min-w-0 items-center justify-end gap-0.5">
-        {/* The usage ring the reference puts here is deliberately absent until
-            H5: there is no number behind it yet, and a ring reading `<1%` off a
-            figure the pod never sent is exactly the hollow control §0 forbids. */}
+        {/* Only in a session: away from one there is no conversation whose
+            context this could be, and a ring standing for nothing is the hollow
+            control §0 forbids. `UsageRing` renders nothing without a chat. */}
+        <ActiveUsage />
         <ErrorLogButton />
         <ThemeButton />
         <button
@@ -112,6 +114,13 @@ export function TopBar() {
       </div>
     </header>
   )
+}
+
+/** The open conversation's context, when the centre column is showing one. */
+function ActiveUsage() {
+  const view = useUi(activeView)
+  if (view.kind !== 'session') return null
+  return <UsageRing instanceId={view.instanceId} className="mr-1" />
 }
 
 /** The room the centre column is showing, as the last crumb. */
