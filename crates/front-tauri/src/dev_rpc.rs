@@ -29,6 +29,7 @@ use axum::response::IntoResponse;
 use axum::response::sse::{Event, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use front_core::models::ScheduleSpec;
 use front_core::{ChatEvent, NewChat, PodConnection};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
@@ -91,6 +92,17 @@ fn arg<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
 
 fn need<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
     arg(args, name).ok_or_else(|| format!("missing argument '{name}'"))
+}
+
+/// A structured argument, deserialized. The string helpers above cover most of
+/// this bridge, but a schedule is an object and hand-unpicking one here would
+/// mean a second definition of a shape `front-core` already owns — which is
+/// exactly the drift that left these three handlers uncompilable.
+fn need_as<T: serde::de::DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
+    let raw = args
+        .get(name)
+        .ok_or_else(|| format!("missing argument '{name}'"))?;
+    serde_json::from_value(raw.clone()).map_err(|e| format!("bad argument '{name}': {e}"))
 }
 
 async fn rpc(
@@ -361,11 +373,7 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             .flow_dependencies(need(args, "flowId")?)
             .await),
         "preview_schedule" => {
-            let spec: ScheduleSpec = serde_json::from_value(
-                args.and_then(|a| a.get("schedule").cloned())
-                    .unwrap_or_default(),
-            )
-            .map_err(|e| e.to_string())?;
+            let spec: ScheduleSpec = need_as(args, "schedule")?;
             j(app.conn(None)?.preview_schedule(&spec).await)
         }
         "flow_binding" => j(app.conn(None)?.flow_binding(need(args, "flowId")?).await),
@@ -377,17 +385,22 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
                 args.get("inputs").filter(|v| !v.is_null()),
             )
             .await),
-        "arm_schedule" => j(app
-            .conn(None)?
-            .arm_schedule(
-                need(args, "flowId")?,
-                need(args, "scheduleId")?,
-                arg(args, "instanceId"),
-            )
-            .await),
+        "arm_schedule" => {
+            // The spec itself, not an id: arming *creates* the schedule, so
+            // there is nothing to name yet. This handler asked for a
+            // `scheduleId` that never existed on the way in.
+            let spec: ScheduleSpec = need_as(args, "schedule")?;
+            j(app
+                .conn(None)?
+                .arm_schedule(need(args, "flowId")?, &spec, arg(args, "instanceId"))
+                .await)
+        }
+        // Disarming names the *scheduled flow*, not the flow plus a schedule
+        // within it — one schedule, one id, since the SavedFlow/ScheduledFlow
+        // split.
         "disarm_schedule" => j(app
             .conn(None)?
-            .disarm_schedule(need(args, "flowId")?, need(args, "scheduleId")?)
+            .disarm_schedule(need(args, "scheduledId")?)
             .await
             .map(|_| json!(null))),
         "resume_flow_run" => j(app
