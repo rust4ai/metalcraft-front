@@ -154,7 +154,13 @@ function Chat({
           standing state of the conversation, not something that happened at a
           point in the transcript. */}
       <Followups instanceId={instanceId} />
-      <Composer busy={busy} stopping={stopping} onSend={onSend} onStop={onStop} />
+      <Composer
+        instanceId={instanceId}
+        busy={busy}
+        stopping={stopping}
+        onSend={onSend}
+        onStop={onStop}
+      />
     </>
   )
 }

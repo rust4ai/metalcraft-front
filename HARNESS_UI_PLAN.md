@@ -345,9 +345,22 @@ own assignment and needs nothing new.
 A pod that cannot answer either question gets **no readout**, not a zero. This is
 the rule `StatusBar`'s credits readout already follows and it holds here.
 
-### H6 — the composer chip rail
+### H6 — the composer chip rail ✅ *landed*
 
-**Edits:** `features/session/Composer.tsx`.
+**New:** `features/session/Composer.test.tsx`.
+**Edits:** `features/session/Composer.tsx`, `features/session/SessionView.tsx`.
+
+> **The persona chip is a live control, not a label.** It was already the
+> Inspector's `PersonaSwitcher`; moving it here is the whole point of the rail —
+> "actually, ask this as the other voice" is a thought you have with the message
+> half-typed, not one that should send you to a panel that can also be closed.
+>
+> `instanceId` is optional because the dev gallery mounts a composer with no
+> agent behind it. Without one there are no chips at all, which is the honest
+> rendering rather than a special case — and it is tested as such.
+>
+> The `↵ send` hint disappears while a turn runs, because there Enter *queues* a
+> message rather than sending one, and the button is Stop.
 
 The card grows a second row inside itself — R5. The discipline: **only ship chips
 backed by something real.** The reference's `@`, attach and mic have no

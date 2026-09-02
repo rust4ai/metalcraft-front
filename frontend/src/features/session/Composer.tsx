@@ -1,5 +1,9 @@
 import { useMemo, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Loader2, Square } from 'lucide-react'
+import { ArrowUp, Bot, Loader2, Lock, Square } from 'lucide-react'
+import { useFleet } from '@/stores/fleet'
+import { useSessions } from '@/stores/sessions'
+import { UsageRing } from '@/components/ui/Usage'
+import { PersonaSwitcher } from './PersonaSwitcher'
 import { cn } from '@/lib/cn'
 import { matching } from './commands'
 
@@ -17,14 +21,31 @@ import { matching } from './commands'
  * one button, because at any moment there is exactly one thing to do with a
  * turn. `onStop` is optional: without it the button waits out the turn as it
  * always did, which is what the fleet card and any other read-only mount want.
+ *
+ * **The chip rail** (HARNESS_UI_PLAN §4, H6) names what the next turn will
+ * actually use — which agent, speaking as whom, on which model, against a
+ * context this full. All four were already on screen somewhere; the point of
+ * putting them here is that this is the moment they matter, and the rail they
+ * lived in can be closed.
+ *
+ * The reference also has `@`, an attach button and a mic. None of them exist on
+ * a pod — no mentions, no upload endpoint, no voice — so none of them are drawn.
+ * A dead paperclip would cost more than the missing feature does (§0).
+ *
+ * `instanceId` is optional because the dev gallery mounts this with no agent
+ * behind it. Without one there are no chips, which is the honest rendering
+ * rather than a special case.
  */
 export function Composer({
+  instanceId,
   busy,
   stopping = false,
   onSend,
   onStop,
   placeholder = 'Ask this agent to do something…',
 }: {
+  /** The agent this composer talks to, when there is one. */
+  instanceId?: string
   busy: boolean
   /** Stop has been pressed and the turn has not ended yet. */
   stopping?: boolean
@@ -134,53 +155,126 @@ export function Composer({
           </ul>
         )}
 
-        <div className="flex items-end gap-2 rounded-card bg-field p-2 shadow-card transition-shadow duration-150 focus-within:shadow-raised">
+        <div className="rounded-card bg-field shadow-card transition-shadow duration-150 focus-within:shadow-raised">
           <textarea
             rows={1}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={busy ? 'The agent is working — send anyway to queue it' : placeholder}
-            className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent px-2 py-1 text-[13.5px] caret-accent outline-none placeholder:text-ink-3"
+            className="max-h-40 min-h-[1.5rem] w-full resize-none bg-transparent px-3 pt-2.5 text-[13px] caret-accent outline-none placeholder:text-ink-3"
           />
-          {canStop ? (
-            <button
-              type="button"
-              onClick={onStop}
-              disabled={stopping}
-              // The label is the promise. Stop is instant to *ask* and not
-              // instant to happen — the pod ends the turn at the executor's next
-              // step boundary — so once it is asked the button says "Stopping",
-              // not "Stopped".
-              aria-label={stopping ? 'Stopping' : 'Stop'}
-              title={stopping ? 'Stopping…' : 'Stop this turn'}
-              className={cn(
-                'grid h-8 w-8 shrink-0 place-items-center rounded-control transition-colors duration-150',
-                stopping ? 'bg-hover-2 text-ink-3' : 'bg-ink text-page shadow-btn hover:bg-ink-2',
+
+          {/* Inside the card, under the text: these describe the message above
+              them, not the pane. */}
+          <div className="flex items-center gap-1 px-2 pb-2">
+            {instanceId && <Chips instanceId={instanceId} />}
+
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {instanceId && <UsageRing instanceId={instanceId} />}
+              {/* The shortcut, named where it is used. Hidden while a turn is
+                  running, because then the button is Stop and Enter queues. */}
+              {!canStop && (
+                <span className="hidden items-center gap-1 text-[11px] text-ink-3 sm:flex">
+                  <kbd className="rounded-chip bg-hover-2 px-1 py-px font-mono text-[10px]">↵</kbd>
+                  send
+                </span>
               )}
-            >
-              {stopping ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+              {canStop ? (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  disabled={stopping}
+                  // The label is the promise. Stop is instant to *ask* and not
+                  // instant to happen — the pod ends the turn at the executor's
+                  // next step boundary — so once it is asked the button says
+                  // "Stopping", not "Stopped".
+                  aria-label={stopping ? 'Stopping' : 'Stop'}
+                  title={stopping ? 'Stopping…' : 'Stop this turn'}
+                  className={cn(
+                    'grid h-7 w-7 shrink-0 place-items-center rounded-control transition-colors duration-150',
+                    stopping ? 'bg-hover-2 text-ink-3' : 'bg-ink text-page shadow-btn hover:bg-ink-2',
+                  )}
+                >
+                  {stopping ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Square className="h-2.5 w-2.5 fill-current" />
+                  )}
+                </button>
               ) : (
-                <Square className="h-3 w-3 fill-current" />
+                <button
+                  type="button"
+                  onClick={() => submit()}
+                  disabled={!canSend}
+                  aria-label="Send"
+                  className={cn(
+                    'grid h-7 w-7 shrink-0 place-items-center rounded-control transition-colors duration-150',
+                    canSend ? 'bg-accent text-accent-ink shadow-btn' : 'bg-hover-2 text-ink-3',
+                  )}
+                >
+                  {busy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  )}
+                </button>
               )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => submit()}
-              disabled={!canSend}
-              aria-label="Send"
-              className={cn(
-                'grid h-8 w-8 shrink-0 place-items-center rounded-control transition-colors duration-150',
-                canSend ? 'bg-accent text-accent-ink shadow-btn' : 'bg-hover-2 text-ink-3',
-              )}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-            </button>
-          )}
+            </span>
+          </div>
         </div>
+
+        {/* Under the card, outside it — a standing caveat about the thing, not a
+            property of the message being written. Warranted here in a way it is
+            not in a chat toy: these agents run tools, send messages and fire on
+            timers. */}
+        <p className="px-1 pt-1.5 text-center text-[10.5px] text-ink-3">
+          Agents can make mistakes, and they act on what they decide. Check anything that matters.
+        </p>
       </div>
     </div>
+  )
+}
+
+/**
+ * What the next turn will use: this agent, speaking as this persona, on this
+ * model.
+ *
+ * All three were already visible in the Inspector, and that is exactly the
+ * problem — the Inspector closes (⌘J), and these are the facts you want while
+ * writing rather than while inspecting. The persona is a live control here for
+ * the same reason: "actually, ask this as the other voice" is a thought you have
+ * with the message half-typed, not one that sends you to a panel.
+ *
+ * The model carries a lock because it genuinely is fixed: a model is chosen when
+ * a conversation is created and the pod has no endpoint to change it afterwards.
+ * The glyph is honest here in a way it usually is not.
+ */
+function Chips({ instanceId }: { instanceId: string }) {
+  const instance = useFleet((s) => s.instances.find((i) => i.id === instanceId))
+  const model = useSessions((s) => s.byInstance[instanceId]?.modelName)
+  if (!instance) return null
+
+  return (
+    <span className="flex min-w-0 items-center gap-0.5 text-[11px] text-ink-3">
+      <span className="flex min-w-0 shrink items-center gap-1 rounded-chip px-1.5 py-1">
+        <Bot className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 truncate text-ink-2">{instance.name}</span>
+      </span>
+
+      <span className="hidden shrink-0 items-center rounded-chip px-1 py-1 sm:flex">
+        <PersonaSwitcher instance={instance} />
+      </span>
+
+      {model && (
+        <span
+          className="hidden min-w-0 shrink items-center gap-1 rounded-chip px-1.5 py-1 md:flex"
+          title="The model is fixed for the life of a conversation — the pod chooses it when the chat is created and has no way to change it after."
+        >
+          <span className="min-w-0 truncate font-mono text-[10.5px] text-ink-2">{model}</span>
+          <Lock className="h-2.5 w-2.5 shrink-0" />
+        </span>
+      )}
+    </span>
   )
 }
