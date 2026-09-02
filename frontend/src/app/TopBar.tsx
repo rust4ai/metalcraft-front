@@ -41,14 +41,21 @@ export function TopBar() {
 
   return (
     <header
-      data-tauri-drag-region
+      // `deep`, not a bare attribute. Tauri's rule for a bare one is
+      // `return el === composedPath[0]` — it drags only when the click lands on
+      // *that exact element*, so every wrapper inside a bare region blocks
+      // dragging for everything nested in it, and the first version of this bar
+      // was undraggable almost everywhere. `deep` makes the whole subtree a drag
+      // region; genuinely clickable elements (button, a, input, [role=button]…)
+      // still block it on their own, which is exactly the split we want.
+      data-tauri-drag-region="deep"
       // A three-column grid rather than a flex row so the search field is centred
       // on the *window*, not on whatever space the two clusters happen to leave.
       // With flex, renaming a pod would slide the search box.
       className="col-span-full grid h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-line bg-canvas pr-2"
     >
       {/* The traffic lights live here now, and only here. */}
-      <div data-tauri-drag-region className="flex min-w-0 items-center gap-1.5 pl-20">
+      <div className="flex min-w-0 items-center gap-1.5 pl-20">
         <button
           type="button"
           aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
@@ -62,13 +69,10 @@ export function TopBar() {
           <PanelLeft className="h-4 w-4" />
         </button>
 
-        <span
-          data-tauri-drag-region
-          className="ml-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-chip bg-hover-2 text-ink-2"
-        >
+        <span className="ml-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-chip bg-hover-2 text-ink-2">
           <Hexagon className="h-3 w-3" />
         </span>
-        <span data-tauri-drag-region className="shrink-0 text-[12.5px] font-semibold">
+        <span className="shrink-0 text-[12.5px] font-semibold">
           Metalcraft
         </span>
 
@@ -83,10 +87,7 @@ export function TopBar() {
                 centred search field instead of ellipsing. It yields before the
                 room name does, because which room you are in changes and which
                 pod you are on rarely does. */}
-            <span
-              data-tauri-drag-region
-              className="min-w-0 shrink truncate text-[12.5px] text-ink-2"
-            >
+            <span className="min-w-0 shrink truncate text-[12.5px] text-ink-2">
               {info?.name ?? pod?.slug}
             </span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-3" />
@@ -137,7 +138,7 @@ function ActiveRoom() {
   const instances = useFleet((s) => s.instances)
   const label = tabLabel(view, (id) => instances.find((i) => i.id === id)?.name)
   return (
-    <span data-tauri-drag-region className="min-w-0 truncate text-[12.5px] font-medium text-ink">
+    <span className="min-w-0 truncate text-[12.5px] font-medium text-ink">
       {label}
     </span>
   )
