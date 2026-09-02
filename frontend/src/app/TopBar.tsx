@@ -78,7 +78,15 @@ export function TopBar() {
         {(info?.name || pod) && (
           <>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-3" />
-            <span data-tauri-drag-region className="shrink-0 truncate text-[12.5px] text-ink-2">
+            {/* `min-w-0`, not `shrink-0`: a flex item that refuses to shrink can
+                never truncate, so a long pod name pushed this cluster into the
+                centred search field instead of ellipsing. It yields before the
+                room name does, because which room you are in changes and which
+                pod you are on rarely does. */}
+            <span
+              data-tauri-drag-region
+              className="min-w-0 shrink truncate text-[12.5px] text-ink-2"
+            >
               {info?.name ?? pod?.slug}
             </span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-3" />

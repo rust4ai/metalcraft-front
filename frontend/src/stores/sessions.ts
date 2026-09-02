@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useUsage } from '@/stores/usage'
 import { chats, fleet } from '@/rpc'
 import { emptyTranscript, fromMessages, reduce, type TranscriptState } from '@/features/session/transcript'
 import { describeCommandError, helpText, parse } from '@/features/session/commands'
@@ -452,6 +453,16 @@ export const useSessions = create<SessionsState>((set, get) => ({
         },
       })
       if (result.notice) notice(instanceId, result.notice)
+
+      // `/compact` and `/clear` exist to make a conversation smaller, and they
+      // are reached for *because* the usage readout is high — so a readout that
+      // does not move afterwards is the one place this number most obviously
+      // lies. Re-read rather than guess: `/compact` answers with a token count
+      // and no window, which is not enough to redraw the meter from.
+      if (session.chatId) {
+        useUsage.getState().forget(session.chatId)
+        void useUsage.getState().load(session.chatId)
+      }
     } catch (e) {
       // A failed command reports itself in the transcript, never as the session
       // error — that one replaces the whole conversation with a red panel, and

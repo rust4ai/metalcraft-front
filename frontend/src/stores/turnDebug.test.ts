@@ -127,3 +127,81 @@ describe('turn debug', () => {
     expect(state().notice).toContain('connection refused')
   })
 })
+
+describe('two agents, one slot', () => {
+  /** A transport whose replies are released by the test, in its chosen order. */
+  async function racing() {
+    vi.resetModules()
+    const gates: Array<{ key: string; resolve: (v: unknown) => void }> = []
+    const transport = await import('@/rpc/transport')
+    transport.setTransport({
+      call: async (method: string, args?: Record<string, unknown>) =>
+        new Promise((resolve) => {
+          gates.push({ key: `${method}:${JSON.stringify(args ?? {})}`, resolve })
+        }) as never,
+      listen: async () => () => {},
+    })
+    const { useTurnDebug } = await import('./turnDebug')
+    const release = (match: string, value: unknown) => {
+      for (const gate of gates.filter((g) => g.key.includes(match))) gate.resolve(value)
+    }
+    return { useTurnDebug, release }
+  }
+
+  const EMPTY = { resourceSpans: [] }
+
+  it('ignores a read that was overtaken while it was in flight', async () => {
+    // The bug this store grew when it stopped being a drawer. A drawer opened
+    // once, deliberately; the Runs *mode* re-reads on every navigation, so two
+    // loads can be in flight — and the slower one lands last, writing the agent
+    // you just left into a panel showing the one you just opened.
+    //
+    // Awaited rather than tick-counted: an assertion that runs before the stale
+    // write lands passes whether or not the guard exists, which is how the first
+    // version of this test managed to pass against the bug it was written for.
+    const { useTurnDebug, release } = await racing()
+
+    const first = useTurnDebug.getState().load('i1', 'run-a')
+    const second = useTurnDebug.getState().load('i2', 'run-b')
+
+    // The newest read owns the slot from the moment it is asked for.
+    expect(useTurnDebug.getState().instanceId).toBe('i2')
+
+    // i2 answers with a real trace and settles.
+    release('run-b', TRACE)
+    await second
+    expect(useTurnDebug.getState().turns).toHaveLength(1)
+
+    // Now i1 — long since navigated away from — finally answers, with nothing.
+    release('run-a', EMPTY)
+    await first
+
+    expect(useTurnDebug.getState().instanceId).toBe('i2')
+    // i2's trace, not i1's empty one.
+    expect(useTurnDebug.getState().turns).toHaveLength(1)
+    expect(useTurnDebug.getState().loading).toBe(false)
+  })
+
+  it('does not report a superseded read\'s failure under the current agent', async () => {
+    const { useTurnDebug, release } = await racing()
+    const first = useTurnDebug.getState().load('i1', 'run-a')
+    const second = useTurnDebug.getState().load('i2', 'run-b')
+
+    release('run-b', TRACE)
+    await second
+
+    // i1's read blows up after it has been overtaken. Its error belongs to
+    // nobody on screen.
+    release('run-a', undefined)
+    await first
+    expect(useTurnDebug.getState().notice).toBe(null)
+    expect(useTurnDebug.getState().turns).toHaveLength(1)
+  })
+
+  it('names whose runs it is holding', async () => {
+    const { useTurnDebug, release } = await racing()
+    void useTurnDebug.getState().load('i1', 'run-a')
+    expect(useTurnDebug.getState().instanceId).toBe('i1')
+    release('run-a', EMPTY)
+  })
+})

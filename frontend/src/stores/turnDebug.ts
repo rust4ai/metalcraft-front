@@ -23,6 +23,10 @@ import type { PodSessionDetail } from '@/types'
  * second, disagreeing answer to a question the router already settles.
  */
 export interface TurnDebugState {
+  /** Whose runs these are. The panel checks it before rendering: this store
+   *  holds one agent's runs at a time, and without a name on them a slow reply
+   *  is indistinguishable from the right one. */
+  instanceId: string | null
   /** The run being shown, once one has been resolved. */
   sessionId: string | null
   loading: boolean
@@ -37,7 +41,20 @@ export interface TurnDebugState {
   load: (instanceId: string, sessionId?: string) => Promise<void>
 }
 
+/**
+ * Which read is the current one.
+ *
+ * This store holds a single run, and the Runs *mode* re-reads it on every
+ * navigation between agents — where the drawer it replaced was opened once,
+ * deliberately, and could not race itself. Two loads in flight means the slower
+ * one lands last, so an agent you have already navigated away from can write its
+ * trace into a panel showing somebody else's name. The token makes every reply
+ * but the newest a no-op.
+ */
+let latest = 0
+
 export const useTurnDebug = create<TurnDebugState>((set) => ({
+  instanceId: null,
   sessionId: null,
   loading: false,
   turns: null,
@@ -45,9 +62,19 @@ export const useTurnDebug = create<TurnDebugState>((set) => ({
   notice: null,
 
   load: async (instanceId, sessionId) => {
-    set({ loading: true, notice: null, turns: null, detail: null, sessionId: sessionId ?? null })
+    const mine = ++latest
+    const stale = () => mine !== latest
+    set({
+      instanceId,
+      loading: true,
+      notice: null,
+      turns: null,
+      detail: null,
+      sessionId: sessionId ?? null,
+    })
     try {
       const id = sessionId ?? (await newestRun(instanceId))
+      if (stale()) return
       if (!id) {
         set({
           loading: false,
@@ -60,6 +87,7 @@ export const useTurnDebug = create<TurnDebugState>((set) => ({
       // session files are what someone scrolls to when the timeline raises a
       // question the durations cannot answer.
       const [trace, detail] = await Promise.all([podLogs.trace(id), podLogs.session(id)])
+      if (stale()) return
       // A run still in flight has a trace already — the pod writes it as it goes
       // — so this is worth showing even mid-turn.
       const turns = readTrace(trace)
@@ -74,6 +102,9 @@ export const useTurnDebug = create<TurnDebugState>((set) => ({
             : null,
       })
     } catch (e) {
+      // A superseded read's failure is not this agent's failure, and reporting
+      // it here would put the wrong agent's error under the right one's name.
+      if (stale()) return
       set({ loading: false, notice: `Could not read the pod's record of this run: ${String(e)}` })
     }
   },

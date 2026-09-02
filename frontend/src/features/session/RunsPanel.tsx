@@ -28,7 +28,16 @@ import type { PodSessionEvent } from '@/types'
  * turn's time went.
  */
 export function RunsPanel({ instanceId }: { instanceId: string }) {
-  const { loading, sessionId, turns, detail, notice, load } = useTurnDebug()
+  const store = useTurnDebug()
+  const load = store.load
+  // Belt to the store's braces: it holds one agent's runs at a time, so between
+  // navigating here and the read landing, what it holds belongs to whoever we
+  // came from. Showing that under this agent's name is worse than showing
+  // nothing for a moment.
+  const mine = store.instanceId === instanceId
+  const { loading, sessionId, turns, detail, notice } = mine
+    ? store
+    : { loading: true, sessionId: null, turns: null, detail: null, notice: null }
   const liveSession = useSessions((s) => s.byInstance[instanceId])
   const liveRun = liveSession?.transcript.sessionId
 

@@ -156,9 +156,6 @@ export function Sidebar() {
           </Fold>
         )}
 
-        {matches.length === 0 && instances.length > 0 && !searching && (
-          <p className="px-2 py-2 text-[11.5px] text-ink-3">No agent matches that</p>
-        )}
       </div>
 
       <footer className="flex h-9 shrink-0 items-center gap-1 border-t border-line px-2">
