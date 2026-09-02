@@ -46,6 +46,13 @@ export type TranscriptItem =
    *  is the answer to the only question the gap provokes — "it knew that a
    *  minute ago, why not now?" */
   | { kind: 'reset'; id: string; at: string; reason: string }
+  /** A finished turn's receipt: what it cost, under the reply it belongs to.
+   *
+   *  Only ever produced by a *live* turn. A transcript restored from stored
+   *  messages carries no timing — the pod does not keep one per message — so
+   *  reloading drops these rather than inventing them. The pod's own recorded
+   *  account of any run is the Runs mode, which has the breakdown this cannot. */
+  | { kind: 'turnEnd'; id: string; tools: number; elapsedMs: number }
   | ToolCard
 
 export interface TranscriptState {
@@ -70,6 +77,13 @@ export interface TranscriptState {
   /** The agent's plan for the current turn. Replaced wholesale on every `plan`
    *  frame, and empty between turns. */
   plan: PlanStep[]
+  /** When the turn in flight began, by this client's clock. Wall time rather
+   *  than the sum of the pod's reported durations, because those cover only
+   *  what it traces — a turn that spent thirty seconds compacting would report
+   *  twelve. This is what the person actually waited. */
+  turnStartedAt?: number
+  /** Tools completed in the turn in flight. */
+  turnTools: number
 }
 
 /** The phases the pod names today, plus whatever a newer one names. */
@@ -105,6 +119,7 @@ export const emptyTranscript = (): TranscriptState => ({
   thinking: false,
   queued: [],
   plan: [],
+  turnTools: 0,
 })
 
 /** The list without its first occurrence of `value`, or unchanged if absent.
@@ -194,7 +209,14 @@ export function fromMessages(messages: ChatMessage[]): TranscriptState {
   return { ...emptyTranscript(), items }
 }
 
-export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
+export function reduce(
+  state: TranscriptState,
+  ev: ChatEvent,
+  /** Injected so this stays a pure function of its inputs — the whole file is
+   *  tested against fixed clocks, and a `Date.now()` in here would make the
+   *  receipt untestable. */
+  now: number = Date.now(),
+): TranscriptState {
   switch (ev.kind) {
     case 'turn_started':
       return {
@@ -202,6 +224,8 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
         busy: true,
         thinking: true,
         phase: undefined,
+        turnStartedAt: now,
+        turnTools: 0,
         // `?? undefined`: an older pod sends no session id, and `null` in the
         // field would read as "there is a session" to every `!= null` check.
         sessionId: ev.session_id ?? undefined,
@@ -263,7 +287,7 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
           result,
         })
       }
-      return { ...state, items }
+      return { ...state, items, turnTools: state.turnTools + 1 }
     }
 
     case 'reply':
@@ -329,12 +353,34 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
       }
 
     case 'done': {
+      // Only a turn that finished gets one, and only one this client saw start.
+      //
+      // Not on a failure: the error is the point there, and "0 tools · 3.2s"
+      // under it is noise that also displaces the last thing in the transcript
+      // — which is exactly what someone scrolling to the bottom is looking for.
+      // Not on an interrupt either: the pod's own sentence about who stopped it
+      // says the useful thing, and the time it ran before being stopped is not
+      // a cost anyone is accounting for.
+      const receipt: TranscriptItem[] =
+        ev.status !== 'completed' || state.turnStartedAt === undefined
+          ? []
+          : [
+              {
+                kind: 'turnEnd',
+                id: `e${state.items.length}`,
+                tools: state.turnTools,
+                elapsedMs: Math.max(0, now - state.turnStartedAt),
+              },
+            ]
       const next = {
         ...state,
         busy: false,
         thinking: false,
         phase: undefined,
         lastStatus: ev.status,
+        turnStartedAt: undefined,
+        turnTools: 0,
+        items: [...state.items, ...receipt],
       }
       // A stopped turn has to say so where the user is looking. Without this the
       // agent simply goes quiet mid-trace, which reads as a bug rather than as
@@ -356,5 +402,8 @@ export function reduce(state: TranscriptState, ev: ChatEvent): TranscriptState {
   }
 }
 
-export const reduceAll = (state: TranscriptState, events: ChatEvent[]): TranscriptState =>
-  events.reduce(reduce, state)
+export const reduceAll = (
+  state: TranscriptState,
+  events: ChatEvent[],
+  now?: number,
+): TranscriptState => events.reduce((s, ev) => reduce(s, ev, now), state)

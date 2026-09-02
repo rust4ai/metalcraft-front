@@ -26,20 +26,34 @@ export function Trace({ cards }: { cards: ToolCard[] }) {
     : `Ran ${cards.length} tool${cards.length === 1 ? '' : 's'}`
 
   return (
-    <div className="animate-stream-in rounded-card border border-line bg-inset/60">
+    // Boxed only while expanded. Collapsed, this is one line in a reading flow
+    // and a bordered card around it made every turn look like a stack of
+    // cards with a paragraph wedged between them — the disclosure should
+    // recede until it is opened, which is the whole point of collapsing it.
+    <div
+      className={cn(
+        'animate-stream-in',
+        open && 'rounded-card border border-line bg-inset/60',
+      )}
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className={cn(
+          'flex w-full items-center gap-1.5 text-left text-ink-3 transition-colors duration-150 hover:text-ink-2',
+          open ? 'px-3 py-2' : 'py-0.5',
+        )}
       >
+        {/* Chevron first, the way a disclosure reads: the control comes before
+            the thing it discloses. */}
+        <ChevronRight
+          className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-90')}
+        />
         <span
           className={cn('h-1.5 w-1.5 shrink-0 rounded-full', running ? 'bg-accent' : 'bg-green')}
         />
-        <span className="text-[12.5px] font-medium text-ink-2">{label}</span>
-        <ChevronRight
-          className={cn('ml-auto h-3.5 w-3.5 text-ink-3 transition-transform', open && 'rotate-90')}
-        />
+        <span className="text-[12px] font-medium">{label}</span>
       </button>
 
       {/* `flex-wrap` only in the collapsed row. Wrapping a *column* makes each
@@ -47,13 +61,31 @@ export function Trace({ cards }: { cards: ToolCard[] }) {
           expanded chip stretched to its widest JSON line and pushed the whole
           transcript into a horizontal scroll. Down this axis the payload's own
           box is the only thing allowed to scroll sideways. */}
-      <ul className={cn('flex gap-1.5 px-3 pb-2.5', open ? 'flex-col' : 'flex-wrap')}>
-        {cards.map((card) => (
-          <li key={card.id} className="min-w-0">
-            <Chip card={card} expanded={open} />
-          </li>
-        ))}
-      </ul>
+      {/* Visible while the turn is running, hidden once it has settled.
+          Mid-turn the chips are the answer to "what is it doing right now",
+          which a count cannot give and which is worth more than the tidier
+          line. Settled, "Ran 3 tools" says everything the collapsed chips did
+          and the detail is one click away.
+
+          `flex-wrap` only in that collapsed running row. Wrapping a *column*
+          makes each flex line size its cross-axis — the width — to its
+          contents, so an expanded chip stretched to its widest JSON line and
+          pushed the whole transcript into a horizontal scroll. Down this axis
+          the payload's own box is the only thing allowed to scroll sideways. */}
+      {(open || running) && (
+        <ul
+          className={cn(
+            'flex gap-1.5 pb-2.5',
+            open ? 'flex-col px-3' : 'flex-wrap pl-6 pr-3',
+          )}
+        >
+          {cards.map((card) => (
+            <li key={card.id} className="min-w-0">
+              <Chip card={card} expanded={open} />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

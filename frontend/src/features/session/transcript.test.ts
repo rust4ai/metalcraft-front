@@ -1,4 +1,15 @@
 import { describe, expect, it } from 'vitest'
+
+/**
+ * Item kinds, minus the turn receipt.
+ *
+ * `turnEnd` is telemetry about a live turn — how long it took, how many tools it
+ * ran — and not part of the conversation. The pod stores no timing per message,
+ * so a transcript rebuilt from history genuinely cannot carry one, and asserting
+ * that the two paths agree on it would be asserting that we can invent it. They
+ * must agree on everything that *was said*, which is what these compare.
+ */
+const said = (items: { kind: string }[]) => items.map((i) => i.kind).filter((k) => k !== 'turnEnd')
 import { emptyTranscript, fromMessages, phaseLabel, reduce, reduceAll } from './transcript'
 import type { ChatEvent, ChatMessage } from '@/types'
 
@@ -21,7 +32,7 @@ const turn: ChatEvent[] = [
 describe('transcript reducer', () => {
   it('folds a whole turn into user → tool → reply', () => {
     const s = reduceAll(emptyTranscript(), turn)
-    expect(s.items.map((i) => i.kind)).toEqual(['user', 'tool', 'reply'])
+    expect(said(s.items)).toEqual(['user', 'tool', 'reply'])
     expect(s.busy).toBe(false)
     expect(s.lastStatus).toBe('completed')
   })
@@ -165,7 +176,7 @@ describe('fromMessages (a chat reopened after a restart)', () => {
     // The whole point: leaving a chat and coming back must not change its shape.
     const seeded = fromMessages(stored)
     const live = reduceAll(emptyTranscript(), turn)
-    expect(seeded.items.map((i) => i.kind)).toEqual(live.items.map((i) => i.kind))
+    expect(said(seeded.items)).toEqual(said(live.items))
   })
 
   it('renders a say_to_user call as the reply, not as a tool card', () => {
@@ -263,7 +274,7 @@ describe('fromMessages (a chat reopened after a restart)', () => {
     live = reduce(live, { kind: 'turn_started', turn_index: 0, user_message: 'hi' })
     live = reduce(live, { kind: 'done', status: 'completed' })
     live = reduce(live, { kind: 'reset', at: '2026-08-27T04:00:00Z', reason: 'reset' })
-    expect(live.items.map((i) => i.kind)).toEqual(onDisk.items.map((i) => i.kind))
+    expect(said(live.items)).toEqual(said(onDisk.items))
     // A reset is not a turn, so it must not leave the composer locked.
     expect(live.busy).toBe(false)
   })

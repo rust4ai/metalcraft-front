@@ -86,7 +86,7 @@ function Chat({
 
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {opening[instanceId] && !session ? (
           <div className="flex items-center gap-2 text-sm text-ink-2">
             <Loader2 className="h-4 w-4 animate-spin" /> Opening the conversation…
@@ -178,8 +178,12 @@ function Item({
 }) {
   if (item.kind === 'user') {
     return (
-      <div className="animate-fade-up max-w-[85%] self-end whitespace-pre-wrap rounded-card rounded-br-sm bg-accent px-3.5 py-2 text-[13.5px] text-accent-ink">
-        <Linkified text={item.content} linkClassName="text-accent-ink underline" />
+      // Quiet, and deliberately. The agent's answer is the page; the user's
+      // line is the prompt for it. A saturated accent bubble made the thing you
+      // already know the loudest object in the transcript, and pushed the reply
+      // you are actually reading into second place.
+      <div className="animate-fade-up max-w-[80%] self-end whitespace-pre-wrap rounded-card rounded-br-chip bg-hover-2 px-3 py-1.5 text-[13px] text-ink">
+        <Linkified text={item.content} linkClassName="underline" />
       </div>
     )
   }
@@ -200,7 +204,9 @@ function Item({
     const choices = live && item.options?.length ? item.options : []
     return (
       <div className="animate-stream-in flex flex-col gap-2.5">
-        <div className="whitespace-pre-wrap text-[13.5px] leading-relaxed">
+        {/* `leading-relaxed` stays while everything around it tightens: density
+            must not be bought from the one surface people actually read. */}
+        <div className="whitespace-pre-wrap text-[13px] leading-relaxed">
           <Linkified text={item.content} />
         </div>
         {choices.length > 0 && (
@@ -228,7 +234,35 @@ function Item({
   if (item.kind === 'reset') {
     return <ResetDivider at={item.at} reason={item.reason} />
   }
+  if (item.kind === 'turnEnd') {
+    return <TurnReceipt tools={item.tools} elapsedMs={item.elapsedMs} />
+  }
   return <Problem message={item.message} code={item.code} retryable={item.retryable} />
+}
+
+/**
+ * What the turn cost, under the reply it paid for.
+ *
+ * The reference reads `7.8k in · 155 out · 35.8s · 3 tool calls`. The token
+ * halves are absent here and that is not an oversight: the chat stream carries
+ * no token counts — they exist only in the pod's OTLP trace, which the Runs mode
+ * reads. Printing a number this client does not have would be the exact lie the
+ * plan's §0 is about, so the receipt says the two things it can stand behind.
+ *
+ * The elapsed time is wall clock between the turn's first and last frame — what
+ * the person actually waited — not the sum of the pod's traced durations, which
+ * would report twelve seconds for a turn that spent thirty of them compacting.
+ * Where those thirty went is a question Runs answers.
+ */
+function TurnReceipt({ tools, elapsedMs }: { tools: number; elapsedMs: number }) {
+  const secs = elapsedMs / 1000
+  const time = secs < 60 ? `${secs.toFixed(1)}s` : `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s`
+  return (
+    <p className="tnum -mt-1 text-[10.5px] text-ink-3">
+      {tools > 0 && <>{tools} tool{tools === 1 ? '' : 's'} · </>}
+      {time}
+    </p>
+  )
 }
 
 /**

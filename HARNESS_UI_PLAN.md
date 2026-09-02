@@ -424,9 +424,37 @@ agent outliving any one of its chats is the deliberate part of this product. So
 this phase borrows the reference's *density* and not its *unit* — conversations
 stay behind the picker in the mode row, where H2 leaves them.
 
-### H8 — transcript typography
+### H8 — transcript typography ✅ *landed*
 
-**Edits:** `features/session/SessionView.tsx`, `features/session/Trace.tsx`.
+**Edits:** `features/session/SessionView.tsx`, `features/session/Trace.tsx`,
+`features/session/transcript.ts` (+ its test), `Trace.test.tsx`.
+
+> **The receipt says two things, not four.** The reference reads
+> `7.8k in · 155 out · 35.8s · 3 tool calls`. The token halves are absent because
+> the chat stream carries no token counts — §3 said as much — and printing a
+> number this client does not have is the lie §0 exists to prevent. Elapsed time
+> is wall clock between the turn's first and last frame, which is what the person
+> waited, not the sum of the pod's traced durations (those would report twelve
+> seconds for a turn that spent thirty compacting). Where the time went is the
+> Runs mode's question.
+>
+> **Receipts are live-only, by necessity.** The pod stores no per-message timing,
+> so a transcript rebuilt from history carries none and reloading drops them. The
+> parity test between the live reducer and `fromMessages` now compares what was
+> *said* and excludes the receipt, which is the invariant that was actually worth
+> protecting.
+>
+> **No `Thought for a moment` disclosure was built.** It would have to
+> reconstruct a phase timeline client-side, worse than the one the Runs mode
+> already reads from the pod's own trace, and the live indicator already names
+> the phase as it happens ("Compacting context 40.2s"). A second, poorer copy is
+> not worth the state.
+>
+> **Two defects the tests caught.** A *failed* turn was getting a receipt
+> appended after its error, displacing the last thing in the transcript — the
+> receipt is now only for turns that completed. And hiding the collapsed chips
+> outright cost the live "what is it doing right now" read; they now show while
+> running and hide once settled.
 
 - User bubble: smaller radius, `bg-hover-2`/`text-ink` rather than a full accent
   fill. In the reference the user's line is quiet and the agent's answer is the
