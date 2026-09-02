@@ -59,3 +59,30 @@ export function partitionByActivity(
   history.sort((a, b) => (lastActivity(b) ?? 0) - (lastActivity(a) ?? 0))
   return { active, history }
 }
+
+/**
+ * `4m`, `3h`, `12d` — an age for a column, not a sentence.
+ *
+ * The rail says "5h ago" because it is read as prose. A right-aligned column in
+ * a list of thirty rows is scanned rather than read, and the repeated "ago" is
+ * thirty copies of a word that carries nothing. Empty rather than a guess when
+ * the pod gave us nothing datable, so the column stays blank instead of
+ * inventing an age.
+ */
+export function shortAge(instance: AgentInstance, now = Date.now()): string {
+  const at = lastActivity(instance)
+  if (at === null) return ''
+  const secs = Math.max(0, (now - at) / 1000)
+  if (secs < 60) return 'now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`
+  if (secs < 86_400) return `${Math.floor(secs / 3600)}h`
+  return `${Math.floor(secs / 86_400)}d`
+}
+
+/** The letter on an agent's tile. Falls back to the preset when the name starts
+ *  with something unletterable, and to a dot when neither offers one. */
+export function monogram(instance: AgentInstance): string {
+  const from = `${instance.name ?? ''}${instance.agent_preset ?? ''}`
+  const letter = [...from].find((c) => /\p{L}|\p{N}/u.test(c))
+  return (letter ?? '·').toUpperCase()
+}

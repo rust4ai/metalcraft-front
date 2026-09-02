@@ -383,9 +383,26 @@ Under the card, outside it: the disclaimer, matching R5's placement.
 The keyboard behaviour, the `/` command menu, the queue-while-busy semantics and
 the draft-survives-failure rule are all untouched. This phase is layout only.
 
-### H7 — sidebar density
+### H7 — sidebar density ✅ *landed*
 
-**Edits:** `app/Sidebar.tsx`, `features/fleet/InstanceRow.tsx`.
+**Edits:** `app/Sidebar.tsx`, `features/fleet/InstanceRow.tsx`,
+`features/fleet/activity.ts` (+ its test).
+
+> **The tile is a monogram, not a colour.** The reference gives each session a
+> coloured square. Copying that would mean either inventing hues outside the
+> palette or reusing the four we have — and those four *mean* things. A red tile
+> on an agent called Rita would read as an error. The tile is neutral; the
+> selected one takes the accent, which is the one colour statement here that is
+> true.
+>
+> **Both groups became the same object.** The working set had a bare list and a
+> heading strip; history had a fold. They are the same kind of thing at two ages,
+> and drawing them differently made them look like different kinds. One `Fold`,
+> twice — and it degrades to a plain heading while a search forces it open,
+> because a control that cannot change anything is furniture.
+>
+> `shortAge` is separate from the rail's `relative()` on purpose: a column of
+> thirty rows is scanned, and thirty copies of the word "ago" carry nothing.
 
 Toward R2:
 - Header becomes `AGENTS` (uppercase, `11px`) with a green `n live` pill counting

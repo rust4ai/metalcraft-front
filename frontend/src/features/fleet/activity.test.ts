@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STALE_AFTER_MS, isStale, partitionByActivity } from './activity'
+import { STALE_AFTER_MS, isStale, partitionByActivity , shortAge, monogram } from './activity'
 import type { AgentInstance } from '@/types'
 
 const NOW = Date.parse('2026-08-24T12:00:00Z')
@@ -56,5 +56,36 @@ describe('fleet activity', () => {
     )
     expect(active.map((i) => i.id)).toEqual(['yesterday', 'now'])
     expect(history.map((i) => i.id)).toEqual(['four-days', 'a-week', 'a-month'])
+  })
+})
+
+describe('the sidebar row', () => {
+  const at = (iso: string): AgentInstance =>
+    ({ id: 'x', name: 'Amy', agent_preset: 'amy', agent_pack: 'p', persona: 'h',
+       origin: { kind: 'workshop' }, created_at: iso, last_active_at: iso }) as AgentInstance
+
+  it('gives an age a column can scan, not a sentence', () => {
+    const now = Date.parse('2026-09-02T12:00:00Z')
+    expect(shortAge(at('2026-09-02T11:59:30Z'), now)).toBe('now')
+    expect(shortAge(at('2026-09-02T11:46:00Z'), now)).toBe('14m')
+    expect(shortAge(at('2026-09-02T07:00:00Z'), now)).toBe('5h')
+    expect(shortAge(at('2026-08-30T12:00:00Z'), now)).toBe('3d')
+  })
+
+  it('stays blank rather than inventing an age', () => {
+    // A missing timestamp is our problem; printing "now" would make an agent
+    // nobody has touched look like the one just used.
+    expect(shortAge(at(''))).toBe('')
+    expect(shortAge(at('not a date'))).toBe('')
+  })
+
+  it('finds a letter for the tile, wherever it has to look', () => {
+    expect(monogram(at('2026-09-02T12:00:00Z'))).toBe('A')
+    // A name with no letter of its own falls through to the preset rather than
+    // rendering a blank square.
+    expect(monogram({ ...at('2026-09-02T12:00:00Z'), name: '🌶️' } as AgentInstance)).toBe('A')
+    expect(
+      monogram({ ...at('2026-09-02T12:00:00Z'), name: '', agent_preset: '' } as AgentInstance),
+    ).toBe('·')
   })
 })

@@ -30,6 +30,7 @@ export function Sidebar() {
   const { go, setNewAgentOpen, activeKey } = useUi()
   const [query, setQuery] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [activeOpen, setActiveOpen] = useState(true)
 
   useEffect(() => {
     void load()
@@ -86,7 +87,7 @@ export function Sidebar() {
         />
       </nav>
 
-      <div className="px-2 pb-3">
+      <div className="px-2 pb-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3" />
           <input
@@ -94,14 +95,14 @@ export function Sidebar() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search agents"
             aria-label="Search agents"
-            className="h-8 w-full rounded-control bg-field pl-8 pr-2 text-[13px] text-ink placeholder:text-ink-3 focus-visible:outline-accent"
+            className="h-7 w-full rounded-control bg-field pl-8 pr-2 text-[12.5px] text-ink placeholder:text-ink-3 focus-visible:outline-accent"
           />
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-4 pb-1">
-        <span className="text-[11.5px] font-medium text-ink-2">Agents</span>
-        <span className="tnum text-[11.5px] text-ink-3">{active.length}</span>
+      <div className="flex items-center gap-2 px-3 pb-1">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-ink-3">Agents</span>
+        <LivePill />
         <button
           type="button"
           aria-label="New agent"
@@ -113,51 +114,50 @@ export function Sidebar() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <div className="space-y-px">
+        {/* Two folds of the same shape. The working set and the shelf are the
+            same kind of thing at two ages, and giving one a heading and the
+            other a bare list made them look like different objects. */}
+        <Fold
+          label="This pod"
+          count={active.length}
+          open={activeOpen || searching}
+          // A search reaching only history must not leave this fold looking
+          // like the search failed, so it opens too and shows its zero.
+          onToggle={searching ? undefined : () => setActiveOpen(!activeOpen)}
+        >
           {active.map((i) => (
             <InstanceRow key={i.id} instance={i} />
           ))}
-        </div>
-        {matches.length === 0 && (
-          <p className="px-2.5 py-2 text-[12px] text-ink-3">
-            {instances.length === 0 ? 'No agents yet' : 'No agent matches that'}
-          </p>
-        )}
-        {/* Not while searching: there the empty half means "no recent match",
-            and the hits are right below in the fold the search opened. */}
-        {!searching && active.length === 0 && history.length > 0 && (
-          <p className="px-2.5 py-2 text-[12px] text-ink-3">Nothing active in the last few days</p>
-        )}
+          {active.length === 0 && (
+            <p className="px-2 py-1.5 text-[11.5px] text-ink-3">
+              {instances.length === 0
+                ? 'No agents yet'
+                : searching
+                  ? 'No recent agent matches that'
+                  : 'Nothing active in the last few days'}
+            </p>
+          )}
+        </Fold>
 
         {history.length > 0 && (
-          <div className="mt-2 border-t border-line pt-2">
-            {/* A heading rather than a toggle while a search is running: the
-                fold is forced open there, and a control that does nothing when
-                clicked is worse than no control. */}
-            <button
-              type="button"
-              onClick={() => setHistoryOpen(!historyOpen)}
-              aria-expanded={showHistory}
-              disabled={searching}
-              className="flex w-full items-center gap-1.5 rounded-control px-2.5 py-1.5 text-left text-[11.5px] font-medium text-ink-2 enabled:hover:bg-hover enabled:hover:text-ink"
-            >
-              <ChevronRight
-                className={cn(
-                  'h-3.5 w-3.5 shrink-0 text-ink-3 transition-transform duration-150',
-                  showHistory && 'rotate-90',
-                )}
-              />
-              <span className="truncate">Agent History</span>
-              <span className="tnum ml-auto text-ink-3">{history.length}</span>
-            </button>
-            {showHistory && (
-              <div className="mt-px space-y-px">
-                {history.map((i) => (
-                  <InstanceRow key={i.id} instance={i} />
-                ))}
-              </div>
-            )}
-          </div>
+          <Fold
+            label="Agent History"
+            count={history.length}
+            open={showHistory}
+            // A search reaches the whole fleet, so it forces this open: a query
+            // whose only hits are old agents must not come back looking like
+            // nothing was found. A control that does nothing when clicked is
+            // worse than no control, so it stops being one while searching.
+            onToggle={searching ? undefined : () => setHistoryOpen(!historyOpen)}
+          >
+            {history.map((i) => (
+              <InstanceRow key={i.id} instance={i} />
+            ))}
+          </Fold>
+        )}
+
+        {matches.length === 0 && instances.length > 0 && !searching && (
+          <p className="px-2 py-2 text-[11.5px] text-ink-3">No agent matches that</p>
         )}
       </div>
 
@@ -232,5 +232,78 @@ function NavRow({
         </span>
       )}
     </button>
+  )
+}
+
+/**
+ * How many agents are working right now.
+ *
+ * The reference's `14 live`, and the same number the status bar shows. Absent at
+ * zero rather than reading `0 live`: a quiet fleet is the normal state, and a
+ * pill that is always there stops being a signal.
+ */
+function LivePill() {
+  const live = useFleet(
+    (s) => Object.values(s.status).filter((v) => v === 'thinking' || v === 'running').length,
+  )
+  if (live === 0) return null
+  return (
+    <span className="tnum rounded-full bg-green-tint px-1.5 py-px text-[10.5px] font-medium text-green">
+      {live} live
+    </span>
+  )
+}
+
+/**
+ * A titled, countable, foldable group of rows.
+ *
+ * `onToggle` omitted makes the header a plain heading rather than a dead button
+ * — the state a search forces, where the fold is held open and a control that
+ * cannot change it would be furniture.
+ */
+function Fold({
+  label,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string
+  count: number
+  open: boolean
+  onToggle?: () => void
+  children: React.ReactNode
+}) {
+  const inner = (
+    <>
+      <ChevronRight
+        className={cn(
+          'h-3.5 w-3.5 shrink-0 text-ink-3 transition-transform duration-150',
+          open && 'rotate-90',
+        )}
+      />
+      <span className="truncate">{label}</span>
+      <span className="tnum ml-auto text-ink-3">{count}</span>
+    </>
+  )
+  const cls =
+    'flex w-full items-center gap-1.5 rounded-control px-1.5 py-1 text-left text-[11px] font-medium uppercase tracking-wide text-ink-3'
+
+  return (
+    <div className="pb-1">
+      {onToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className={cn(cls, 'hover:bg-hover hover:text-ink-2')}
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className={cls}>{inner}</div>
+      )}
+      {open && <div className="space-y-px">{children}</div>}
+    </div>
   )
 }
