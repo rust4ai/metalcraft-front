@@ -12,13 +12,17 @@ import type { PodSessionDetail } from '@/types'
  * account on disk, and the only way to see it was to have shell access to the
  * pod.
  *
- * Opened against a **run**, not a chat. A live turn names its own run in
+ * Read against a **run**, not a chat. A live turn names its own run in
  * `turn_started`; a chat opened later does not, so the store falls back to the
  * newest run this agent recorded — which is the one you come looking for after
  * something took too long.
+ *
+ * It used to drive a drawer, and carried an `open` flag to do it. Since the Runs
+ * *mode* (HARNESS_UI_PLAN H3) the panel's visibility is the session's mode and
+ * nothing here — a store that also knew whether it was on screen would be a
+ * second, disagreeing answer to a question the router already settles.
  */
 export interface TurnDebugState {
-  open: boolean
   /** The run being shown, once one has been resolved. */
   sessionId: string | null
   loading: boolean
@@ -29,21 +33,19 @@ export interface TurnDebugState {
    *  timeline, which reads as "the agent did nothing". */
   notice: string | null
 
-  /** Open against a live run if there is one, else this agent's newest. */
-  show: (instanceId: string, sessionId?: string) => Promise<void>
-  hide: () => void
+  /** Read a live run if there is one, else this agent's newest. */
+  load: (instanceId: string, sessionId?: string) => Promise<void>
 }
 
 export const useTurnDebug = create<TurnDebugState>((set) => ({
-  open: false,
   sessionId: null,
   loading: false,
   turns: null,
   detail: null,
   notice: null,
 
-  show: async (instanceId, sessionId) => {
-    set({ open: true, loading: true, notice: null, turns: null, detail: null, sessionId: sessionId ?? null })
+  load: async (instanceId, sessionId) => {
+    set({ loading: true, notice: null, turns: null, detail: null, sessionId: sessionId ?? null })
     try {
       const id = sessionId ?? (await newestRun(instanceId))
       if (!id) {
@@ -75,8 +77,6 @@ export const useTurnDebug = create<TurnDebugState>((set) => ({
       set({ loading: false, notice: `Could not read the pod's record of this run: ${String(e)}` })
     }
   },
-
-  hide: () => set({ open: false }),
 }))
 
 /**

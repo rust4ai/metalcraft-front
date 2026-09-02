@@ -1,21 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  BookOpen,
-  ChevronRight,
-  Clock,
-  LayoutGrid,
-  PanelLeft,
-  Plus,
-  ScrollText,
-  Search,
-  Settings,
-  Store,
-} from 'lucide-react'
+import { BookOpen, ChevronRight, Clock, LayoutGrid, Plus, Search, Settings, Store } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
-import { useConnection } from '@/stores/connection'
-import { DIAG_POLL_MS, unseen, useDiagnostics } from '@/stores/diagnostics'
 import { usePackUpdateCount } from '@/features/packs/updates'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
 import { partitionByActivity } from '@/features/fleet/activity'
@@ -38,10 +25,9 @@ import { cn } from '@/lib/cn'
  * keeping at the top of it.
  */
 export function Sidebar() {
-  const { sidebarWidth, setSidebarWidth, toggleSidebar } = useLayout()
+  const { sidebarWidth, setSidebarWidth } = useLayout()
   const { instances, load } = useFleet()
   const { go, setNewAgentOpen, activeKey } = useUi()
-  const info = useConnection((s) => s.info)
   const [query, setQuery] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -72,27 +58,10 @@ export function Sidebar() {
       // a small one and squeeze the conversation down to nothing.
       style={{ width: sidebarWidth, maxWidth: '30vw' }}
     >
-      {/* The window is frameless: this header is the drag region, inset past the
-          traffic lights, and there is no full-width title bar above it. */}
-      <header
-        data-tauri-drag-region
-        className="flex h-[38px] shrink-0 items-center gap-2 pl-20 pr-2"
-      >
-        <span data-tauri-drag-region className="truncate text-[12.5px] font-semibold">
-          {info?.name ?? 'Metalcraft'}
-        </span>
-        <button
-          type="button"
-          aria-label="Hide sidebar"
-          title="Hide sidebar  ⌘B"
-          onClick={toggleSidebar}
-          className="ml-auto rounded-chip p-1 text-ink-3 hover:bg-hover hover:text-ink"
-        >
-          <PanelLeft className="h-4 w-4" />
-        </button>
-      </header>
-
-      <nav className="px-2 pb-2">
+      {/* No header. The pod's name and this column's own toggle both moved to
+          the window bar, and the traffic lights are reserved there now — leaving
+          a 38px strip here that held nothing but its own drag region. */}
+      <nav className="px-2 pb-2 pt-2">
         <NavRow
           icon={<LayoutGrid className="h-4 w-4" />}
           label="Home"
@@ -220,80 +189,12 @@ export function Sidebar() {
         >
           <BookOpen className="h-4 w-4" />
         </button>
-        <ErrorLogButton />
       </footer>
 
       <Nudges />
 
       <Resizer side="right" width={sidebarWidth} onResize={setSidebarWidth} />
     </aside>
-  )
-}
-
-/**
- * The error log, beside the gear.
- *
- * Here rather than in the status bar because it is a destination you open, not a
- * readout you glance at — and next to Settings because both answer "why is the
- * app behaving like this", which is the question that sends someone to this
- * corner in the first place.
- *
- * The badge is the whole point. Most of what this log catches is invisible by
- * definition: a call that failed and was handled, a core command that degraded
- * instead of erroring. Nothing else on screen changes when one lands, so without
- * a count the log would only ever be read by someone who already suspected it
- * had something in it.
- */
-function ErrorLogButton() {
-  const go = useUi((s) => s.go)
-  const activeKey = useUi((s) => s.activeKey)
-  const load = useDiagnostics((s) => s.load)
-  const entries = useDiagnostics((s) => s.entries)
-  const seenAt = useDiagnostics((s) => s.seenAt)
-  // Derived outside the selector: `unseen` builds an object, and returning a
-  // fresh one from a zustand selector re-renders on every store touch.
-  const { count, failed } = unseen({ entries, seenAt })
-
-  // The renderer's own entries arrive through the store as they happen; the
-  // core's have to be asked for. Slowly — this is the unattended path, and the
-  // log refetches the moment it is opened.
-  useEffect(() => {
-    void load()
-    const t = setInterval(() => void load(), DIAG_POLL_MS)
-    return () => clearInterval(t)
-  }, [load])
-
-  const active = activeKey === 'errors'
-
-  return (
-    <button
-      type="button"
-      aria-label={count > 0 ? `Error log, ${count} new` : 'Error log'}
-      title={count > 0 ? `Error log — ${count} new` : 'Error log'}
-      onClick={() => go({ kind: 'errors' })}
-      className={cn(
-        'relative rounded-chip p-1.5 hover:bg-hover hover:text-ink',
-        active ? 'text-ink' : 'text-ink-3',
-      )}
-    >
-      <ScrollText className="h-4 w-4" />
-      {count > 0 && (
-        <span
-          // A dot, not a number: the count is in the tooltip and the label, and
-          // a two-digit badge on a 16px icon is unreadable at every size.
-          // `bg-canvas` ring so it reads as an overlay rather than part of the
-          // glyph.
-          //
-          // Red only when something actually failed. Most of what lands here is
-          // a workaround that held — marking those as red teaches people to
-          // ignore the dot, which costs the one time it matters.
-          className={cn(
-            'absolute right-0.5 top-0.5 h-2 w-2 rounded-full ring-2 ring-canvas',
-            failed > 0 ? 'bg-red' : 'bg-orange',
-          )}
-        />
-      )}
-    </button>
   )
 }
 

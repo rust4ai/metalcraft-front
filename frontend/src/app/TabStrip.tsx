@@ -1,8 +1,7 @@
-import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, PanelLeft, PanelRight, Play, Plus, ScrollText, ServerCog, Settings, Store, X } from 'lucide-react'
+import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, Plus, ScrollText, ServerCog, Settings, Store, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
-import { useLayout } from '@/stores/layout'
 import { cn } from '@/lib/cn'
 
 /** What a tab calls itself. Session tabs borrow the instance's name, so renaming
@@ -61,14 +60,16 @@ function TabIcon({ view }: { view: View }) {
 /**
  * The centre column's header (UI_PLAN §2, S3).
  *
- * Shares the 38px top row with the sidebar header rather than sitting under a
- * full-width title bar, so the empty space to the right of the last tab is the
- * window's other drag region.
+ * Open documents, not modes — this strip holds Home, Settings and three agents
+ * at once, which is a different object from the session mode switcher below it.
+ *
+ * It no longer reserves the traffic lights: since HARNESS_UI_PLAN H1 the window
+ * bar above does that, whether or not the sidebar is open. The empty space to
+ * the right of the last tab is still a drag region.
  */
-export function TabStrip({ onCommand }: { onCommand: () => void }) {
+export function TabStrip() {
   const { tabs, activeKey, select, close, setNewAgentOpen } = useUi()
   const instances = useFleet((s) => s.instances)
-  const { sidebarOpen, toggleSidebar, railOpen, toggleRail } = useLayout()
   const nameOf = (id: string) => instances.find((i) => i.id === id)?.name
   const activeTab = useRef<HTMLDivElement>(null)
 
@@ -87,25 +88,9 @@ export function TabStrip({ onCommand }: { onCommand: () => void }) {
   return (
     <div
       data-tauri-drag-region
-      className="flex h-[38px] shrink-0 items-center gap-1 border-b border-line bg-canvas pr-2"
+      className="flex h-[34px] shrink-0 items-center gap-1 border-b border-line bg-canvas pr-2"
     >
-      {/* When the sidebar is hidden it takes the traffic lights' inset with it,
-          so the tab strip has to reserve that space instead. */}
-      {!sidebarOpen && (
-        <div className="flex shrink-0 items-center pl-20 pr-1" data-tauri-drag-region>
-          <button
-            type="button"
-            aria-label="Show sidebar"
-            title="Show sidebar  ⌘B"
-            onClick={toggleSidebar}
-            className="rounded-chip p-1 text-ink-3 hover:bg-hover hover:text-ink"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      <div className={cn('flex min-w-0 items-center gap-1 overflow-x-auto', sidebarOpen && 'pl-2')}>
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto pl-2">
         {tabs.map((tab) => {
           const active = tab.key === activeKey
           const closable = tab.key !== 'fleet'
@@ -114,7 +99,7 @@ export function TabStrip({ onCommand }: { onCommand: () => void }) {
               key={tab.key}
               ref={active ? activeTab : undefined}
               className={cn(
-                'group flex h-[26px] min-w-0 shrink-0 items-center gap-1.5 rounded-control pl-2.5 text-[12.5px] transition-colors duration-150',
+                'group flex h-[28px] min-w-0 shrink-0 items-center gap-1.5 rounded-full pl-2.5 text-[12.5px] transition-colors duration-150',
                 closable ? 'pr-1' : 'pr-2.5',
                 active ? 'bg-page text-ink shadow-hairline' : 'text-ink-2 hover:bg-hover hover:text-ink',
               )}
@@ -159,31 +144,10 @@ export function TabStrip({ onCommand }: { onCommand: () => void }) {
         <Plus className="h-4 w-4" />
       </button>
 
-      {/* The rest of the row is window chrome. */}
+      {/* The rest of the row is window chrome. The command button and the rail
+          toggle that used to end it are in the window bar now — one search
+          affordance, one panel toggle, both above. */}
       <div data-tauri-drag-region className="h-full flex-1" />
-
-      <button
-        type="button"
-        onClick={onCommand}
-        title="Command palette  ⌘K"
-        className="flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1 text-[12px] text-ink-2 hover:bg-hover hover:text-ink"
-      >
-        <Play className="h-3 w-3" />
-        Command
-      </button>
-
-      <button
-        type="button"
-        aria-label={railOpen ? 'Hide details' : 'Show details'}
-        title="Details  ⌘J"
-        onClick={toggleRail}
-        className={cn(
-          'shrink-0 rounded-chip p-1 hover:bg-hover hover:text-ink',
-          railOpen ? 'text-ink' : 'text-ink-3',
-        )}
-      >
-        <PanelRight className="h-4 w-4" />
-      </button>
     </div>
   )
 }

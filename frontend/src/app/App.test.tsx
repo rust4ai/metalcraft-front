@@ -181,10 +181,12 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText('Dusty')).toBeTruthy())
   })
 
-  it('offers the error log beside the gear, and opens it', async () => {
-    // The pair is the point: both answer "why is the app behaving like this",
-    // and the log is only findable because it sits where someone already goes
-    // looking. A degradation changes nothing else on screen.
+  it('offers the error log in the window bar, and opens it', async () => {
+    // It used to sit beside the gear in the sidebar footer, which made it
+    // reachable only with the sidebar open — the state someone hunting a fault
+    // is least likely to be in. In the window bar it is reachable from every
+    // layout, which is the whole reason H1 moved it. A degradation changes
+    // nothing else on screen, so if it is not findable it is not read.
     await mount({
       session: { email: 'a@b.com', premium: true },
       list_pods: [{ id: 'p1', slug: 'amy', url: 'https://amy.metalcraftai.com' }],
@@ -208,8 +210,13 @@ describe('App', () => {
     })
 
     const log = await screen.findByRole('button', { name: /^Error log/ })
-    const gear = screen.getByRole('button', { name: 'Settings' })
-    expect(gear.parentElement).toBe(log.parentElement)
+    // In the window bar, and in neither side column — so hiding the sidebar or
+    // the rail cannot take it away. Asserted structurally rather than by role:
+    // the session and settings panes have headers of their own and both side
+    // columns are asides, so `banner` and `complementary` are both ambiguous
+    // here and would pass for the wrong reason.
+    expect(log.closest('header')).not.toBe(null)
+    expect(log.closest('aside')).toBe(null)
 
     await userEvent.click(log)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Error log' })).toBeTruthy())

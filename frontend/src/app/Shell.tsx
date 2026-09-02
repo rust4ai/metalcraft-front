@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { PacksView } from '@/features/packs/PacksView'
@@ -16,6 +16,7 @@ import { useLayout } from '@/stores/layout'
 import { activeView, useUi } from '@/stores/ui'
 import { Sidebar } from './Sidebar'
 import { TabStrip } from './TabStrip'
+import { TopBar } from './TopBar'
 import { StatusBar } from './StatusBar'
 import { RightRail } from './RightRail'
 import { CommandPalette } from './CommandPalette'
@@ -64,8 +65,9 @@ export function Shell() {
     void loadPacks()
   }, [loadPacks])
 
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  useShortcuts(setPaletteOpen)
+  const paletteOpen = useUi((s) => s.paletteOpen)
+  const setPaletteOpen = useUi((s) => s.setPaletteOpen)
+  useShortcuts()
 
   return (
     <div
@@ -80,12 +82,16 @@ export function Shell() {
         // the bottom edge, and left an agent chat looking like it had no input
         // field at all. A zero minimum lets the panes' own scrollers do their
         // job instead.
-        gridTemplateRows: 'minmax(0, 1fr) auto',
+        // Three rows now: the window's own bar, the columns, the status bar.
+        // The first and last are `auto` and the middle takes the rest, which is
+        // what keeps a long sidebar from pushing the composer off the bottom.
+        gridTemplateRows: 'auto minmax(0, 1fr) auto',
       }}
     >
+      <TopBar />
       {sidebarOpen && <Sidebar />}
       <main className="flex min-h-0 min-w-0 flex-col bg-page">
-        <TabStrip onCommand={() => setPaletteOpen(true)} />
+        <TabStrip />
         <div className="min-h-0 flex-1">
           {view.kind === 'session' ? (
             // Keyed so switching agents rebuilds the transcript rather than
@@ -132,8 +138,8 @@ function SourceTab() {
   return <InterfaceSourceView onDone={markOwnSource} />
 }
 
-function useShortcuts(setPaletteOpen: (open: boolean) => void) {
-  const { close, select, step, activeKey, tabs, setNewAgentOpen } = useUi()
+function useShortcuts() {
+  const { close, select, step, activeKey, tabs, setNewAgentOpen, setPaletteOpen } = useUi()
   const toggleSidebar = useLayout((s) => s.toggleSidebar)
   const toggleRail = useLayout((s) => s.toggleRail)
 
@@ -174,5 +180,5 @@ function useShortcuts(setPaletteOpen: (open: boolean) => void) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [activeKey, close, select, step, tabs, toggleSidebar])
+  }, [activeKey, close, select, step, tabs, toggleSidebar, toggleRail, setNewAgentOpen, setPaletteOpen])
 }

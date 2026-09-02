@@ -19,6 +19,17 @@ export type View =
   | { kind: 'settings' }
   | { kind: 'errors' }
 
+/**
+ * Which room of one agent is on screen (HARNESS_UI_PLAN H2).
+ *
+ * Distinct from a tab, and deliberately so. A tab is an open *document* — Home,
+ * Settings, three different agents — and the strip holds several at once. A mode
+ * is one facet of the single agent a session tab is already showing. Collapsing
+ * the two would mean losing the ability to have two agents open, which is the
+ * one thing the tab strip is for.
+ */
+export type SessionMode = 'chat' | 'runs' | 'memory' | 'schedules'
+
 export interface Tab {
   /** Derived from the view, never generated — see `keyFor`. */
   key: string
@@ -45,6 +56,14 @@ export interface UiState {
   tabs: Tab[]
   activeKey: string
   newAgentOpen: boolean
+  /** Per instance, not global: switching to another agent and back should not
+   *  drop you into the mode you left a *different* agent in. Not persisted —
+   *  a session is opened to be talked to, so a relaunch starts on the chat. */
+  sessionMode: Record<string, SessionMode>
+  /** The ⌘K palette. Here rather than in `Shell`'s local state because the top
+   *  bar's search field opens the same thing the shortcut does, and two owners
+   *  of one dialog is how a field ends up unable to close what it opened. */
+  paletteOpen: boolean
   /** Whether a *user-supplied* provider key is stored on this pod — an override,
    *  not a requirement. null until checked: the UI must not flash the setup step
    *  at someone who is already set up. See `canThink`. */
@@ -64,6 +83,8 @@ export interface UiState {
   prune: (liveInstanceIds: string[]) => void
 
   setNewAgentOpen: (open: boolean) => void
+  setPaletteOpen: (open: boolean) => void
+  setSessionMode: (instanceId: string, mode: SessionMode) => void
   /** Ask the pod whether a user key is stored; routes to setup only if the pod
    *  genuinely cannot think without one. */
   checkOwnSource: () => Promise<void>
@@ -104,6 +125,8 @@ export const useUi = create<UiState>((set, get) => {
   return {
     ...load(),
     newAgentOpen: false,
+    paletteOpen: false,
+    sessionMode: {},
     ownSource: null,
     inference: null,
 
@@ -141,12 +164,28 @@ export const useUi = create<UiState>((set, get) => {
     prune: (liveInstanceIds) => {
       const live = new Set(liveInstanceIds)
       const { tabs, activeKey } = get()
+      // Before the early return, not after it: an agent deleted while its tab
+      // was closed changes no tab at all, and gating this on the tab list would
+      // leave its mode in the map for the life of the window — where a re-used
+      // id would inherit a room the user never chose for it.
+      const sessionMode = Object.fromEntries(
+        Object.entries(get().sessionMode).filter(([id]) => live.has(id)),
+      )
+      set({ sessionMode })
+
       const next = tabs.filter((t) => t.view.kind !== 'session' || live.has(t.view.instanceId))
       if (next.length === tabs.length) return
       commit({ tabs: next, activeKey: next.some((t) => t.key === activeKey) ? activeKey : FLEET_TAB.key })
     },
 
     setNewAgentOpen: (newAgentOpen) => set({ newAgentOpen }),
+
+    // Not persisted, and deliberately: a dialog that survives a relaunch is a
+    // dialog nobody asked for.
+    setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+
+    setSessionMode: (instanceId, mode) =>
+      set({ sessionMode: { ...get().sessionMode, [instanceId]: mode } }),
 
     checkOwnSource: async () => {
       try {

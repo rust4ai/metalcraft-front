@@ -7,9 +7,11 @@ import { StatusDot } from '@/components/ui/StatusDot'
 /**
  * The bottom bar (UI_PLAN §2, S5) — Orca's `10% used 2h 14m · 466.9 MB` row.
  *
- * It carries the pod and the account because deleting the title bar left them
- * homeless, and the balance because Metalcraft ID's `/credits/balance` is the
- * same ledger the next turn will authorize against.
+ * Machine facts only, since HARNESS_UI_PLAN H1: the account moved to the window
+ * bar, which is the title bar whose absence had stranded it here. What is left
+ * is what the pod is and what the next turn can spend — the slug and version a
+ * support conversation asks for, and the balance from Metalcraft ID's
+ * `/credits/balance`, the same ledger that turn will authorize against.
  *
  * It shows `available` rather than the raw balance: a turn in flight has already
  * reserved against the total and not settled, so the larger number would be
@@ -18,7 +20,7 @@ import { StatusDot } from '@/components/ui/StatusDot'
  * all rather than a zero.
  */
 export function StatusBar() {
-  const { session, info, pod } = useConnection()
+  const { info, pod } = useConnection()
   const live = useFleet((s) => Object.values(s.status).filter((v) => v === 'thinking' || v === 'running').length)
   const { credits, supported, refresh } = useCredits()
 
@@ -30,15 +32,17 @@ export function StatusBar() {
   }, [info, refresh])
 
   return (
-    <footer className="col-span-full flex h-[26px] shrink-0 items-center gap-3 border-t border-line bg-canvas px-3 text-[11px] text-ink-3">
+    <footer className="col-span-full flex h-[24px] shrink-0 items-center gap-3 border-t border-line bg-canvas px-3 text-[11px] text-ink-3">
       {info && <StatusDot status="idle" />}
       {pod && <span className="font-mono">{pod.slug}</span>}
       {info?.version && <span className="font-mono">v{info.version}</span>}
       {live > 0 && <span className="tnum text-accent">{live} working</span>}
 
-      {supported && credits && <CreditsReadout credits={credits} />}
-
-      <span className="ml-auto">{session?.email}</span>
+      {supported && credits && (
+        <span className="ml-auto">
+          <CreditsReadout credits={credits} />
+        </span>
+      )}
     </footer>
   )
 }

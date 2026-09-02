@@ -63,7 +63,7 @@ describe('turn debug', () => {
       pod_diagnostics_trace: TRACE,
       pod_diagnostics_session: { id: 'live-run', timeline: [] },
     })
-    await useTurnDebug.getState().show('i1', 'live-run')
+    await useTurnDebug.getState().load('i1', 'live-run')
 
     expect(state().sessionId).toBe('live-run')
     // No listing: the turn already said which run it is.
@@ -81,14 +81,14 @@ describe('turn debug', () => {
       pod_diagnostics_trace: TRACE,
       pod_diagnostics_session: { id: 'newest-mine', timeline: [] },
     })
-    await useTurnDebug.getState().show('i1')
+    await useTurnDebug.getState().load('i1')
     expect(state().sessionId).toBe('newest-mine')
   })
 
   it('says why there is nothing to show rather than drawing an empty timeline', async () => {
     // An empty panel reads as "the agent did nothing", which is never what it means.
     const { useTurnDebug, state } = await mount({ pod_diagnostics: [] })
-    await useTurnDebug.getState().show('i1')
+    await useTurnDebug.getState().load('i1')
     expect(state().turns).toBeNull()
     expect(state().notice).toContain('no recorded runs')
   })
@@ -97,7 +97,7 @@ describe('turn debug', () => {
     // `null` from the command is the too-old branch. There is no third panel to
     // draw for it: either way the answer is "nothing to look at here".
     const { useTurnDebug, state } = await mount({ pod_diagnostics: null })
-    await useTurnDebug.getState().show('i1')
+    await useTurnDebug.getState().load('i1')
     expect(state().notice).toContain('no recorded runs')
   })
 
@@ -111,7 +111,7 @@ describe('turn debug', () => {
         timeline: [{ kind: 'llm_request', file: 'llm_request_001.json', data: { a: 1 } }],
       },
     })
-    await useTurnDebug.getState().show('i1', 'old-run')
+    await useTurnDebug.getState().load('i1', 'old-run')
     expect(state().turns).toEqual([])
     expect(state().notice).toContain('no trace')
     expect(state().detail?.timeline).toHaveLength(1)
@@ -122,7 +122,7 @@ describe('turn debug', () => {
       pod_diagnostics_trace: new Error('transport: connection refused'),
       pod_diagnostics_session: { id: 'r', timeline: [] },
     })
-    await useTurnDebug.getState().show('i1', 'r')
+    await useTurnDebug.getState().load('i1', 'r')
     expect(state().loading).toBe(false)
     expect(state().notice).toContain('connection refused')
   })

@@ -13,21 +13,22 @@ import { create } from 'zustand'
 export const SIDEBAR = { default: 264, min: 200, max: 420 }
 export const RAIL = { default: 368, min: 280, max: 560 }
 
-/** Which icon tab the rail is showing. */
-export type RailTab = 'details' | 'memory' | 'activity'
-
 interface LayoutState {
+  /** Which Inspector sections are open, by the id `Collapsible` is given. Absent
+   *  means "as that section declared" — so a new section's own default wins
+   *  until the person has an opinion, and adding one never has to migrate this. */
+  railSections: Record<string, boolean>
+
   sidebarOpen: boolean
   sidebarWidth: number
   railOpen: boolean
   railWidth: number
-  railTab: RailTab
 
   toggleSidebar: () => void
   setSidebarWidth: (px: number) => void
   toggleRail: () => void
   setRailWidth: (px: number) => void
-  setRailTab: (tab: RailTab) => void
+  toggleRailSection: (id: string, open: boolean) => void
 }
 
 const KEY = 'mc.layout'
@@ -50,9 +51,12 @@ export const useLayout = create<LayoutState>((set, get) => {
   const saved = load()
 
   const persist = () => {
-    const { sidebarOpen, sidebarWidth, railOpen, railWidth, railTab } = get()
+    const { sidebarOpen, sidebarWidth, railOpen, railWidth, railSections } = get()
     try {
-      localStorage.setItem(KEY, JSON.stringify({ sidebarOpen, sidebarWidth, railOpen, railWidth, railTab }))
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({ sidebarOpen, sidebarWidth, railOpen, railWidth, railSections }),
+      )
     } catch {
       // A webview with storage disabled loses the layout on quit, which is a
       // cosmetic loss and not worth failing a render over.
@@ -68,12 +72,15 @@ export const useLayout = create<LayoutState>((set, get) => {
     sidebarWidth: clamp(saved.sidebarWidth ?? SIDEBAR.default, SIDEBAR),
     railOpen: saved.railOpen ?? true,
     railWidth: clamp(saved.railWidth ?? RAIL.default, RAIL),
-    railTab: saved.railTab ?? 'details',
+    // Defensive about the shape: a hand-edited or older payload must not put a
+    // non-object here, where every read is a property access.
+    railSections:
+      saved.railSections && typeof saved.railSections === 'object' ? saved.railSections : {},
 
     toggleSidebar: () => commit({ sidebarOpen: !get().sidebarOpen }),
     setSidebarWidth: (px) => commit({ sidebarWidth: clamp(px, SIDEBAR) }),
     toggleRail: () => commit({ railOpen: !get().railOpen }),
     setRailWidth: (px) => commit({ railWidth: clamp(px, RAIL) }),
-    setRailTab: (railTab) => commit({ railTab }),
+    toggleRailSection: (id, open) => commit({ railSections: { ...get().railSections, [id]: open } }),
   }
 })

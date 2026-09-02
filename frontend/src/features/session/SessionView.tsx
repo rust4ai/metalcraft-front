@@ -2,26 +2,25 @@ import { useEffect, useRef } from 'react'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { phaseLabel, type ToolCard, type TranscriptItem } from './transcript'
 import { useSessions } from '@/stores/sessions'
-import { useFleet } from '@/stores/fleet'
-import { StatusDot } from '@/components/ui/StatusDot'
+import { useUi } from '@/stores/ui'
 import { Trace } from './Trace'
 import { Composer } from './Composer'
 import { Followups } from './Followups'
-import { DebugButton, DebugDrawer } from './DebugDrawer'
+import { ModeTabs } from './ModeTabs'
+import { RunsPanel } from './RunsPanel'
+import { MemoryPanel } from './MemoryPanel'
+import { SchedulesPanel } from './SchedulesPanel'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { Linkified } from '@/components/ui/Linkified'
 import { groupIntoBlocks } from './blocks'
-import { EditableName } from '@/features/fleet/EditableName'
-import { ConversationPicker } from './ConversationPicker'
 import { cn } from '@/lib/cn'
 import type { PlanStep } from '@/types'
 
 /** PLAN §10.2 — one conversation with one agent instance. */
 export function SessionView({ instanceId }: { instanceId: string }) {
-  const { byInstance, opening, open, submit, stop } = useSessions()
-  const instance = useFleet((s) => s.instances.find((i) => i.id === instanceId))
+  const { byInstance, open, submit, stop } = useSessions()
+  const mode = useUi((s) => s.sessionMode[instanceId] ?? 'chat')
   const session = byInstance[instanceId]
-  const bottom = useRef<HTMLDivElement>(null)
 
   // Opened on mount, and again whenever the session is *missing* — not only the
   // first time. A mount-only open has no way back: the transcript lives in the
@@ -33,6 +32,45 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   useEffect(() => {
     if (missing) void open(instanceId)
   }, [instanceId, missing, open])
+
+  return (
+    <div className="flex h-full flex-col">
+      <ModeTabs instanceId={instanceId} />
+
+      {/* The session is opened, and its stream kept alive, whichever mode is on
+          screen: a turn that lands while you are reading the trace must still be
+          in the transcript when you come back to it. Only the *view* switches. */}
+      {mode === 'runs' ? (
+        <RunsPanel instanceId={instanceId} />
+      ) : mode === 'memory' ? (
+        <MemoryPanel instanceId={instanceId} />
+      ) : mode === 'schedules' ? (
+        <SchedulesPanel instanceId={instanceId} />
+      ) : (
+        <Chat
+          instanceId={instanceId}
+          onSend={(m) => void submit(instanceId, m)}
+          onStop={() => void stop(instanceId)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** The conversation itself — the `chat` mode, and what this view was before the
+ *  others were pulled out of the rail and the debug drawer. */
+function Chat({
+  instanceId,
+  onSend,
+  onStop,
+}: {
+  instanceId: string
+  onSend: (message: string) => void
+  onStop: () => void
+}) {
+  const { byInstance, opening } = useSessions()
+  const session = byInstance[instanceId]
+  const bottom = useRef<HTMLDivElement>(null)
 
   // Follow the tail as frames land. Cheap and correct while transcripts are
   // short; virtualization comes with the long ones.
@@ -47,30 +85,7 @@ export function SessionView({ instanceId }: { instanceId: string }) {
   const lastItemId = items.at(-1)?.id
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <StatusDot status={busy ? (session?.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
-        <div className="min-w-0 flex-1">
-          {/* The name is the user's to set, and this is where they are looking
-              when they decide the agent deserves a better one. */}
-          {instance ? (
-            <EditableName instance={instance} className="-ml-1.5 text-sm font-medium" />
-          ) : (
-            <div className="truncate text-sm font-medium">Agent</div>
-          )}
-          <div className="truncate text-xs text-ink-2">
-            {instance ? `${instance.agent_preset} · ${instance.persona}` : ''}
-          </div>
-        </div>
-        {/* An agent has several conversations — one per gateway gap, one per
-            flow firing — and this is the only way to any but the newest. */}
-        <ConversationPicker instanceId={instanceId} />
-        {/* Opened against the live turn when there is one, and against this
-            agent's last recorded run when there is not — which is when someone
-            comes looking, after something already took too long. */}
-        <DebugButton instanceId={instanceId} sessionId={session?.transcript.sessionId} />
-      </header>
-
+    <>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
         {opening[instanceId] && !session ? (
           <div className="flex items-center gap-2 text-sm text-ink-2">
@@ -102,7 +117,7 @@ export function SessionView({ instanceId }: { instanceId: string }) {
                      answered one would offer to re-answer something the
                      conversation has already moved past. */
                   live={block.item.id === lastItemId && !busy}
-                  onAnswer={(m) => void submit(instanceId, m)}
+                  onAnswer={onSend}
                 />
               ),
             )}
@@ -139,14 +154,8 @@ export function SessionView({ instanceId }: { instanceId: string }) {
           standing state of the conversation, not something that happened at a
           point in the transcript. */}
       <Followups instanceId={instanceId} />
-      <DebugDrawer />
-      <Composer
-        busy={busy}
-        stopping={stopping}
-        onSend={(m) => void submit(instanceId, m)}
-        onStop={() => void stop(instanceId)}
-      />
-    </div>
+      <Composer busy={busy} stopping={stopping} onSend={onSend} onStop={onStop} />
+    </>
   )
 }
 

@@ -1,17 +1,14 @@
-import { useEffect, useState } from 'react'
-import { Brain, Clock, Info, PauseCircle, Wrench } from 'lucide-react'
-import { fleet as fleetRpc } from '@/rpc'
-import type { DreamReport, MemorySystemStatus, ScheduledFlow } from '@/types'
+import { Bot, ServerCog, ShieldCheck } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
-import { useMemory } from '@/stores/memory'
 import { useSessions } from '@/stores/sessions'
 import { useConnection } from '@/stores/connection'
-import { useLayout, type RailTab } from '@/stores/layout'
-import { activeView, useUi } from '@/stores/ui'
+import { useLayout } from '@/stores/layout'
+import { unseen, useDiagnostics } from '@/stores/diagnostics'
+import { activeView, canThink, useUi } from '@/stores/ui'
 import { StatusDot } from '@/components/ui/StatusDot'
+import { Collapsible } from '@/components/ui/Collapsible'
+import { Empty, Row } from '@/components/ui/Facts'
 import { relative } from '@/features/fleet/FleetView'
-import { describeTool, truncateTarget } from '@/features/session/describeTool'
-import type { ToolCard } from '@/features/session/transcript'
 import { Resizer } from './Resizer'
 import { PersonaSwitcher } from '@/features/session/PersonaSwitcher'
 import { DeleteAgent } from '@/features/fleet/DeleteAgent'
@@ -19,13 +16,12 @@ import { EditableName } from '@/features/fleet/EditableName'
 import { cn } from '@/lib/cn'
 
 /**
- * The third column (UI_PLAN §2, S4).
+ * The Inspector (HARNESS_UI_PLAN §4, H4; was UI_PLAN §2, S4).
  *
- * PLAN §10.2 asks this rail for instance memory, a persona switcher and a model
- * picker, and the pod serves all the endpoints needed for the first two:
- * `PATCH /agents/instances/{id}` switches persona (validated against the
- * preset's roster), `GET /agent-presets/{slug}` resolves that roster, and
- * `GET /agents/instances/{id}/memory` reads what the agent knows.
+ * One scroll of folding sections, not tabs. Tabs made the rail's contents
+ * mutually exclusive for no reason: an agent's identity and the state of its
+ * credentials are not alternatives. They are two things you read one after the
+ * other, and the fold lets someone keep open exactly the ones they care about.
  *
  * The **model** is shown but not editable, and that is a property of the pod
  * rather than a shortcut: a model is chosen when a conversation is created
@@ -33,14 +29,8 @@ import { cn } from '@/lib/cn'
  * afterwards. A picker here would have to silently start a new conversation,
  * which is not what "change the model" looks like to anyone.
  */
-const TABS: { id: RailTab; icon: typeof Info; label: string }[] = [
-  { id: 'details', icon: Info, label: 'Details' },
-  { id: 'memory', icon: Brain, label: 'Memory' },
-  { id: 'activity', icon: Wrench, label: 'Activity' },
-]
-
 export function RightRail() {
-  const { railWidth, setRailWidth, railTab, setRailTab } = useLayout()
+  const { railWidth, setRailWidth } = useLayout()
   const view = useUi(activeView)
 
   return (
@@ -51,34 +41,15 @@ export function RightRail() {
     >
       <Resizer side="left" width={railWidth} onResize={setRailWidth} />
 
-      <div data-tauri-drag-region className="flex h-[38px] shrink-0 items-center gap-1 px-2">
-        {TABS.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            type="button"
-            aria-label={label}
-            title={label}
-            aria-current={railTab === id ? 'page' : undefined}
-            onClick={() => setRailTab(id)}
-            className={cn(
-              'rounded-chip p-1.5 transition-colors duration-150',
-              railTab === id ? 'bg-hover-2 text-ink' : 'text-ink-3 hover:bg-hover hover:text-ink',
-            )}
-          >
-            <Icon className="h-4 w-4" />
-          </button>
-        ))}
+      <div className="flex h-[34px] shrink-0 items-center border-b border-line px-3">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          Inspector
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         {view.kind === 'session' ? (
-          railTab === 'activity' ? (
-            <Activity instanceId={view.instanceId} />
-          ) : railTab === 'memory' ? (
-            <Memory instanceId={view.instanceId} />
-          ) : (
-            <InstanceDetails instanceId={view.instanceId} />
-          )
+          <InstanceDetails instanceId={view.instanceId} />
         ) : (
           <PodDetails />
         )}
@@ -87,25 +58,32 @@ export function RightRail() {
   )
 }
 
-/** A label/value pair. `mono` marks machine-owned values, per index.css. */
-function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
-  if (value === null || value === undefined || value === '') return null
+/**
+ * The card the reference leads its Inspector with (`● Ready … sandbox`).
+ *
+ * A state and a subtitle, in a box, above the rows — because "what is this thing
+ * doing right now" is a different question from "what is it made of", and asking
+ * it as one more label/value row buries it among ten others.
+ */
+function StateCard({
+  status,
+  label,
+  detail,
+}: {
+  status: 'idle' | 'running' | 'thinking'
+  label: string
+  detail?: string
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className="shrink-0 text-[11.5px] text-ink-3">{label}</span>
-      <span className={cn('min-w-0 truncate text-right text-[12px] text-ink-2', mono && 'font-mono text-[11px]')}>
-        {value}
-      </span>
+    <div className="mb-2 flex items-center gap-2 rounded-card bg-inset px-2.5 py-2 shadow-hairline">
+      <StatusDot status={status} className="shrink-0" />
+      <span className="text-[12px] font-medium text-ink">{label}</span>
+      {detail && (
+        <span className="ml-auto min-w-0 truncate font-mono text-[10.5px] text-ink-3">
+          {detail}
+        </span>
+      )}
     </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="pt-3">
-      <h2 className="pb-1 text-[11px] font-medium uppercase tracking-wide text-ink-3">{title}</h2>
-      {children}
-    </section>
   )
 }
 
@@ -114,39 +92,62 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
   const session = useSessions((s) => s.byInstance[instanceId])
   if (!instance) return <Empty text="This agent is no longer on the pod." />
 
+  const busy = session?.transcript.busy ?? false
+  const thinking = session?.transcript.thinking ?? false
+  const state = busy ? (thinking ? 'thinking' : 'running') : 'idle'
+
   return (
     <>
-      <Section title="Agent">
-        <Row label="Name" value={<EditableName instance={instance} className="text-[12px] text-ink-2" />} />
-        <Row label="Preset" value={instance.agent_preset} mono />
+      <Collapsible id="agent" title="Agent" icon={<Bot className="h-3.5 w-3.5" />}>
+        <StateCard
+          status={state}
+          label={busy ? (thinking ? 'Thinking' : 'Running a tool') : 'Ready'}
+          detail={instance.agent_preset}
+        />
+        <Row
+          label="Name"
+          value={<EditableName instance={instance} className="text-[11.5px] text-ink-2" />}
+        />
         <Row label="Pack" value={instance.agent_pack} mono />
         <Row label="Persona" value={<PersonaSwitcher instance={instance} />} />
-        <Row label="Origin" value={instance.origin.kind === 'gateway' ? instance.origin.channel : instance.origin.kind} />
-      </Section>
+        <Row
+          label="Origin"
+          value={instance.origin.kind === 'gateway' ? instance.origin.channel : instance.origin.kind}
+        />
+      </Collapsible>
 
-      <Section title="History">
+      <Collapsible id="history" title="History">
         <Row label="Created" value={relative(instance.created_at)} />
         <Row label="Last active" value={relative(instance.last_active_at || instance.created_at)} />
         <Row label="Conversations" value={instance.conversation_count ?? 0} />
-      </Section>
+      </Collapsible>
 
       {/* The chat id is what a support conversation or a pod-side log grep needs,
           and it is otherwise invisible to the user. */}
-      <Section title="This conversation">
-        <Row label="Chat" value={session?.chatId} mono />
-        <Row label="Model" value={session?.modelName} mono />
-        <Row
-          label="State"
-          value={
-            <span className="inline-flex items-center gap-1.5">
-              <StatusDot status={session?.transcript.busy ? (session.transcript.thinking ? 'thinking' : 'running') : 'idle'} />
-              {session?.transcript.busy ? (session.transcript.thinking ? 'thinking' : 'running a tool') : 'idle'}
-            </span>
-          }
-        />
-      </Section>
+      <Collapsible id="conversation" title="This conversation">
+        {/* `Row` hides an absent value, so without this the section was a
+            heading with nothing under it whenever the chat had not opened yet
+            — a fold you expand onto blank space, which is the same lie as a
+            hollow control. */}
+        {session?.chatId ? (
+          <>
+            <Row label="Chat" value={session.chatId} mono />
+            <Row label="Model" value={session.modelName} mono />
+          </>
+        ) : (
+          <Empty text="No conversation open yet." />
+        )}
+      </Collapsible>
 
-      <RunsOnItsOwn instanceId={instanceId} />
+      {/* The usage section the reference puts here arrives with H5, when there is
+          a number behind it. Nothing stands in for it meanwhile (§0). */}
+
+      {/* What this agent does unattended used to be a section here. It is the
+          Schedules mode now — one click away on the row above, with room for the
+          trigger text the rail was truncating. Not mirrored: two copies of one
+          list is how they drift. */}
+
+      <Checks />
 
       {/* Last, and after a rule. The rail is read top-down for facts about the
           agent; the one control that ends it does not belong among them. */}
@@ -157,300 +158,155 @@ function InstanceDetails({ instanceId }: { instanceId: string }) {
   )
 }
 
-/**
- * Every tool this conversation has run, newest last.
- *
- * The transcript collapses tools into one `Ran N tools` line so the reading flow
- * survives; this is where the detail goes for anyone who wants it, without
- * making everyone else scroll past it.
- */
-/**
- * What this agent does when nobody is talking to it.
- *
- * An agent is not only something you chat with: a schedule fires it on a timer,
- * as itself, and what it does then lands in the same memory. Until this existed
- * the desktop could show an agent's whole history without ever saying it was
- * going to wake up at 8am — the schedules were only visible from the automation
- * side, filed under the flow rather than under whoever runs it.
- */
-function RunsOnItsOwn({ instanceId }: { instanceId: string }) {
-  const [scheduled, setScheduled] = useState<ScheduledFlow[] | null>(null)
-  const go = useUi((s) => s.go)
-
-  useEffect(() => {
-    let live = true
-    setScheduled(null)
-    // A pod too old for the route answers 404; an agent with no schedules and a
-    // pod that cannot say are both "nothing to show" here, and neither is worth
-    // an error in a rail read for facts about the agent.
-    fleetRpc
-      .flows(instanceId)
-      .then((rows) => live && setScheduled(rows))
-      .catch(() => live && setScheduled([]))
-    return () => {
-      live = false
-    }
-  }, [instanceId])
-
-  if (!scheduled || scheduled.length === 0) return null
-
-  return (
-    <Section title="Runs on its own">
-      <ul>
-        {scheduled.map((s) => (
-          <li key={s.id} className="border-b border-line py-1.5 last:border-0">
-            <button
-              type="button"
-              onClick={() => go({ kind: 'automations' })}
-              className="flex w-full items-baseline gap-1.5 text-left"
-            >
-              {s.enabled ? (
-                <Clock className="h-3 w-3 shrink-0 translate-y-px text-ink-3" />
-              ) : (
-                <PauseCircle className="h-3 w-3 shrink-0 translate-y-px text-ink-3" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] text-ink-2">
-                  {/* Absent when the flow is gone: a schedule that can never
-                      fire, which should read as broken rather than as fine. */}
-                  {s.flow_name ?? `${s.flow_id} — missing`}
-                </span>
-                {/* The pod's own rendering of the trigger, verbatim, including
-                    `Invalid cron …`. */}
-                <span className="block truncate text-[10.5px] text-ink-3">
-                  {s.enabled ? s.description : `Paused · ${s.description}`}
-                </span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Section>
-  )
-}
-
-function Activity({ instanceId }: { instanceId: string }) {
-  const session = useSessions((s) => s.byInstance[instanceId])
-  const cards = (session?.transcript.items ?? []).filter((i): i is ToolCard => i.kind === 'tool')
-
-  if (cards.length === 0) return <Empty text="No tools run in this conversation yet." />
-
-  return (
-    <ul className="pt-3">
-      {cards.map((card) => {
-        const { verb, target } = describeTool(card.name, card.args)
-        return (
-          <li key={card.id} className="flex items-baseline gap-2 border-b border-line py-1.5 last:border-0">
-            <StatusDot status={card.status === 'running' ? 'running' : 'idle'} className="translate-y-px" />
-            <span className="min-w-0 flex-1">
-              <span className="text-[12px] text-ink-2">{verb}</span>
-              {target && <span className="ml-1 font-mono text-[11px] text-ink-3">{truncateTarget(target, 28)}</span>}
-            </span>
-            {card.durationMs !== undefined && (
-              <span className="tnum shrink-0 font-mono text-[10.5px] text-ink-3">
-                {card.durationMs < 1000 ? `${card.durationMs}ms` : `${(card.durationMs / 1000).toFixed(1)}s`}
-              </span>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-/**
- * What this agent knows.
- *
- * The shipped/learned split leads because it is the distinction that matters:
- * memories its pack gave it are the vendor's claims, memories it formed are its
- * own, and conflating them would make an agent look like it worked something out
- * when it was simply told. `forgotten` counts shipped memories it has been told
- * to drop, which is why the numbers need not add up to the sample length.
- */
-function Memory({ instanceId }: { instanceId: string }) {
-  const view = useMemory((s) => s.byInstance[instanceId])
-  const loading = useMemory((s) => s.loading[instanceId])
-  const error = useMemory((s) => s.error[instanceId])
-  const load = useMemory((s) => s.load)
-
-  // Lazily, and only while this tab is the one being looked at.
-  useEffect(() => {
-    if (!view) void load(instanceId)
-  }, [instanceId, load, view])
-
-  if (error) return <Empty text={error} />
-  if (!view) return <Empty text={loading ? 'Reading memory…' : ''} />
-
-  return (
-    <>
-      <Section title="Knows">
-        <Row label="Learned" value={view.learned} />
-        <Row label="Shipped" value={view.shipped} />
-        {view.forgotten > 0 && <Row label="Forgotten" value={view.forgotten} />}
-        <Row label="Base" value={view.base} mono />
-      </Section>
-
-      <Dreaming instanceId={instanceId} system={view.system} />
-
-      {view.sample.length === 0 ? (
-        <Empty text="This agent has not formed any memories yet." />
-      ) : (
-        <ul className="pt-3">
-          {view.sample.map((m) => (
-            <li key={m.id} className="border-b border-line py-2 last:border-0">
-              <p className="text-[12px] leading-relaxed text-ink-2">{m.text}</p>
-              <p className="mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-3">
-                <span
-                  className={cn(
-                    'rounded-chip px-1 py-px',
-                    m.origin === 'learned' ? 'bg-accent-tint text-accent' : 'bg-inset',
-                  )}
-                >
-                  {m.origin}
-                </span>
-                {m.entity && <span className="truncate font-mono">{m.entity}</span>}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
-  )
-}
-
-/**
- * How memory is actually maintained, and when it last was.
- *
- * The counts above are a result; this is the machine behind them. Both belong in
- * one pane because the question they answer together is the one people ask of a
- * quiet agent: has it not learned anything, or has it not been *given the chance*
- * to? A queue of eighty captures with no dream in a week is the second, and it is
- * invisible without this.
- *
- * The whole block hides on a pod too old to report it, rather than rendering a
- * row of zeros that would read as a broken memory system rather than an older one.
- */
-function Dreaming({ instanceId, system }: { instanceId: string; system?: MemorySystemStatus | null }) {
-  const dreaming = useMemory((s) => s.dreaming[instanceId])
-  const report = useMemory((s) => s.lastDream[instanceId])
-  const dream = useMemory((s) => s.dream)
-  if (!system) return null
-
-  const { dream: d } = system
-  const next = d.next_run_at ? until(d.next_run_at) : null
-  const last = d.last_run_at ? relative(d.last_run_at) : null
-
-  return (
-    <Section title="Dreaming">
-      <p className="pb-2 text-[11.5px] leading-relaxed text-ink-3">
-        Conversations are captured as they happen and distilled overnight into durable
-        memories — merged, linked, and faded when unused.
-      </p>
-      <Row
-        label="Nightly"
-        value={d.nightly_enabled ? (next ? `due ${next}` : 'on') : 'off'}
-      />
-      <Row label="Last run" value={last ? `${last}${d.last_trigger === 'manual' ? ' (manual)' : ''}` : 'never'} />
-      {d.last_summary && (
-        <p className="py-1 text-[11.5px] leading-relaxed text-ink-2">{d.last_summary}</p>
-      )}
-      {d.last_error && (
-        <p className="py-1 text-[11.5px] leading-relaxed text-danger">{d.last_error}</p>
-      )}
-      <Row label="Waiting to distil" value={system.pending_captures} />
-      <Row label="Connections" value={system.links} />
-      {system.archived > 0 && <Row label="Faded" value={system.archived} />}
-      {system.superseded > 0 && <Row label="Merged away" value={system.superseded} />}
-      <Row label="Model" value={d.model} mono />
-      {!system.capture_enabled && <Row label="Capture" value="off" />}
-
-      {system.by_kind.length > 0 && (
-        <div className="flex flex-wrap gap-1 pt-2">
-          {system.by_kind.map((k) => (
-            <span key={k.kind} className="rounded-chip bg-inset px-1.5 py-px text-[10.5px] text-ink-3">
-              {k.count} {k.kind}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => void dream(instanceId)}
-        disabled={dreaming || !system.enabled}
-        className={cn(
-          'mt-3 w-full rounded-chip border border-line px-2 py-1.5 text-[11.5px] transition-colors duration-150',
-          dreaming ? 'text-ink-3' : 'text-ink-2 hover:bg-hover hover:text-ink',
-        )}
-      >
-        {dreaming ? 'Dreaming…' : 'Dream now'}
-      </button>
-      {dreaming && (
-        // Said before it is felt: this is several model calls, and a button that
-        // sits dead for two minutes with no explanation reads as a hang.
-        <p className="pt-1 text-[10.5px] leading-relaxed text-ink-3">
-          Distilling recent conversations. This takes a while — you can keep working.
-        </p>
-      )}
-      {report && !dreaming && (
-        <p className="pt-1 text-[10.5px] leading-relaxed text-ink-3">
-          {report.error ?? `Done: ${dreamSummary(report)}.`}
-        </p>
-      )}
-    </Section>
-  )
-}
-
-/**
- * How long until an instant in the future — the mirror of `relative`, which
- * clamps to zero and so reports every future time as "just now".
- *
- * Rounded to the hour past a day, because the only future instant shown here is
- * a nightly schedule and "in 14 hours" is the useful precision. An instant that
- * has already passed reads as "now": the loop ticks once a minute, so a due time
- * a few seconds old means it is about to run, not that it was missed.
- */
-function until(iso: string): string {
-  const then = Date.parse(iso)
-  if (Number.isNaN(then)) return ''
-  const secs = (then - Date.now()) / 1000
-  if (secs <= 60) return 'now'
-  if (secs < 3600) return `in ${Math.round(secs / 60)}m`
-  if (secs < 86_400) return `in ${Math.round(secs / 3600)}h`
-  return `in ${Math.round(secs / 86_400)}d`
-}
-
-/** What a finished run did, in the pane's voice rather than the pod's. */
-function dreamSummary(report: DreamReport): string {
-  const drained = report.captures_pending_before - report.captures_pending_after
-  const gained = report.memories_after - report.memories_before
-  if (drained === 0 && gained === 0) return 'nothing new to distil'
-  const parts: string[] = []
-  if (drained > 0) parts.push(`${drained} conversation turn(s) distilled`)
-  if (gained > 0) parts.push(`${gained} memories added`)
-  else if (gained < 0) parts.push(`${-gained} merged or faded`)
-  return parts.join(', ')
-}
-
 function PodDetails() {
   const { info, pod } = useConnection()
   const { instances, presets } = useFleet()
   return (
     <>
-      <Section title="Pod">
-        <Row label="Slug" value={pod?.slug} mono />
+      <Collapsible id="pod" title="Pod" icon={<ServerCog className="h-3.5 w-3.5" />}>
+        <StateCard
+          status={info ? 'idle' : 'running'}
+          label={info ? 'Connected' : 'Connecting'}
+          detail={pod?.slug}
+        />
         <Row label="Agent" value={info?.name} />
         <Row label="Version" value={info?.version && `v${info.version}`} mono />
         <Row label="URL" value={pod?.url} mono />
-      </Section>
-      <Section title="On this pod">
+      </Collapsible>
+
+      <Collapsible id="onthispod" title="On this pod">
         <Row label="Agents" value={instances.length} />
         <Row label="Presets" value={presets.length} />
-      </Section>
+      </Collapsible>
+
+      <Checks />
     </>
   )
 }
 
-function Empty({ text }: { text: string }) {
-  return <p className="px-1 pt-6 text-[12px] text-ink-3">{text}</p>
+/**
+ * Where the reference has CI checks.
+ *
+ * There is no CI, so this answers the question a pod actually raises: can the
+ * next turn run, and has anything quietly failed. Both are invisible until they
+ * bite — an unbindable credential looks exactly like a working one until a turn
+ * is refused — which is why the collapsed header carries a dot.
+ *
+ * Everything here is already in memory. The section fires no requests of its own:
+ * `inference` is read at boot by `checkOwnSource`, and the diagnostics are polled
+ * by the window bar's error-log button. A **service** key's health (Octaweave,
+ * Buildr) is deliberately absent — the settings store only holds it once the
+ * Settings tab has fetched it, and a row reading "unknown" would be a check that
+ * never checked.
+ */
+function Checks() {
+  const inference = useUi((s) => s.inference)
+  const ownSource = useUi((s) => s.ownSource)
+  const go = useUi((s) => s.go)
+  const { info, session } = useConnection()
+  const entries = useDiagnostics((s) => s.entries)
+  const seenAt = useDiagnostics((s) => s.seenAt)
+  const { count, failed } = unseen({ entries, seenAt })
+
+  const thinkable = canThink({ inference, ownSource }, session?.premium ?? false)
+
+  // The worst state anything here is in, which is what the collapsed header has
+  // to convey: a section that folds away must not hide the one red row in it.
+  const tone: Tone =
+    thinkable === false || failed > 0 || !info ? 'bad' : count > 0 || thinkable === null ? 'warn' : 'ok'
+
+  return (
+    <Collapsible
+      id="checks"
+      title="Checks"
+      icon={<ShieldCheck className="h-3.5 w-3.5" />}
+      // Collapsed by default. Everything here is fine almost always, and a rail
+      // that opens on a list of green ticks trains people to scroll past it.
+      defaultOpen={false}
+      badge={
+        tone === 'ok' ? null : (
+          <span
+            aria-hidden
+            className={cn('block h-2 w-2 rounded-full', tone === 'bad' ? 'bg-red' : 'bg-orange')}
+          />
+        )
+      }
+    >
+      <Check
+        tone={info ? 'ok' : 'bad'}
+        label="Pod"
+        detail={info ? `answering · v${info.version ?? '?'}` : 'not answering'}
+      />
+      <Check
+        tone={thinkable === false ? 'bad' : thinkable === null ? 'warn' : 'ok'}
+        label="Inference"
+        detail={describeInference(inference, thinkable)}
+        onClick={thinkable === false ? () => go({ kind: 'source' }) : undefined}
+      />
+      <Check
+        tone={failed > 0 ? 'bad' : count > 0 ? 'warn' : 'ok'}
+        label="Error log"
+        detail={
+          count === 0 ? 'nothing new' : `${count} new${failed > 0 ? `, ${failed} failed` : ''}`
+        }
+        onClick={() => go({ kind: 'errors' })}
+      />
+    </Collapsible>
+  )
+}
+
+type Tone = 'ok' | 'warn' | 'bad'
+
+/** One check: a dot, what it is, and what it found. Never colour alone — the
+ *  detail text carries the finding too. */
+function Check({
+  tone,
+  label,
+  detail,
+  onClick,
+}: {
+  tone: Tone
+  label: string
+  detail: string
+  onClick?: () => void
+}) {
+  const body = (
+    <>
+      <span
+        className={cn(
+          'h-1.5 w-1.5 shrink-0 rounded-full',
+          tone === 'bad' ? 'bg-red' : tone === 'warn' ? 'bg-orange' : 'bg-green',
+        )}
+      />
+      <span className="shrink-0 text-[11px] text-ink-2">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-right text-[11px] text-ink-3">{detail}</span>
+    </>
+  )
+  const cls = 'flex w-full items-center gap-2 py-1 text-left'
+  return onClick ? (
+    <button type="button" onClick={onClick} className={cn(cls, 'hover:text-ink')}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
+  )
+}
+
+/**
+ * What the inference check found, in the words that name the actual problem.
+ *
+ * `canThink` returns three values and all three matter here: `false` is a pod
+ * that will be refused, `null` is a pod too old to say, and neither should be
+ * reported as the other. The gateway case is the one worth spelling out — a
+ * perfectly good credential is still refused without premium on the account, and
+ * "no key" is the wrong thing to go looking for then.
+ */
+function describeInference(
+  inference: ReturnType<typeof useUi.getState>['inference'],
+  thinkable: boolean | null,
+): string {
+  if (!inference) return thinkable === null ? 'this pod cannot say' : 'assumed ready'
+  if (!inference.ready) return 'no credential resolves'
+  if (inference.gateway && thinkable === false) return 'billed to credits — needs premium'
+  return inference.gateway ? 'billed to your credits' : `key: ${inference.credential}`
 }
