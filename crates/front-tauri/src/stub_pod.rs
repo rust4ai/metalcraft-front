@@ -440,7 +440,8 @@ fn default_answer(h: &Harness, method: &str, path: &str) -> Option<(StatusCode, 
         ("GET", "/api/v1/chats") => json!([]),
         ("GET", "/api/v1/flows") => json!({ "flows": [] }),
         // Nothing on the go, on a pod new enough to be asked.
-        ("GET", "/api/v1/goals") => json!({ "goals": [], "active": 0, "max_active": 5 }),
+        ("POST", p) if p.ends_with("/tick") => json!({ "id": "proj_stub", "status": "active" }),
+        ("GET", "/api/v1/projects") => json!({ "goals": [], "active": 0, "max_active": 5 }),
         ("GET", "/api/v1/flow-runs") => json!([]),
         // Nothing armed. A pod that answers this at all is new enough to have
         // the endpoint, which is the distinction the client cares about.

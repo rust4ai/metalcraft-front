@@ -773,13 +773,13 @@ impl PodConnection {
     // ── Goals ────────────────────────────────────────────────────────────────
 
     /// Every goal on the pod, with how far each has got.
-    pub async fn list_goals(&self) -> anyhow::Result<GoalList> {
-        self.get("/goals").await
+    pub async fn list_projects(&self) -> anyhow::Result<ProjectList> {
+        self.get("/projects").await
     }
 
     /// One goal, with the scratchpad that is its whole memory.
-    pub async fn get_goal(&self, id: &str) -> anyhow::Result<GoalDetail> {
-        self.get(&format!("/goals/{id}")).await
+    pub async fn get_project(&self, id: &str) -> anyhow::Result<ProjectDetail> {
+        self.get(&format!("/projects/{id}")).await
     }
 
     /// Set a goal.
@@ -787,35 +787,48 @@ impl PodConnection {
     /// The consent point: this creates the goal *and* the agent that will pursue
     /// it, because "work at this while I am not here" is one decision rather
     /// than two.
-    pub async fn create_goal(&self, new: &NewGoal) -> anyhow::Result<Goal> {
-        self.post("/goals", new).await
+    pub async fn create_project(&self, new: &NewProject) -> anyhow::Result<Project> {
+        self.post("/projects", new).await
     }
 
     /// Pause, resume, retarget — or answer what it blocked on.
-    pub async fn update_goal(&self, id: &str, update: &GoalUpdate) -> anyhow::Result<Goal> {
-        self.patch(&format!("/goals/{id}"), update).await
+    pub async fn update_project(&self, id: &str, update: &ProjectUpdate) -> anyhow::Result<Project> {
+        self.patch(&format!("/projects/{id}"), update).await
     }
 
     /// Forget a goal. Its agent survives, holding what it learned.
-    pub async fn delete_goal(&self, id: &str) -> anyhow::Result<()> {
-        self.delete_path(&format!("/goals/{id}")).await
+    pub async fn delete_project(&self, id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/projects/{id}")).await
+    }
+
+    /// Ask for a tick now, rather than at the next heartbeat.
+    ///
+    /// One of the three levers a person gets over a project, and the one that
+    /// makes the other two usable: change the goal or the period and this is how
+    /// you see the effect without waiting a quarter of an hour for it.
+    ///
+    /// A request, not a preemption — the pod raises a flag its dispatcher
+    /// honours on the next pass, and a tick already running is left alone.
+    pub async fn tick_project(&self, id: &str) -> anyhow::Result<Project> {
+        self.post(&format!("/projects/{id}/tick"), &serde_json::json!({}))
+            .await
     }
 
     /// What it has been doing, one entry per tick, newest last.
-    pub async fn goal_journal(&self, id: &str, limit: u32) -> anyhow::Result<GoalJournal> {
-        self.get(&format!("/goals/{id}/journal?limit={limit}")).await
+    pub async fn project_journal(&self, id: &str, limit: u32) -> anyhow::Result<ProjectJournal> {
+        self.get(&format!("/projects/{id}/journal?limit={limit}")).await
     }
 
     /// Rewrite the scratchpad by hand — the repair hatch for a plan that has
     /// drifted or a groom that went wrong. The pod snapshots the previous
     /// version, so this is never the last copy.
-    pub async fn put_goal_scratchpad(
+    pub async fn put_project_scratchpad(
         &self,
         id: &str,
         markdown: &str,
-    ) -> anyhow::Result<GoalDetail> {
+    ) -> anyhow::Result<ProjectDetail> {
         self.put(
-            &format!("/goals/{id}/scratchpad"),
+            &format!("/projects/{id}/scratchpad"),
             &serde_json::json!({ "markdown": markdown }),
         )
         .await

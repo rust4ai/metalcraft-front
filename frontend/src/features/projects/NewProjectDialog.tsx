@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { useGoals } from '@/stores/goals'
+import { useProjects } from '@/stores/projects'
 import { cn } from '@/lib/cn'
 import type { GoalKind } from '@/types'
 
@@ -23,16 +23,16 @@ const KINDS: { value: GoalKind; label: string; blurb: string }[] = [
 const CADENCES = [15, 30, 60, 180]
 
 /**
- * Setting a goal — the one place a goal comes into existence.
+ * Setting a project — the one place a project comes into existence.
  *
- * Deliberately one big field and four small ones. The goal text is what the
+ * Deliberately one big field and four small ones. The project text is what the
  * agent re-reads on every tick for possibly a week, so it gets the room to be a
  * paragraph; everything else has a defensible default, because this is a form
  * somebody fills in once and then leaves running.
  */
-export function NewGoalDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { create, active, maxActive, error } = useGoals()
-  const [goal, setGoal] = useState('')
+export function NewProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { create, active, maxActive, error } = useProjects()
+  const [project, setGoal] = useState('')
   const [kind, setKind] = useState<GoalKind>('build')
   const [repo, setRepo] = useState('')
   const [everyMinutes, setEveryMinutes] = useState(30)
@@ -44,10 +44,10 @@ export function NewGoalDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const full = !paused && maxActive > 0 && active >= maxActive
 
   async function submit() {
-    if (!goal.trim() || saving) return
+    if (!project.trim() || saving) return
     setSaving(true)
     const created = await create({
-      goal: goal.trim(),
+      goal: project.trim(),
       kind,
       repo: repo.trim() || undefined,
       every_minutes: everyMinutes,
@@ -65,19 +65,19 @@ export function NewGoalDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Set a goal"
+      title="Set a project"
       description="It will work at this on its own, waking on a heartbeat, until it is done or it needs you."
     >
       <div className="space-y-4">
         <label className="block">
-          <span className="text-sm font-medium">The goal</span>
+          <span className="text-sm font-medium">The project</span>
           <textarea
-            value={goal}
+            value={project}
             onChange={(e) => setGoal(e.target.value)}
             rows={5}
             autoFocus
             placeholder="Ship Stripe billing in rust4ai/foo: checkout, webhooks, reconciliation."
-            aria-label="The goal"
+            aria-label="The project"
             className="mt-1 w-full resize-y rounded-control bg-field p-2 text-sm text-ink placeholder:text-ink-3 focus-visible:outline-accent"
           />
           <span className="text-xs text-ink-3">
@@ -152,14 +152,14 @@ export function NewGoalDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           <span>
             Start paused
             <span className="block text-xs text-ink-3">
-              Read its plan before it starts spending. Resume from the goal.
+              Read its plan before it starts spending. Resume from the project.
             </span>
           </span>
         </label>
 
         {full && (
           <p className="text-sm text-red">
-            {maxActive} goals are already running. Pause or finish one, or start this one paused.
+            {maxActive} projects are already running. Pause or finish one, or start this one paused.
           </p>
         )}
         {error && <p className="text-sm text-red">{error}</p>}
@@ -168,7 +168,7 @@ export function NewGoalDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button size="sm" onClick={submit} disabled={!goal.trim() || saving || full}>
+          <Button size="sm" onClick={submit} disabled={!project.trim() || saving || full}>
             {saving ? 'Setting…' : paused ? 'Create paused' : 'Set it going'}
           </Button>
         </div>

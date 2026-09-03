@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { Goal, GoalDetail, GoalJournalEntry, GoalList, GoalUpdate, NewGoal, ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, DreamReport, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
+import type { Project, ProjectDetail, ProjectJournalEntry, ProjectList, ProjectUpdate, NewProject, ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, DreamReport, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -374,20 +374,23 @@ export const chats = {
  * Goals — what the pod is working towards on its own.
  *
  * The only way one comes into existence. There is no chat command and no agent
- * tool that mints a goal, so without this surface the feature does not exist:
+ * tool that mints a project, so without this surface the feature does not exist:
  * committing a pod to days of unattended work is a decision a person takes
- * deliberately, and that is also what stops a goal creating goals.
+ * deliberately, and that is also what stops a project creating projects.
  */
-export const goals = {
-  list: () => call<GoalList>('list_goals'),
-  get: (goalId: string) => call<GoalDetail>('get_goal', { goalId }),
-  create: (goal: NewGoal) => call<Goal>('create_goal', { new: goal }),
-  update: (goalId: string, update: GoalUpdate) => call<Goal>('update_goal', { goalId, update }),
-  remove: (goalId: string) => call<void>('delete_goal', { goalId }),
-  journal: (goalId: string, limit?: number) =>
-    call<{ entries: GoalJournalEntry[] }>('goal_journal', { goalId, limit }),
+export const projects = {
+  list: () => call<ProjectList>('list_projects'),
+  get: (projectId: string) => call<ProjectDetail>('get_project', { projectId }),
+  create: (project: NewProject) => call<Project>('create_project', { new: project }),
+  update: (projectId: string, update: ProjectUpdate) => call<Project>('update_project', { projectId, update }),
+  remove: (projectId: string) => call<void>('delete_project', { projectId }),
+  journal: (projectId: string, limit?: number) =>
+    call<{ entries: ProjectJournalEntry[] }>('project_journal', { projectId, limit }),
   /** The repair hatch: rewrite the scratchpad by hand. The pod snapshots the
    *  previous version, so this is never the last copy. */
-  writeScratchpad: (goalId: string, markdown: string) =>
-    call<GoalDetail>('put_goal_scratchpad', { goalId, markdown }),
+  /** Run now, rather than at the next heartbeat. A request: a tick already
+   *  running is left alone, and the force fires when it ends. */
+  tick: (projectId: string) => call<Project>('tick_project', { projectId }),
+  writeScratchpad: (projectId: string, markdown: string) =>
+    call<ProjectDetail>('put_project_scratchpad', { projectId, markdown }),
 }

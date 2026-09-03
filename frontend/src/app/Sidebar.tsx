@@ -4,7 +4,7 @@ import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
 import { usePackUpdateCount } from '@/features/packs/updates'
-import { useBlockedGoalCount } from '@/features/goals/blocked'
+import { useBlockedProjectCount } from '@/features/projects/blocked'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
 import { partitionByActivity } from '@/features/fleet/activity'
 import { Nudges } from './Nudges'
@@ -72,10 +72,10 @@ export function Sidebar() {
         />
         <NavRow
           icon={<Target className="h-4 w-4" />}
-          label="Goals"
-          selected={activeKey === 'goals'}
-          onClick={() => go({ kind: 'goals' })}
-          count={useBlockedGoalCount()}
+          label="Projects"
+          selected={activeKey === 'projects'}
+          onClick={() => go({ kind: 'projects' })}
+          count={useBlockedProjectCount()}
         />
         <NavRow
           icon={<Clock className="h-4 w-4" />}

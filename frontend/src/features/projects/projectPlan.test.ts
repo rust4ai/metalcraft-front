@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { isEmptySection, planSteps, section } from './goalPlan'
+import { isEmptySection, planSteps, section } from './projectPlan'
 
-const PAD = `## Goal
+const PAD = `## Project
 Ship Stripe billing
 
 ## Plan
@@ -10,7 +10,7 @@ Ship Stripe billing
 Some note that is not a step
 
 ## State
-Branch \`goal/billing\`, tests green.
+Branch \`project/billing\`, tests green.
 
 ## Blockers
 (none)
@@ -18,8 +18,8 @@ Branch \`goal/billing\`, tests green.
 
 describe('reading a scratchpad', () => {
   it('takes a section body and stops at the next heading', () => {
-    expect(section(PAD, 'State')).toBe('Branch `goal/billing`, tests green.')
-    expect(section(PAD, 'Goal')).toBe('Ship Stripe billing')
+    expect(section(PAD, 'State')).toBe('Branch `project/billing`, tests green.')
+    expect(section(PAD, 'Project')).toBe('Ship Stripe billing')
   })
 
   it('returns nothing for a section the document does not have', () => {
@@ -33,7 +33,7 @@ describe('reading a scratchpad', () => {
     expect(steps[1]).toEqual({ done: false, text: '2. Checkout endpoint' })
   })
 
-  it('has no steps for a goal that has not planned yet', () => {
+  it('has no steps for a project that has not planned yet', () => {
     expect(planSteps('## Plan\n_No plan yet._\n')).toEqual([])
   })
 

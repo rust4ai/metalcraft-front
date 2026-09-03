@@ -628,7 +628,7 @@ impl InstalledAgentPack {
 /// needs to draw — where it is, whether it needs somebody — the pod derives and
 /// sends, so no client ever parses that document to render a progress bar.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Goal {
+pub struct Project {
     pub id: String,
     /// Short handle for lists.
     #[serde(default)]
@@ -651,7 +651,7 @@ pub struct Goal {
     #[serde(default)]
     pub instance_id: String,
     #[serde(default)]
-    pub progress: GoalProgress,
+    pub progress: ProjectProgress,
     #[serde(default)]
     pub ticks: u32,
     #[serde(default)]
@@ -665,7 +665,7 @@ pub struct Goal {
     pub created_at: String,
 }
 
-impl Goal {
+impl Project {
     /// Whether this goal is waiting on a person. The one state the list has to
     /// shout about: nothing else will ever mention it again, because the
     /// heartbeat that would have is what stopped.
@@ -679,7 +679,7 @@ impl Goal {
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct GoalProgress {
+pub struct ProjectProgress {
     #[serde(default)]
     pub done: u32,
     #[serde(default)]
@@ -687,9 +687,9 @@ pub struct GoalProgress {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GoalList {
+pub struct ProjectList {
     #[serde(default)]
-    pub goals: Vec<Goal>,
+    pub goals: Vec<Project>,
     #[serde(default)]
     pub active: usize,
     #[serde(default)]
@@ -698,9 +698,9 @@ pub struct GoalList {
 
 /// One goal, with the document that is its whole memory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GoalDetail {
+pub struct ProjectDetail {
     #[serde(flatten)]
-    pub goal: Goal,
+    pub goal: Project,
     /// The scratchpad, verbatim markdown. Rendered read-only by default and
     /// editable as the repair hatch — a groom that went wrong is otherwise only
     /// fixable by asking the agent nicely.
@@ -712,7 +712,7 @@ pub struct GoalDetail {
 
 /// One line of what a goal did, per tick.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GoalJournalEntry {
+pub struct ProjectJournalEntry {
     #[serde(default)]
     pub at: String,
     #[serde(default)]
@@ -740,16 +740,16 @@ pub struct GoalJournalEntry {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GoalJournal {
+pub struct ProjectJournal {
     #[serde(default)]
-    pub entries: Vec<GoalJournalEntry>,
+    pub entries: Vec<ProjectJournalEntry>,
 }
 
 /// What creating a goal needs. Everything but `goal` has a defensible default,
 /// because this is a form somebody fills in once and then leaves running.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct NewGoal {
+pub struct NewProject {
     pub goal: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -769,7 +769,7 @@ pub struct NewGoal {
 /// pauses it, retargets it, and changes its cadence.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct GoalUpdate {
+pub struct ProjectUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1910,7 +1910,7 @@ mod gateway_tests {
     /// opens the scratchpad to find out how far along something is.
     #[test]
     fn a_goal_row_answers_progress_and_attention_without_its_scratchpad() {
-        let goal: Goal = serde_json::from_str(
+        let goal: Project = serde_json::from_str(
             r#"{"id":"goal_1","title":"Billing","goal":"Ship it","kind":"build",
                 "status":"blocked","blocked_reason":"test key or live key?",
                 "instance_id":"inst_1","progress":{"done":2,"total":5},
@@ -1930,7 +1930,7 @@ mod gateway_tests {
     /// reading of that — not a crash, and not an error banner.
     #[test]
     fn an_empty_goal_list_parses() {
-        let list: GoalList = serde_json::from_str("{}").expect("parse");
+        let list: ProjectList = serde_json::from_str("{}").expect("parse");
         assert!(list.goals.is_empty());
         assert_eq!(list.max_active, 0);
     }

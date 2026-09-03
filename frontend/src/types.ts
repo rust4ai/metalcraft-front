@@ -1212,13 +1212,13 @@ export type GoalStatus = 'active' | 'blocked' | 'paused' | 'done' | 'failed'
 
 /** Checked/total plan steps, derived by the pod from the scratchpad so nothing
  *  here has to parse markdown to draw a progress bar. */
-export interface GoalProgress {
+export interface ProjectProgress {
   done: number
   total: number
 }
 
-/** A long-running goal, as a list row. */
-export interface Goal {
+/** A long-running project, as a list row. */
+export interface Project {
   id: string
   title: string
   goal: string
@@ -1227,28 +1227,51 @@ export interface Goal {
   /** The question it stopped on — present only when blocked. */
   blocked_reason?: string
   instance_id: string
-  progress: GoalProgress
+  progress: ProjectProgress
   ticks: number
   last_tick_at?: string
-  /** When it next wakes; absent for a goal that is not going to. */
+  /** When it next wakes; absent for a project that is not going to. */
   next_tick_at?: string
   every_minutes: number
   created_at: string
 }
 
-export interface GoalList {
-  goals: Goal[]
+export interface ProjectList {
+  projects: Project[]
   active: number
   max_active: number
 }
 
-export interface GoalDetail extends Goal {
-  /** The scratchpad, verbatim — the goal's whole memory between ticks. */
-  scratchpad: string
-  needs_groom: boolean
+/** One task in a project's plan.
+ *
+ *  Records rather than markdown checkboxes: the pod owns the list, so a client
+ *  renders it instead of parsing a document — and cannot disagree with the pod
+ *  about what the plan says. */
+export interface ProjectTask {
+  id: string
+  title: string
+  detail?: string
+  /** `todo` | `waiting` | `blocked` | `done` | `dropped`. */
+  status: string
+  deps?: string[]
+  assignee?: string | null
+  mutates_workspace?: boolean
+  attempts?: number
+  evidence?: { kind: string; value: string; at: string }[]
+  blocked_reason?: string | null
+  gate?: string | null
 }
 
-export interface GoalJournalEntry {
+export interface ProjectDetail extends Project {
+  /** The scratchpad, verbatim — the project's whole memory between ticks. */
+  scratchpad: string
+  needs_groom: boolean
+  /** The plan, as records. Empty for a project made before tasks existed —
+   *  its plan is still checkboxes inside `scratchpad`. */
+  tasks?: ProjectTask[]
+}
+
+export interface ProjectJournalEntry {
   at: string
   tick: number
   kind: 'plan' | 'work' | 'review'
@@ -1262,7 +1285,7 @@ export interface GoalJournalEntry {
   duration_secs: number
 }
 
-export interface NewGoal {
+export interface NewProject {
   goal: string
   title?: string
   kind: GoalKind
@@ -1272,9 +1295,9 @@ export interface NewGoal {
   paused?: boolean
 }
 
-export interface GoalUpdate {
+export interface ProjectUpdate {
   title?: string
-  goal?: string
+  project?: string
   status?: GoalStatus
   /** Answering un-blocks by itself: replying *is* saying carry on. */
   answer?: string

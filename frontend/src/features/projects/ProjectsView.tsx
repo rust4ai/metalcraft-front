@@ -11,30 +11,32 @@ import {
   RefreshCw,
   Target,
   Trash2,
+  Zap,
 } from 'lucide-react'
-import { useGoals } from '@/stores/goals'
+import { useProjects } from '@/stores/projects'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { relative } from '@/features/fleet/FleetView'
 import { cn } from '@/lib/cn'
-import { NewGoalDialog } from './NewGoalDialog'
-import { isEmptySection, planSteps, section } from './goalPlan'
-import type { Goal, GoalJournalEntry } from '@/types'
+import { NewProjectDialog } from './NewProjectDialog'
+import { isEmptySection, planSteps, section } from './projectPlan'
+import { TaskList } from './TaskList'
+import type { Project, ProjectJournalEntry } from '@/types'
 
 /**
  * What this pod is working towards on its own.
  *
- * The screen is arranged around one fact: a **blocked** goal is the only thing
+ * The screen is arranged around one fact: a **blocked** project is the only thing
  * here that is waiting on a person, and its heartbeat has stopped — so nothing
  * else will ever raise it again. It sorts first, it is the loudest thing on the
  * card, and answering it is a text box in the detail rather than a place to
  * navigate to.
  *
  * Everything else is a progress report you can ignore safely, which is the
- * point of setting a goal in the first place.
+ * point of setting a project in the first place.
  */
-export function GoalsView() {
-  const { goals, loading, error, load, open, select, close, maxActive, active } = useGoals()
+export function ProjectsView() {
+  const { projects, loading, error, load, open, select, close, maxActive, active } = useProjects()
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function GoalsView() {
           <div>
             <h1 className="text-base font-semibold">Goals</h1>
             <p className="text-sm text-ink-2">
-              {goals.length === 0
+              {projects.length === 0
                 ? 'Nothing running.'
                 : `${active} of ${maxActive} running.`}
             </p>
@@ -58,27 +60,27 @@ export function GoalsView() {
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
             </Button>
             <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" /> Set a goal
+              <Plus className="h-4 w-4" /> Set a project
             </Button>
           </div>
         </header>
 
         {error && <p className="mb-3 text-sm text-red">{error}</p>}
 
-        {goals.length === 0 && !loading ? (
+        {projects.length === 0 && !loading ? (
           <Card className="text-sm text-ink-2">
             <Target className="mb-2 h-5 w-5 text-ink-3" />
             <p className="font-medium text-ink">Nothing on the go.</p>
             <p className="mt-1">
-              A goal works on its own — waking on a heartbeat, doing one slice at a time, and
+              A project works on its own — waking on a heartbeat, doing one slice at a time, and
               telling you when it is done or stuck.
             </p>
           </Card>
         ) : (
           <ul className="space-y-2">
-            {goals.map((g) => (
+            {projects.map((g) => (
               <li key={g.id}>
-                <GoalCard goal={g} selected={open?.id === g.id} onOpen={() => void select(g.id)} />
+                <ProjectCard project={g} selected={open?.id === g.id} onOpen={() => void select(g.id)} />
               </li>
             ))}
           </ul>
@@ -91,14 +93,14 @@ export function GoalsView() {
         </aside>
       )}
 
-      <NewGoalDialog open={creating} onOpenChange={setCreating} />
+      <NewProjectDialog open={creating} onOpenChange={setCreating} />
     </div>
   )
 }
 
 /** Colour and words for a status, in one place so the card and the detail cannot
- *  describe the same goal differently. */
-function statusOf(g: Goal): { tone: string; label: string } {
+ *  describe the same project differently. */
+function statusOf(g: Project): { tone: string; label: string } {
   switch (g.status) {
     case 'blocked':
       return { tone: 'text-red', label: 'Needs you' }
@@ -113,9 +115,9 @@ function statusOf(g: Goal): { tone: string; label: string } {
   }
 }
 
-function GoalCard({ goal, selected, onOpen }: { goal: Goal; selected: boolean; onOpen: () => void }) {
-  const { tone, label } = statusOf(goal)
-  const { done, total } = goal.progress
+function ProjectCard({ project, selected, onOpen }: { project: Project; selected: boolean; onOpen: () => void }) {
+  const { tone, label } = statusOf(project)
+  const { done, total } = project.progress
   return (
     <Card
       className={cn('cursor-pointer', selected && 'ring-1 ring-accent')}
@@ -126,10 +128,10 @@ function GoalCard({ goal, selected, onOpen }: { goal: Goal; selected: boolean; o
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="truncate font-medium">{goal.title}</span>
+            <span className="truncate font-medium">{project.title}</span>
             <span className={cn('shrink-0 text-xs font-medium', tone)}>{label}</span>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-sm text-ink-2">{goal.goal}</p>
+          <p className="mt-0.5 line-clamp-2 text-sm text-ink-2">{project.goal}</p>
         </div>
         {total > 0 && (
           <span className="shrink-0 text-xs tabular-nums text-ink-3">
@@ -138,13 +140,13 @@ function GoalCard({ goal, selected, onOpen }: { goal: Goal; selected: boolean; o
         )}
       </div>
 
-      {/* The blocked question, on the card. Making someone open a goal to find
+      {/* The blocked question, on the card. Making someone open a project to find
           out what it wants would be one click between them and the only thing
           that restarts it. */}
-      {goal.blocked_reason && (
+      {project.blocked_reason && (
         <p className="mt-2 flex gap-1.5 rounded-control bg-red/10 p-2 text-sm text-red">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="min-w-0">{goal.blocked_reason}</span>
+          <span className="min-w-0">{project.blocked_reason}</span>
         </p>
       )}
 
@@ -159,17 +161,17 @@ function GoalCard({ goal, selected, onOpen }: { goal: Goal; selected: boolean; o
 
       <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-3">
         <Clock className="h-3 w-3" />
-        {goal.ticks} tick{goal.ticks === 1 ? '' : 's'}
-        {goal.last_tick_at && <> · last {relative(goal.last_tick_at)}</>}
-        {goal.next_tick_at && goal.status === 'active' && <> · next {relative(goal.next_tick_at)}</>}
+        {project.ticks} tick{project.ticks === 1 ? '' : 's'}
+        {project.last_tick_at && <> · last {relative(project.last_tick_at)}</>}
+        {project.next_tick_at && project.status === 'active' && <> · next {relative(project.next_tick_at)}</>}
       </p>
     </Card>
   )
 }
 
-/** One goal: its plan, what it wants, and what it has been doing. */
+/** One project: its plan, what it wants, and what it has been doing. */
 function GoalDetailPanel({ onClose }: { onClose: () => void }) {
-  const { open, journal, openLoading, update, remove, busy } = useGoals()
+  const { open, journal, openLoading, update, remove, tick, busy } = useProjects()
   const [answer, setAnswer] = useState('')
 
   if (!open) return null
@@ -226,7 +228,15 @@ function GoalDetailPanel({ onClose }: { onClose: () => void }) {
         </section>
       )}
 
-      {steps.length > 0 && (
+      {/* The plan. Records when the pod has them, and the old markdown
+          checkboxes when it does not — a project made before tasks existed
+          still draws its plan rather than showing nothing. */}
+      {(open.tasks?.length ?? 0) > 0 ? (
+        <section className="mt-4">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-ink-3">Plan</h3>
+          <TaskList tasks={open.tasks ?? []} />
+        </section>
+      ) : steps.length > 0 ? (
         <section className="mt-4">
           <h3 className="text-xs font-medium uppercase tracking-wide text-ink-3">Plan</h3>
           <ul className="mt-1.5 space-y-1">
@@ -242,7 +252,7 @@ function GoalDetailPanel({ onClose }: { onClose: () => void }) {
             ))}
           </ul>
         </section>
-      )}
+      ) : null}
 
       {!isEmptySection(state) && (
         <section className="mt-4">
@@ -265,6 +275,20 @@ function GoalDetailPanel({ onClose }: { onClose: () => void }) {
       </section>
 
       <footer className="mt-4 flex gap-1.5 border-t border-line pt-3">
+        {/* The third lever. Without it, retargeting a project means waiting a
+            quarter of an hour to find out whether it understood you — which is
+            what makes the other two feel like settings rather than controls. */}
+        {open.status === 'active' && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={working}
+            onClick={() => void tick(open.id)}
+            title="Run now instead of waiting for the next heartbeat"
+          >
+            <Zap className="h-4 w-4" /> Run now
+          </Button>
+        )}
         {open.status === 'active' ? (
           <Button
             variant="outline"
@@ -284,7 +308,7 @@ function GoalDetailPanel({ onClose }: { onClose: () => void }) {
           size="sm"
           disabled={working}
           onClick={() => void remove(open.id)}
-          aria-label="Delete goal"
+          aria-label="Delete project"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -297,8 +321,8 @@ function GoalDetailPanel({ onClose }: { onClose: () => void }) {
  *
  *  A tick that changed nothing is marked, because a run of them is exactly what
  *  the pod's own no-progress rail is counting — and it is the difference between
- *  a goal working slowly and a goal stuck. */
-function JournalRow({ entry }: { entry: GoalJournalEntry }) {
+ *  a project working slowly and a project stuck. */
+function JournalRow({ entry }: { entry: ProjectJournalEntry }) {
   return (
     <li className="text-sm">
       <p className="flex items-center gap-1.5 text-xs text-ink-3">

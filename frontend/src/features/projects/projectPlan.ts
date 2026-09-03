@@ -1,12 +1,12 @@
 /**
- * Reading a goal's scratchpad, for display only.
+ * Reading a project's scratchpad, for display only.
  *
  * The pod already derives everything a *list* needs (`progress`), so this is
  * used on one screen: the detail view, which shows the plan as a checklist
- * because that is the shape a person can actually read a goal's state from.
+ * because that is the shape a person can actually read a project's state from.
  *
  * Nothing here writes. The scratchpad belongs to the agent, and a client that
- * quietly reformatted it would be editing the only memory a goal has.
+ * quietly reformatted it would be editing the only memory a project has.
  */
 
 export interface PlanStep {
