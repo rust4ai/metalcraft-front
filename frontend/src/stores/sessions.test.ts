@@ -510,3 +510,50 @@ describe('open', () => {
     expect(session()?.transcript.items.at(-1)).toMatchObject({ content: 'mid-turn' })
   })
 })
+
+describe('the usage readout after a command that changes the context', () => {
+  /** The usage store, freshly imported alongside whatever `mount` built. */
+  async function usage() {
+    return (await import('./usage')).useUsage
+  }
+
+  it('re-reads the context after /compact', async () => {
+    // `/compact` and `/clear` are reached for *because* the readout is high, so
+    // a readout that does not move afterwards is the one place this number most
+    // obviously lies. This was the gap: the fix existed, the test did not.
+    const { useSessions, calls } = await mount()
+    const useUsage = await usage()
+    // Seed the stale figure the ring would otherwise keep showing.
+    useUsage.setState({
+      byChat: {
+        c1: {
+          estimated_tokens: 99_000,
+          message_count: 80,
+          context_window: 128_000,
+          compact_threshold_tokens: 76_800,
+          would_compact: true,
+        },
+      },
+      loading: {},
+      failed: {},
+    })
+
+    await useSessions.getState().submit('i1', '/compact')
+    // Let the refresh, which is deliberately not awaited by the command path,
+    // settle.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(calls.some((c) => c.method === 'chat_context' && c.args?.chatId === 'c1')).toBe(true)
+    // The harness answers 12.4k, not the 99k seeded above.
+    expect(useUsage.getState().byChat.c1?.estimated_tokens).toBe(12_400)
+  })
+
+  it('re-reads after /clear too', async () => {
+    const { useSessions, calls } = await mount()
+    const useUsage = await usage()
+    await useSessions.getState().submit('i1', '/clear')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls.some((c) => c.method === 'chat_context' && c.args?.chatId === 'c1')).toBe(true)
+    expect(useUsage.getState().byChat.c1?.estimated_tokens).toBe(12_400)
+  })
+})
