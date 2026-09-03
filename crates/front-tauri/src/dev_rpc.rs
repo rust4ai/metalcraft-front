@@ -346,6 +346,40 @@ async fn dispatch(bridge: &Bridge, method: &str, args: &Value) -> Result<Value, 
             ok(Value::Null)
         }
 
+        // Goals.
+        "list_goals" => j(app.conn(None)?.list_goals().await),
+        "get_goal" => j(app.conn(None)?.get_goal(need(args, "goalId")?).await),
+        // The goal is a whole object, so it comes out of `args` directly —
+        // `need`/`arg` only reach string values.
+        "create_goal" => {
+            let new = args
+                .get("new")
+                .ok_or_else(|| "missing argument 'new'".to_string())?;
+            let new: front_core::NewGoal =
+                serde_json::from_value(new.clone()).map_err(|e| e.to_string())?;
+            j(app.conn(None)?.create_goal(&new).await)
+        }
+        "update_goal" => {
+            let update = args
+                .get("update")
+                .ok_or_else(|| "missing argument 'update'".to_string())?;
+            let update: front_core::GoalUpdate =
+                serde_json::from_value(update.clone()).map_err(|e| e.to_string())?;
+            j(app.conn(None)?.update_goal(need(args, "goalId")?, &update).await)
+        }
+        "delete_goal" => j(app.conn(None)?.delete_goal(need(args, "goalId")?).await),
+        "goal_journal" => j(app
+            .conn(None)?
+            .goal_journal(
+                need(args, "goalId")?,
+                args.get("limit").and_then(Value::as_u64).unwrap_or(50) as u32,
+            )
+            .await),
+        "put_goal_scratchpad" => j(app
+            .conn(None)?
+            .put_goal_scratchpad(need(args, "goalId")?, need(args, "markdown")?)
+            .await),
+
         // Automations.
         "list_flows" => j(app.conn(None)?.list_flows().await),
         "get_flow" => j(app.conn(None)?.get_flow(need(args, "flowId")?).await),

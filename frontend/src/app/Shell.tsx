@@ -3,6 +3,7 @@ import { FleetView } from '@/features/fleet/FleetView'
 import { SessionView } from '@/features/session/SessionView'
 import { PacksView } from '@/features/packs/PacksView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
+import { GoalsView } from '@/features/goals/GoalsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ErrorLogView } from '@/features/diagnostics/ErrorLogView'
 import { LibraryView } from '@/features/library/LibraryView'
@@ -99,6 +100,8 @@ export function Shell() {
             <SessionView key={view.instanceId} instanceId={view.instanceId} />
           ) : view.kind === 'packs' ? (
             <PacksView />
+          ) : view.kind === 'goals' ? (
+            <GoalsView />
           ) : view.kind === 'automations' ? (
             <AutomationsView />
           ) : view.kind === 'settings' ? (

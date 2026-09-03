@@ -1203,3 +1203,80 @@ export interface ResetReport {
   failed: ResetFailure[]
   restart: RestartExpectation
 }
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+/** `build` ships something; `audit` reviews a repo and opens PRs. */
+export type GoalKind = 'build' | 'audit'
+export type GoalStatus = 'active' | 'blocked' | 'paused' | 'done' | 'failed'
+
+/** Checked/total plan steps, derived by the pod from the scratchpad so nothing
+ *  here has to parse markdown to draw a progress bar. */
+export interface GoalProgress {
+  done: number
+  total: number
+}
+
+/** A long-running goal, as a list row. */
+export interface Goal {
+  id: string
+  title: string
+  goal: string
+  kind: GoalKind
+  status: GoalStatus
+  /** The question it stopped on — present only when blocked. */
+  blocked_reason?: string
+  instance_id: string
+  progress: GoalProgress
+  ticks: number
+  last_tick_at?: string
+  /** When it next wakes; absent for a goal that is not going to. */
+  next_tick_at?: string
+  every_minutes: number
+  created_at: string
+}
+
+export interface GoalList {
+  goals: Goal[]
+  active: number
+  max_active: number
+}
+
+export interface GoalDetail extends Goal {
+  /** The scratchpad, verbatim — the goal's whole memory between ticks. */
+  scratchpad: string
+  needs_groom: boolean
+}
+
+export interface GoalJournalEntry {
+  at: string
+  tick: number
+  kind: 'plan' | 'work' | 'review'
+  model: string
+  summary: string
+  status: GoalStatus
+  plan_done: number
+  plan_total: number
+  /** False when the tick left the scratchpad untouched. */
+  progressed: boolean
+  duration_secs: number
+}
+
+export interface NewGoal {
+  goal: string
+  title?: string
+  kind: GoalKind
+  repo?: string
+  every_minutes?: number
+  chat_id?: string
+  paused?: boolean
+}
+
+export interface GoalUpdate {
+  title?: string
+  goal?: string
+  status?: GoalStatus
+  /** Answering un-blocks by itself: replying *is* saying carry on. */
+  answer?: string
+  every_minutes?: number
+}

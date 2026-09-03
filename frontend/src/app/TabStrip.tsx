@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, Plus, ScrollText, ServerCog, Settings, Store, X } from 'lucide-react'
+import { BookOpen, Bot, Clock, KeyRound, LayoutGrid, Plus, ScrollText, ServerCog, Settings, Store, Target, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useFleet } from '@/stores/fleet'
 import { useUi, type View } from '@/stores/ui'
@@ -18,6 +18,8 @@ export function tabLabel(view: View, nameOf: (id: string) => string | undefined)
       return 'Library'
     case 'automations':
       return 'Automations'
+    case 'goals':
+      return 'Goals'
     // Not "Interface source": a tab label is a word, not a sentence, and the
     // pane it opens already carries the full title.
     case 'source':
@@ -44,6 +46,8 @@ function TabIcon({ view }: { view: View }) {
       return <BookOpen className={cls} />
     case 'automations':
       return <Clock className={cls} />
+    case 'goals':
+      return <Target className={cls} />
     case 'source':
       return <KeyRound className={cls} />
     case 'pods':

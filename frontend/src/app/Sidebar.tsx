@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookOpen, ChevronRight, Clock, LayoutGrid, Plus, Search, Settings, Store } from 'lucide-react'
+import { BookOpen, ChevronRight, Clock, LayoutGrid, Plus, Search, Settings, Store, Target } from 'lucide-react'
 import { useFleet } from '@/stores/fleet'
 import { useUi } from '@/stores/ui'
 import { useLayout } from '@/stores/layout'
 import { usePackUpdateCount } from '@/features/packs/updates'
+import { useBlockedGoalCount } from '@/features/goals/blocked'
 import { InstanceRow } from '@/features/fleet/InstanceRow'
 import { partitionByActivity } from '@/features/fleet/activity'
 import { Nudges } from './Nudges'
@@ -68,6 +69,13 @@ export function Sidebar() {
           label="Home"
           selected={activeKey === 'fleet'}
           onClick={() => go({ kind: 'fleet' })}
+        />
+        <NavRow
+          icon={<Target className="h-4 w-4" />}
+          label="Goals"
+          selected={activeKey === 'goals'}
+          onClick={() => go({ kind: 'goals' })}
+          count={useBlockedGoalCount()}
         />
         <NavRow
           icon={<Clock className="h-4 w-4" />}

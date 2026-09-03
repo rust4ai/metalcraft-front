@@ -770,6 +770,57 @@ impl PodConnection {
         Ok(wrapped.scheduled)
     }
 
+    // ── Goals ────────────────────────────────────────────────────────────────
+
+    /// Every goal on the pod, with how far each has got.
+    pub async fn list_goals(&self) -> anyhow::Result<GoalList> {
+        self.get("/goals").await
+    }
+
+    /// One goal, with the scratchpad that is its whole memory.
+    pub async fn get_goal(&self, id: &str) -> anyhow::Result<GoalDetail> {
+        self.get(&format!("/goals/{id}")).await
+    }
+
+    /// Set a goal.
+    ///
+    /// The consent point: this creates the goal *and* the agent that will pursue
+    /// it, because "work at this while I am not here" is one decision rather
+    /// than two.
+    pub async fn create_goal(&self, new: &NewGoal) -> anyhow::Result<Goal> {
+        self.post("/goals", new).await
+    }
+
+    /// Pause, resume, retarget — or answer what it blocked on.
+    pub async fn update_goal(&self, id: &str, update: &GoalUpdate) -> anyhow::Result<Goal> {
+        self.patch(&format!("/goals/{id}"), update).await
+    }
+
+    /// Forget a goal. Its agent survives, holding what it learned.
+    pub async fn delete_goal(&self, id: &str) -> anyhow::Result<()> {
+        self.delete_path(&format!("/goals/{id}")).await
+    }
+
+    /// What it has been doing, one entry per tick, newest last.
+    pub async fn goal_journal(&self, id: &str, limit: u32) -> anyhow::Result<GoalJournal> {
+        self.get(&format!("/goals/{id}/journal?limit={limit}")).await
+    }
+
+    /// Rewrite the scratchpad by hand — the repair hatch for a plan that has
+    /// drifted or a groom that went wrong. The pod snapshots the previous
+    /// version, so this is never the last copy.
+    pub async fn put_goal_scratchpad(
+        &self,
+        id: &str,
+        markdown: &str,
+    ) -> anyhow::Result<GoalDetail> {
+        self.put(
+            &format!("/goals/{id}/scratchpad"),
+            &serde_json::json!({ "markdown": markdown }),
+        )
+        .await
+    }
+
     /// Persisted flow runs, newest first. The pod only persists a run that
     /// **paused**, so this is largely the list of things waiting on a human.
     pub async fn list_flow_runs(&self) -> anyhow::Result<Vec<FlowRun>> {

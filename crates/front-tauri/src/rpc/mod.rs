@@ -15,6 +15,7 @@ pub mod diagnostics;
 pub mod fleet;
 pub mod flows;
 pub mod gateway;
+pub mod goals;
 pub mod keys;
 pub mod library;
 pub mod octaweave;

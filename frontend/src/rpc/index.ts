@@ -3,7 +3,7 @@
  * the surface it drives — the renderer never types a method string itself.
  */
 import { call, listen } from './transport'
-import type { ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, DreamReport, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
+import type { Goal, GoalDetail, GoalJournalEntry, GoalList, GoalUpdate, NewGoal, ResetReport, ResetScope, GatewayRegistration, GatewayStatus, Plan, Diagnostic, ChatContext, ChatCompacted, InferenceStatus, ActivePod, AgentInfo, InstalledPack, KeyEntry, Registries, RegistryConnection, SearchHit, AgentInstance, AgentPreset, ChatDetail, ChatEvent, ChatSummary, DeviceLogin, LoginResult, Pod, Session, Credits, InstanceMemory, DreamReport, ConnectionInfo, ConnectionStatus, ConnectOutcome, OctaweaveWorkspace, ServiceId, PackManifest, PackUpdateReport, RosterPersona, Flow, FlowRun, FlowRunDetail, FlowBinding, FlowRunSummary, SavedFlow, FlowValidation, ScheduledFlow, ScheduleSpec, PodSnapshot, PresetDetail, PersonaDetail, SkillDetail, Integration, IntegrationDetail, FlowTemplateSummary, ScheduledTask, PodSession, PodSessionDetail, RecommendedKey, FlowDependencies, SchedulePreview, AgentPackPreview, PodSettings, TimezoneRegion } from '@/types'
 
 export const auth = {
   start: () => call<DeviceLogin>('login_start'),
@@ -368,4 +368,26 @@ export const chats = {
   cancelFollowup: (id: string) => call<void>('cancel_followup', { id }),
   /** Live frames for one chat. The channel name is the core's contract. */
   onEvent: (chatId: string, cb: (ev: ChatEvent) => void) => listen<ChatEvent>(`session://${chatId}`, cb),
+}
+
+/**
+ * Goals — what the pod is working towards on its own.
+ *
+ * The only way one comes into existence. There is no chat command and no agent
+ * tool that mints a goal, so without this surface the feature does not exist:
+ * committing a pod to days of unattended work is a decision a person takes
+ * deliberately, and that is also what stops a goal creating goals.
+ */
+export const goals = {
+  list: () => call<GoalList>('list_goals'),
+  get: (goalId: string) => call<GoalDetail>('get_goal', { goalId }),
+  create: (goal: NewGoal) => call<Goal>('create_goal', { new: goal }),
+  update: (goalId: string, update: GoalUpdate) => call<Goal>('update_goal', { goalId, update }),
+  remove: (goalId: string) => call<void>('delete_goal', { goalId }),
+  journal: (goalId: string, limit?: number) =>
+    call<{ entries: GoalJournalEntry[] }>('goal_journal', { goalId, limit }),
+  /** The repair hatch: rewrite the scratchpad by hand. The pod snapshots the
+   *  previous version, so this is never the last copy. */
+  writeScratchpad: (goalId: string, markdown: string) =>
+    call<GoalDetail>('put_goal_scratchpad', { goalId, markdown }),
 }

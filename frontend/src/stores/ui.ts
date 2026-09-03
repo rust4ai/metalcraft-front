@@ -16,6 +16,7 @@ export type View =
   | { kind: 'packs' }
   | { kind: 'library' }
   | { kind: 'automations' }
+  | { kind: 'goals' }
   | { kind: 'settings' }
   | { kind: 'errors' }
 

@@ -618,6 +618,173 @@ impl InstalledAgentPack {
     }
 }
 
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+/// A long-running goal: what the pod is working towards on its own.
+///
+/// The desktop's view of it is deliberately the pod's list row, not the whole
+/// record. A goal's real state is a markdown scratchpad, and everything a list
+/// needs to draw — where it is, whether it needs somebody — the pod derives and
+/// sends, so no client ever parses that document to render a progress bar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Goal {
+    pub id: String,
+    /// Short handle for lists.
+    #[serde(default)]
+    pub title: String,
+    /// The instruction itself, verbatim. Shown in full on the detail screen: it
+    /// is what the agent reads every tick, so it is what a person is really
+    /// editing when they change their mind.
+    #[serde(default)]
+    pub goal: String,
+    /// `build` | `audit`.
+    #[serde(default)]
+    pub kind: String,
+    /// `active` | `blocked` | `paused` | `done` | `failed`.
+    #[serde(default)]
+    pub status: String,
+    /// The question it stopped on. Present only when blocked, and the whole
+    /// reason that state has to be loud.
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
+    #[serde(default)]
+    pub instance_id: String,
+    #[serde(default)]
+    pub progress: GoalProgress,
+    #[serde(default)]
+    pub ticks: u32,
+    #[serde(default)]
+    pub last_tick_at: Option<String>,
+    /// When it next wakes. Absent for a goal that is not going to.
+    #[serde(default)]
+    pub next_tick_at: Option<String>,
+    #[serde(default)]
+    pub every_minutes: u32,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+impl Goal {
+    /// Whether this goal is waiting on a person. The one state the list has to
+    /// shout about: nothing else will ever mention it again, because the
+    /// heartbeat that would have is what stopped.
+    pub fn needs_attention(&self) -> bool {
+        self.status == "blocked"
+    }
+    /// Whether it is still working.
+    pub fn is_running(&self) -> bool {
+        self.status == "active"
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct GoalProgress {
+    #[serde(default)]
+    pub done: u32,
+    #[serde(default)]
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GoalList {
+    #[serde(default)]
+    pub goals: Vec<Goal>,
+    #[serde(default)]
+    pub active: usize,
+    #[serde(default)]
+    pub max_active: usize,
+}
+
+/// One goal, with the document that is its whole memory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoalDetail {
+    #[serde(flatten)]
+    pub goal: Goal,
+    /// The scratchpad, verbatim markdown. Rendered read-only by default and
+    /// editable as the repair hatch — a groom that went wrong is otherwise only
+    /// fixable by asking the agent nicely.
+    #[serde(default)]
+    pub scratchpad: String,
+    #[serde(default)]
+    pub needs_groom: bool,
+}
+
+/// One line of what a goal did, per tick.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoalJournalEntry {
+    #[serde(default)]
+    pub at: String,
+    #[serde(default)]
+    pub tick: u32,
+    /// `plan` | `work` | `review`.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub plan_done: u32,
+    #[serde(default)]
+    pub plan_total: u32,
+    /// False when the tick left the scratchpad untouched — it thought, spent,
+    /// and recorded nothing. Worth showing: a run of these is what the pod's own
+    /// no-progress rail is counting.
+    #[serde(default)]
+    pub progressed: bool,
+    #[serde(default)]
+    pub duration_secs: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GoalJournal {
+    #[serde(default)]
+    pub entries: Vec<GoalJournalEntry>,
+}
+
+/// What creating a goal needs. Everything but `goal` has a defensible default,
+/// because this is a form somebody fills in once and then leaves running.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NewGoal {
+    pub goal: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub every_minutes: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
+    /// Create it paused, to read the plan before it starts spending.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub paused: bool,
+}
+
+/// A change to a goal. Every field optional: the same shape answers a question,
+/// pauses it, retargets it, and changes its cadence.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GoalUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// The answer to what it blocked on. Sending one un-blocks the goal by
+    /// itself — replying *is* saying carry on, and making someone also flip a
+    /// switch would be a second step whose omission looks like being ignored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub every_minutes: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1737,6 +1904,35 @@ mod gateway_tests {
         assert!(status.configured);
         assert!(!status.streaming);
         assert!(!status.webhook_stale);
+    }
+
+    /// The list row carries everything a goal card draws, so the renderer never
+    /// opens the scratchpad to find out how far along something is.
+    #[test]
+    fn a_goal_row_answers_progress_and_attention_without_its_scratchpad() {
+        let goal: Goal = serde_json::from_str(
+            r#"{"id":"goal_1","title":"Billing","goal":"Ship it","kind":"build",
+                "status":"blocked","blocked_reason":"test key or live key?",
+                "instance_id":"inst_1","progress":{"done":2,"total":5},
+                "ticks":11,"every_minutes":30,"created_at":"2026-09-03T00:00:00Z"}"#,
+        )
+        .expect("parse goal");
+        assert!(goal.needs_attention());
+        assert!(!goal.is_running());
+        assert_eq!(goal.progress.done, 2);
+        assert_eq!(goal.progress.total, 5);
+        // A blocked goal reports no next tick, because there is not going to be
+        // one — the card must not promise activity that will never come.
+        assert_eq!(goal.next_tick_at, None);
+    }
+
+    /// A pod older than goals answers `{}`, and an empty list is the honest
+    /// reading of that — not a crash, and not an error banner.
+    #[test]
+    fn an_empty_goal_list_parses() {
+        let list: GoalList = serde_json::from_str("{}").expect("parse");
+        assert!(list.goals.is_empty());
+        assert_eq!(list.max_active, 0);
     }
 
     /// Re-registering an already-verified number answers without a code. The UI
